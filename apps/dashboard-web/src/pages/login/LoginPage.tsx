@@ -33,7 +33,7 @@ export default function LoginPage() {
           <div className="w-14 h-14 bg-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-xl">P</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">POS Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">BUSINESS LOGIN PAGE</h1>
           <p className="text-sm text-gray-500 mt-1">Sign in to manage your business</p>
         </div>
 

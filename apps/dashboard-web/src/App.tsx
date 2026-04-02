@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
 import SuperLayout from './components/layout/SuperLayout';
 import LoginPage from './pages/login/LoginPage';
@@ -19,18 +19,7 @@ import AuditLogPage from './pages/super-admin/AuditLogPage';
 export default function App() {
   return (
     <Routes>
-      {/* Business Admin */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route element={<MainLayout />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/products" element={<ProductsPage />} />
-        <Route path="/employees" element={<EmployeesPage />} />
-        <Route path="/locations" element={<LocationsPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
-
-      {/* Super Admin */}
+      {/* Super Admin — completely separate route tree */}
       <Route path="/super/login" element={<SuperLoginPage />} />
       <Route path="/super" element={<SuperLayout />}>
         <Route index element={<SuperDashboardPage />} />
@@ -39,6 +28,17 @@ export default function App() {
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="business-types" element={<BusinessTypesPage />} />
         <Route path="audit-log" element={<AuditLogPage />} />
+      </Route>
+
+      {/* Business Admin */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<MainLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="products" element={<ProductsPage />} />
+        <Route path="employees" element={<EmployeesPage />} />
+        <Route path="locations" element={<LocationsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

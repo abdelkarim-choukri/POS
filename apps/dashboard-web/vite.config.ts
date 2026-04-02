@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { Agent } from 'http';
+
+const directAgent = new Agent({ family: 4 });
 
 export default defineConfig({
   plugins: [react()],
@@ -9,12 +12,7 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:3000',
         changeOrigin: true,
-        configure: (proxy) => {
-          // Bypass system proxy for localhost
-          proxy.on('proxyReq', (proxyReq) => {
-            delete proxyReq.agent;
-          });
-        },
+        agent: directAgent,
       },
     },
   },

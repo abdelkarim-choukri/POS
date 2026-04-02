@@ -27,7 +27,7 @@ export default function SuperLoginPage() {
           <div className="w-14 h-14 bg-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-xl">SA</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Super Admin</h1>
+          <h1 className="text-2xl font-bold text-gray-900">SUPER ADMIN LOGIN PAGE</h1>
           <p className="text-sm text-gray-500 mt-1">Platform management portal</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

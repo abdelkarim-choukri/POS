@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
+const api = axios.create({ baseURL: 'http://127.0.0.1:3000/api' });
 
 api.interceptors.request.use((config) => {
   const isSuperRoute = window.location.pathname.startsWith('/super');
@@ -13,20 +13,7 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => res,
-  async (error) => {
-    if (error.response?.status === 401) {
-      const isSuperRoute = window.location.pathname.startsWith('/super');
-      if (isSuperRoute) {
-        localStorage.removeItem('sa_access_token');
-        window.location.href = '/super/login';
-      } else {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  },
+  (error) => Promise.reject(error),
 );
 
 export default api;
