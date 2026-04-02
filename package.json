@@ -1,0 +1,18 @@
+{
+  "name": "pos-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "POS System — Multi-tenant Point of Sale platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "backend:dev": "npm run dev --workspace=apps/backend",
+    "terminal:dev": "npm run dev --workspace=apps/terminal-app",
+    "dashboard:dev": "npm run dev --workspace=apps/dashboard-web"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
