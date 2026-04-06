@@ -15,7 +15,6 @@ export class TerminalController {
 
   @Get('config')
   getConfig(@CurrentUser() user: any) {
-    // Terminal ID should be in the token or passed — simplified here
     return this.service.getConfig(user.terminal_id);
   }
 
@@ -45,21 +44,18 @@ export class TerminalController {
   }
 
   @Post('transactions')
-  createTransaction(
-    @CurrentUser() user: any,
-    @Body() dto: CreateTransactionDto,
-    @Body('terminal_id') terminalId: string,
-    @Body('location_id') locationId: string,
-  ) {
-    return this.service.createTransaction(user.business_id, locationId, terminalId, user.id, dto);
+  createTransaction(@CurrentUser() user: any, @Body() dto: CreateTransactionDto) {
+    return this.service.createTransaction(
+      user.business_id,
+      dto.location_id || user.location_id,
+      dto.terminal_id || user.terminal_id,
+      user.id,
+      dto,
+    );
   }
 
   @Post('transactions/:id/void')
-  voidTransaction(
-    @CurrentUser() user: any,
-    @Param('id') id: string,
-    @Body() dto: VoidTransactionDto,
-  ) {
+  voidTransaction(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: VoidTransactionDto) {
     return this.service.voidTransaction(id, user.id, dto, user.can_void);
   }
 

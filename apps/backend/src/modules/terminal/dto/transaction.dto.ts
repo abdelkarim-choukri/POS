@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsNumber, IsUUID, IsEnum, IsArray, ValidateNested, IsInt } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { PaymentMethod } from '../../../common/enums';
 
 export class TransactionItemDto {
@@ -18,15 +18,18 @@ export class TransactionItemDto {
   variant_name?: string;
 
   @IsInt()
+  @Transform(({ value }) => Number(value))
   quantity: number;
 
   @IsNumber()
+  @Transform(({ value }) => Number(value))
   unit_price: number;
 
   @IsOptional()
   modifiers_json?: Record<string, any>;
 
   @IsNumber()
+  @Transform(({ value }) => Number(value))
   line_total: number;
 }
 
@@ -37,13 +40,16 @@ export class CreateTransactionDto {
   items: TransactionItemDto[];
 
   @IsNumber()
+  @Transform(({ value }) => Number(value))
   subtotal: number;
 
   @IsOptional()
   @IsNumber()
+  @Transform(({ value }) => value != null ? Number(value) : undefined)
   tax_amount?: number;
 
   @IsNumber()
+  @Transform(({ value }) => Number(value))
   total: number;
 
   @IsEnum(PaymentMethod)
@@ -52,6 +58,14 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsUUID()
+  terminal_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  location_id?: string;
 }
 
 export class VoidTransactionDto {
