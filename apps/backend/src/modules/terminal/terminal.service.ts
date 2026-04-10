@@ -1,21 +1,36 @@
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
+import { KdsService } from '../kds/kds.service';
 import { Repository, MoreThan } from 'typeorm';
+import { KdsService } from '../kds/kds.service';
 import { Terminal } from '../../common/entities/terminal.entity';
+import { KdsService } from '../kds/kds.service';
 import { User } from '../../common/entities/user.entity';
+import { KdsService } from '../kds/kds.service';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
+import { KdsService } from '../kds/kds.service';
 import { Category } from '../../common/entities/category.entity';
+import { KdsService } from '../kds/kds.service';
 import { Product } from '../../common/entities/product.entity';
+import { KdsService } from '../kds/kds.service';
 import { Transaction } from '../../common/entities/transaction.entity';
+import { KdsService } from '../kds/kds.service';
 import { TransactionItem } from '../../common/entities/transaction-item.entity';
+import { KdsService } from '../kds/kds.service';
 import { Void as VoidEntity } from '../../common/entities/void.entity';
+import { KdsService } from '../kds/kds.service';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
+import { KdsService } from '../kds/kds.service';
 import { TransactionStatus } from '../../common/enums';
+import { KdsService } from '../kds/kds.service';
 import { CreateTransactionDto, VoidTransactionDto } from './dto';
+import { KdsService } from '../kds/kds.service';
 
 @Injectable()
 export class TerminalService {
   constructor(
+    private kdsService: KdsService,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(ClockEntry) private clockRepo: Repository<ClockEntry>,
@@ -151,6 +166,8 @@ export class TerminalService {
     );
     await this.itemRepo.save(items);
 
+    // Notify KDS
+    try { this.kdsService.notifyNewOrder(saved); } catch(e) {}
     return this.transactionRepo.findOne({
       where: { id: saved.id },
       relations: ['items'],

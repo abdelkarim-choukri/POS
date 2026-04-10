@@ -18,6 +18,13 @@ export enum TransactionStatus {
   PARTIAL_REFUND = 'partial_refund',
 }
 
+export enum OrderStatus {
+  NEW = 'new',
+  PREPARING = 'preparing',
+  READY = 'ready',
+  SERVED = 'served',
+}
+
 export enum PaymentMethod {
   CASH = 'cash',
   CARD_CMI = 'card_cmi',

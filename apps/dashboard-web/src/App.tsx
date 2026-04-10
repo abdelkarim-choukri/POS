@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
 import SuperLayout from './components/layout/SuperLayout';
 import LoginPage from './pages/login/LoginPage';
@@ -15,11 +15,15 @@ import TerminalsPage from './pages/super-admin/TerminalsPage';
 import BusinessTypesPage from './pages/super-admin/BusinessTypesPage';
 import SubscriptionsPage from './pages/super-admin/SubscriptionsPage';
 import AuditLogPage from './pages/super-admin/AuditLogPage';
+import KitchenDisplayPage from './pages/kitchen/KitchenDisplayPage';
 
 export default function App() {
   return (
     <Routes>
-      {/* Super Admin — completely separate route tree */}
+      {/* Kitchen Display — standalone, no auth */}
+      <Route path="/kitchen" element={<KitchenDisplayPage />} />
+
+      {/* Super Admin */}
       <Route path="/super/login" element={<SuperLoginPage />} />
       <Route path="/super" element={<SuperLayout />}>
         <Route index element={<SuperDashboardPage />} />

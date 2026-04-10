@@ -2,7 +2,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, OneToOne,
   JoinColumn, CreateDateColumn, UpdateDateColumn,
 } from 'typeorm';
-import { TransactionStatus, PaymentMethod } from '../enums';
+import { TransactionStatus, PaymentMethod, OrderStatus } from '../enums';
 import { Business } from './business.entity';
 import { Location } from './location.entity';
 import { Terminal } from './terminal.entity';
@@ -58,6 +58,9 @@ export class Transaction {
 
   @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.COMPLETED })
   status: TransactionStatus;
+
+  @Column({ type: 'varchar', length: 20, default: 'new' })
+  order_status: string;
 
   @Column({ type: 'enum', enum: PaymentMethod })
   payment_method: PaymentMethod;

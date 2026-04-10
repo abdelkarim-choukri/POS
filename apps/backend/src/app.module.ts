@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { BusinessModule } from './modules/business/business.module';
 import { TerminalModule } from './modules/terminal/terminal.module';
+import { KdsModule } from './modules/kds/kds.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -22,9 +23,9 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     SuperAdminModule,
     BusinessModule,
     TerminalModule,
+    KdsModule,
   ],
   providers: [
-    // Global JWT guard — all routes protected by default, use @Public() to opt out
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
