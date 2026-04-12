@@ -1,7 +1,10 @@
+// apps/backend/src/modules/business/business.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MulterModule } from '@nestjs/platform-express';          // ← ADD
 import { BusinessController } from './business.controller';
 import { BusinessService } from './business.service';
+import { UploadController } from './upload.controller';            // ← ADD
 import { Category } from '../../common/entities/category.entity';
 import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
@@ -18,6 +21,7 @@ import { Void } from '../../common/entities/void.entity';
 
 @Module({
   imports: [
+    MulterModule.register({}),                                     // ← ADD
     TypeOrmModule.forFeature([
       Category, Product, ProductVariant,
       ModifierGroup, Modifier, ProductModifierGroup,
@@ -25,7 +29,7 @@ import { Void } from '../../common/entities/void.entity';
       Transaction, Refund, Void,
     ]),
   ],
-  controllers: [BusinessController],
+  controllers: [BusinessController, UploadController],            // ← ADD UploadController
   providers: [BusinessService],
 })
 export class BusinessModule {}
