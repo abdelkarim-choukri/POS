@@ -1,3 +1,4 @@
+// apps/terminal-app/src/screens/ConfirmScreen.tsx
 import { useState } from 'react';
 import { useTerminal } from '../contexts/TerminalContext';
 import { useCart } from '../contexts/CartContext';
@@ -6,35 +7,74 @@ import { addToSyncQueue, saveLocalTransaction } from '../services/offlineStore';
 import { ArrowLeft, CheckCircle, Banknote, CreditCard, WifiOff } from 'lucide-react';
 import { formatMAD } from '../utils';
 
-const methodIcons: Record<string, any> = { cash: Banknote, card_cmi: CreditCard, card_payzone: CreditCard };
-const methodLabels: Record<string, string> = { cash: 'Cash', card_cmi: 'Card (CMI)', card_payzone: 'Card (Payzone)' };
+const methodIcons: Record<string, any> = {
+  cash        : Banknote,
+  card_cmi    : CreditCard,
+  card_payzone: CreditCard,
+};
+const methodLabels: Record<string, string> = {
+  cash        : 'Cash',
+  card_cmi    : 'Card (CMI)',
+  card_payzone: 'Card (Payzone)',
+};
 
 export default function ConfirmScreen() {
   const { config, employee, setScreen, setLastTransaction, isOffline } = useTerminal();
   const { items, total, clearCart } = useCart();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error,   setError]   = useState('');
 
   const method = localStorage.getItem('selected_payment') || 'cash';
-  const Icon = methodIcons[method] || Banknote;
+  const Icon   = methodIcons[method] || Banknote;
 
   const buildPayload = () => ({
     items: items.map((i) => ({
-      product_id: i.product.id,
-      variant_id: i.variant?.id || null,
-      product_name: i.product.name,
-      variant_name: i.variant?.name || null,
-      quantity: i.quantity,
-      unit_price: Number(i.unitPrice),
+      product_id    : i.product.id,
+      variant_id    : i.variant?.id || null,
+      product_name  : i.product.name,
+      variant_name  : i.variant?.name || null,
+      quantity      : i.quantity,
+      unit_price    : Number(i.unitPrice),
       modifiers_json: i.selectedModifiers.length > 0 ? { modifiers: i.selectedModifiers } : null,
-      line_total: Number(i.lineTotal),
+      line_total    : Number(i.lineTotal),
     })),
-    subtotal: Number(total),
-    total: Number(total),
+    subtotal      : Number(total),
+    total         : Number(total),
     payment_method: method,
-    terminal_id: config?.terminal.id,
-    location_id: config?.location.id,
+    terminal_id   : config?.terminal.id,
+    location_id   : config?.location.id,
   });
+
+  const saveOffline = async (payload: any) => {
+    // Generate a stable offline ID used as the IndexedDB key
+    const offlineId  = `offline-${Date.now()}`;
+    const offlineRef = `OFL-${Date.now().toString(36).toUpperCase()}`;
+
+    const offlineTxn = {
+      id                : offlineId,        // ← key for IndexedDB lookup after sync
+      transaction_number: offlineRef,       // ← what the cashier sees / receipt shows
+      ...payload,
+      status    : 'completed',
+      is_offline: true,
+      created_at: new Date().toISOString(),
+    };
+
+    await saveLocalTransaction(offlineTxn);
+
+    // ── Bug #2 fix: store offline_ref + _offline_id in the queue item ──────
+    // syncService reads offline_ref to log "OFL-xxx → TXN-xxx" after sync.
+    // _offline_id lets it update the local record with the server TXN number.
+    await addToSyncQueue({
+      operation_type: 'transaction',
+      payload       : { ...payload, _offline_id: offlineId },  // ← _offline_id added
+      offline_ref   : offlineRef,                               // ← offline_ref added
+      created_at    : new Date().toISOString(),
+      attempts      : 0,
+    });
+    // ────────────────────────────────────────────────────────────────────────
+
+    return offlineTxn;
+  };
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -43,24 +83,7 @@ export default function ConfirmScreen() {
     const payload = buildPayload();
 
     if (isOffline || !navigator.onLine) {
-      // OFFLINE MODE — save locally and queue for sync
-      const offlineTxn = {
-        id: `offline-${Date.now()}`,
-        transaction_number: `OFL-${Date.now().toString(36).toUpperCase()}`,
-        ...payload,
-        status: 'completed',
-        is_offline: true,
-        created_at: new Date().toISOString(),
-      };
-
-      await saveLocalTransaction(offlineTxn);
-      await addToSyncQueue({
-        operation_type: 'transaction',
-        payload,
-        created_at: new Date().toISOString(),
-        attempts: 0,
-      });
-
+      const offlineTxn = await saveOffline(payload);
       setLastTransaction(offlineTxn);
       clearCart();
       setLoading(false);
@@ -68,29 +91,14 @@ export default function ConfirmScreen() {
       return;
     }
 
-    // ONLINE MODE — send to server
     try {
       const res = await terminalApi.createTransaction(payload);
       setLastTransaction(res.data);
       clearCart();
       setScreen('success');
-    } catch (e: any) {
-      // If server fails, fall back to offline mode
-      const offlineTxn = {
-        id: `offline-${Date.now()}`,
-        transaction_number: `OFL-${Date.now().toString(36).toUpperCase()}`,
-        ...payload,
-        status: 'completed',
-        is_offline: true,
-        created_at: new Date().toISOString(),
-      };
-      await saveLocalTransaction(offlineTxn);
-      await addToSyncQueue({
-        operation_type: 'transaction',
-        payload,
-        created_at: new Date().toISOString(),
-        attempts: 0,
-      });
+    } catch {
+      // Server failed while online — fall back to offline mode
+      const offlineTxn = await saveOffline(payload);
       setLastTransaction(offlineTxn);
       clearCart();
       setScreen('success');
@@ -120,15 +128,24 @@ export default function ConfirmScreen() {
           <p className="text-4xl font-bold mt-1">{formatMAD(total)}</p>
         </div>
 
-        {error && <div className="bg-red-500/20 text-red-300 text-sm px-4 py-3 rounded-xl mb-4 text-left">{error}</div>}
+        {error && (
+          <div className="bg-red-500/20 text-red-300 text-sm px-4 py-3 rounded-xl mb-4 text-left">
+            {error}
+          </div>
+        )}
 
-        <button onClick={handleConfirm} disabled={loading}
-          className="w-full bg-pos-green text-white text-xl font-bold py-5 rounded-xl hover:bg-green-600 disabled:opacity-50 transition active:scale-[0.98] flex items-center justify-center gap-2 mb-3">
+        <button
+          onClick={handleConfirm}
+          disabled={loading}
+          className="w-full bg-pos-green text-white text-xl font-bold py-5 rounded-xl hover:bg-green-600 disabled:opacity-50 transition active:scale-[0.98] flex items-center justify-center gap-2 mb-3"
+        >
           <CheckCircle size={24} />
           {loading ? 'Processing...' : 'Confirm Payment'}
         </button>
-        <button onClick={() => setScreen('payment')}
-          className="w-full bg-pos-accent text-gray-300 py-3 rounded-xl hover:bg-gray-600 transition flex items-center justify-center gap-2">
+        <button
+          onClick={() => setScreen('payment')}
+          className="w-full bg-pos-accent text-gray-300 py-3 rounded-xl hover:bg-gray-600 transition flex items-center justify-center gap-2"
+        >
           <ArrowLeft size={16} /> Go Back
         </button>
       </div>

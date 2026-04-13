@@ -1,32 +1,98 @@
-// ESC/POS Receipt Generator
-// Generates receipt data as formatted text + ESC/POS byte commands
+// apps/terminal-app/src/services/receiptService.ts
+// ESC/POS Receipt Generator + Serial Port Manager
 
 export interface ReceiptData {
-  businessName: string;
-  locationName: string;
-  terminalCode: string;
+  businessName     : string;
+  locationName     : string;
+  terminalCode     : string;
   transactionNumber: string;
-  employeeName: string;
+  offlineRef?      : string;
+  employeeName     : string;
   items: {
-    name: string;
-    variant?: string;
+    name     : string;
+    variant? : string;
     modifiers?: string[];
-    quantity: number;
+    quantity : number;
     unitPrice: number;
     lineTotal: number;
   }[];
-  subtotal: number;
-  taxAmount: number;
-  total: number;
-  paymentMethod: string;
-  date: Date;
-  currency: string;
+  subtotal      : number;
+  taxAmount     : number;
+  total         : number;
+  paymentMethod : string;
+  date          : Date;
+  currency      : string;
+  changeGiven?  : number;
 }
 
-// ===== TEXT RECEIPT (for preview / fallback) =====
+// ── Baud rate setting ─────────────────────────────────────────────────────────
+// Gap #1: default changed 9600 → 115200. Cashier can override in settings:
+//   localStorage.setItem('printer_baud_rate', '9600')
+const BAUD_RATE_KEY = 'printer_baud_rate';
+export function getPrinterBaudRate(): number {
+  return parseInt(localStorage.getItem(BAUD_RATE_KEY) || '115200', 10);
+}
+export function setPrinterBaudRate(rate: number): void {
+  localStorage.setItem(BAUD_RATE_KEY, String(rate));
+}
+
+// ── Port manager (Gap #1 core fix) ───────────────────────────────────────────
+// Previously: requestPort() was called every print → dialog every time.
+// Now:
+//   1. Try in-memory cached port (same session)
+//   2. Try getPorts() — returns previously granted ports with NO dialog
+//   3. Only if nothing found: requestPort() once → dialog shown once, then saved
+let _cachedPort: any = null;
+
+async function getOrRequestPort(): Promise<any> {
+  const serial = (navigator as any).serial;
+
+  // 1. In-memory cache (already used this session)
+  if (_cachedPort) {
+    try {
+      if (_cachedPort.readable) return _cachedPort;
+    } catch {
+      _cachedPort = null;
+    }
+  }
+
+  // 2. Previously granted port (survives page reload, no dialog)
+  try {
+    const ports: any[] = await serial.getPorts();
+    if (ports.length > 0) {
+      _cachedPort = ports[0];
+      console.log('[Printer] Auto-reconnected to saved port (no dialog)');
+      return _cachedPort;
+    }
+  } catch {
+    // getPorts not available — fall through
+  }
+
+  // 3. First-time only: show picker dialog and remember the result
+  console.log('[Printer] First-time setup — showing port picker');
+  const port = await serial.requestPort();
+  _cachedPort = port;
+  return port;
+}
+
+// Call once at app startup to pre-load the port silently
+export async function initPrinterPort(): Promise<void> {
+  if (!('serial' in navigator)) return;
+  try {
+    const ports: any[] = await (navigator as any).serial.getPorts();
+    if (ports.length > 0) {
+      _cachedPort = ports[0];
+      console.log('[Printer] Port pre-loaded on startup');
+    }
+  } catch {
+    // No permission yet — will prompt on first print
+  }
+}
+
+// ── Text receipt (preview / window.print fallback) ────────────────────────────
 
 export function generateTextReceipt(data: ReceiptData): string {
-  const w = 40; // character width of thermal receipt
+  const w    = 40;
   const line = '='.repeat(w);
   const dash = '-'.repeat(w);
 
@@ -34,13 +100,11 @@ export function generateTextReceipt(data: ReceiptData): string {
     const pad = Math.max(0, Math.floor((w - s.length) / 2));
     return ' '.repeat(pad) + s;
   };
-
   const leftRight = (l: string, r: string) => {
     const space = Math.max(1, w - l.length - r.length);
     return l + ' '.repeat(space) + r;
   };
-
-  const fmt = (amount: number) => `${amount.toFixed(2)} ${data.currency}`;
+  const fmt     = (n: number) => `${n.toFixed(2)} ${data.currency}`;
   const dateStr = data.date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = data.date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
@@ -51,228 +115,215 @@ export function generateTextReceipt(data: ReceiptData): string {
     center(`Terminal: ${data.terminalCode}`),
     line,
     center(data.transactionNumber),
-    center(`${dateStr}  ${timeStr}`),
-    center(`Cashier: ${data.employeeName}`),
-    line,
-    '',
   ];
 
-  // Items
-  for (const item of data.items) {
-    const nameStr = item.variant ? `${item.name} (${item.variant})` : item.name;
-    lines.push(leftRight(nameStr, ''));
-    lines.push(leftRight(`  ${item.quantity} x ${fmt(item.unitPrice)}`, fmt(item.lineTotal)));
-    if (item.modifiers && item.modifiers.length > 0) {
-      lines.push(`  + ${item.modifiers.join(', ')}`);
-    }
+  if (data.offlineRef) {
+    lines.push(center(`Offline Ref: ${data.offlineRef}`));
+    lines.push(center('(will update when synced)'));
   }
 
-  lines.push('');
-  lines.push(dash);
-  lines.push(leftRight('Subtotal', fmt(data.subtotal)));
-  if (data.taxAmount > 0) {
-    lines.push(leftRight('Tax', fmt(data.taxAmount)));
+  lines.push(
+    center(`${dateStr}  ${timeStr}`),
+    center(`Cashier: ${data.employeeName}`),
+    line, '',
+  );
+
+  for (const item of data.items) {
+    const name = item.variant ? `${item.name} (${item.variant})` : item.name;
+    lines.push(leftRight(name, ''));
+    lines.push(leftRight(`  ${item.quantity} x ${fmt(item.unitPrice)}`, fmt(item.lineTotal)));
+    if (item.modifiers?.length) lines.push(`  + ${item.modifiers.join(', ')}`);
   }
+
+  lines.push('', dash);
+  lines.push(leftRight('Subtotal', fmt(data.subtotal)));
+  if (data.taxAmount > 0) lines.push(leftRight('Tax', fmt(data.taxAmount)));
   lines.push(line);
   lines.push(leftRight('TOTAL', fmt(data.total)));
-  lines.push(line);
-  lines.push('');
+  lines.push(line, '');
   lines.push(leftRight('Payment', formatPaymentMethod(data.paymentMethod)));
+  if (data.paymentMethod === 'cash' && data.changeGiven != null) {
+    lines.push(leftRight('Change given', fmt(data.changeGiven)));
+  }
   lines.push('');
   lines.push(center('Thank you for your visit!'));
   lines.push(center('Please come again'));
-  lines.push('');
-  lines.push('');
+  lines.push('', '');
 
   return lines.join('\n');
 }
 
 function formatPaymentMethod(method: string): string {
-  const labels: Record<string, string> = {
-    cash: 'Cash',
-    card_cmi: 'Card (CMI)',
-    card_payzone: 'Card (Payzone)',
-    other: 'Other',
-  };
-  return labels[method] || method;
+  return { cash: 'Cash', card_cmi: 'Card (CMI)', card_payzone: 'Card (Payzone)', other: 'Other' }[method] || method;
 }
 
-// ===== ESC/POS COMMANDS =====
+// ── ESC/POS byte commands ─────────────────────────────────────────────────────
 
 const ESC = 0x1b;
-const GS = 0x1d;
+const GS  = 0x1d;
+const LF  = 0x0a;
 
 export function generateEscPosReceipt(data: ReceiptData): Uint8Array {
-  const encoder = new TextEncoder();
   const commands: number[] = [];
+  const enc  = new TextEncoder();
+  const cmd  = (...bytes: number[]) => commands.push(...bytes);
+  const text = (s: string) => commands.push(...enc.encode(s), LF);
+  const fmt  = (n: number) => `${n.toFixed(2)} ${data.currency}`;
 
-  // Helper to add text
-  const addText = (text: string) => {
-    const bytes = encoder.encode(text + '\n');
-    commands.push(...bytes);
-  };
+  cmd(ESC, 0x40);          // init
+  cmd(ESC, 0x61, 0x01);    // center
+  text(data.businessName);
+  text(data.locationName);
+  text(`Terminal: ${data.terminalCode}`);
+  text('='.repeat(32));
+  text(data.transactionNumber);
+  if (data.offlineRef) text(`Offline Ref: ${data.offlineRef}`);
 
-  // Helper for ESC/POS commands
-  const cmd = (...bytes: number[]) => commands.push(...bytes);
-
-  // Initialize printer
-  cmd(ESC, 0x40); // ESC @ — Initialize
-
-  // Center align
-  cmd(ESC, 0x61, 0x01); // ESC a 1 — Center
-
-  // Bold + Double size for business name
-  cmd(ESC, 0x45, 0x01); // ESC E 1 — Bold on
-  cmd(GS, 0x21, 0x11);  // GS ! 0x11 — Double width + height
-  addText(data.businessName);
-  cmd(GS, 0x21, 0x00);  // GS ! 0x00 — Normal size
-  cmd(ESC, 0x45, 0x00); // ESC E 0 — Bold off
-
-  addText(data.locationName);
-  addText(`Terminal: ${data.terminalCode}`);
-  addText('');
-
-  // Transaction info
-  cmd(ESC, 0x45, 0x01); // Bold
-  addText(data.transactionNumber);
-  cmd(ESC, 0x45, 0x00);
-
-  const dateStr = data.date.toLocaleDateString('en-GB');
+  const dateStr = data.date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = data.date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  addText(`${dateStr}  ${timeStr}`);
-  addText(`Cashier: ${data.employeeName}`);
+  text(`${dateStr}  ${timeStr}`);
+  text(`Cashier: ${data.employeeName}`);
+  text('='.repeat(32));
+  text('');
 
-  // Separator
-  addText('================================');
-
-  // Left align for items
-  cmd(ESC, 0x61, 0x00); // ESC a 0 — Left align
-
-  const fmt = (n: number) => `${n.toFixed(2)} ${data.currency}`;
+  cmd(ESC, 0x61, 0x00);  // left-align
 
   for (const item of data.items) {
-    const name = item.variant ? `${item.name} (${item.variant})` : item.name;
-    addText(name);
-    addText(`  ${item.quantity} x ${fmt(item.unitPrice)}    ${fmt(item.lineTotal)}`);
-    if (item.modifiers && item.modifiers.length > 0) {
-      addText(`  + ${item.modifiers.join(', ')}`);
-    }
+    const name  = item.variant ? `${item.name} (${item.variant})` : item.name;
+    const qty   = `  ${item.quantity} x ${fmt(item.unitPrice)}`;
+    const total = fmt(item.lineTotal);
+    text(name);
+    text(qty + ' '.repeat(Math.max(1, 32 - qty.length - total.length)) + total);
+    if (item.modifiers?.length) text(`  + ${item.modifiers.join(', ')}`);
   }
 
-  addText('');
-  addText('--------------------------------');
-  addText(`Subtotal:           ${fmt(data.subtotal)}`);
+  text('');
+  text('-'.repeat(32));
+  const sub = fmt(data.subtotal);
+  text('Subtotal' + ' '.repeat(Math.max(1, 32 - 8 - sub.length)) + sub);
   if (data.taxAmount > 0) {
-    addText(`Tax:                ${fmt(data.taxAmount)}`);
+    const tax = fmt(data.taxAmount);
+    text('Tax' + ' '.repeat(Math.max(1, 32 - 3 - tax.length)) + tax);
   }
-  addText('================================');
+  text('='.repeat(32));
+  cmd(ESC, 0x45, 0x01);  // bold
+  const tot = fmt(data.total);
+  text('TOTAL' + ' '.repeat(Math.max(1, 32 - 5 - tot.length)) + tot);
+  cmd(ESC, 0x45, 0x00);  // bold off
+  text('='.repeat(32));
+  text('');
+  text(`Payment: ${formatPaymentMethod(data.paymentMethod)}`);
+  if (data.paymentMethod === 'cash' && data.changeGiven != null) {
+    const chg = fmt(data.changeGiven);
+    text('Change given' + ' '.repeat(Math.max(1, 32 - 12 - chg.length)) + chg);
+  }
+  text('');
+  cmd(ESC, 0x61, 0x01);  // center
+  text('Thank you for your visit!');
+  text('Please come again');
+  text('');
+  text('');
 
-  // Bold total
-  cmd(ESC, 0x45, 0x01);
-  cmd(GS, 0x21, 0x01); // Double height
-  addText(`TOTAL:    ${fmt(data.total)}`);
-  cmd(GS, 0x21, 0x00);
-  cmd(ESC, 0x45, 0x00);
+  cmd(GS, 0x56, 0x00);   // full cut
 
-  addText('================================');
-  addText(`Payment: ${formatPaymentMethod(data.paymentMethod)}`);
-  addText('');
-
-  // Center footer
-  cmd(ESC, 0x61, 0x01);
-  addText('Thank you for your visit!');
-  addText('Please come again');
-  addText('');
-  addText('');
-
-  // Cut paper
-  cmd(GS, 0x56, 0x00); // GS V 0 — Full cut
-
-  // Open cash drawer (for cash payments)
   if (data.paymentMethod === 'cash') {
-    cmd(ESC, 0x70, 0x00, 0x19, 0xfa); // ESC p 0 — Open drawer
+    cmd(ESC, 0x70, 0x00, 0x19, 0xfa);  // open cash drawer
   }
 
   return new Uint8Array(commands);
 }
 
-// ===== PRINT VIA USB/SERIAL (Electron) =====
+// ── Print ─────────────────────────────────────────────────────────────────────
 
-export async function printReceipt(data: ReceiptData): Promise<boolean> {
-  try {
-    // Try Web Serial API (Chrome/Electron)
-    if ('serial' in navigator) {
-      return await printViaWebSerial(data);
-    }
-    // Fallback: generate text and open print dialog
-    return printViaWindow(data);
-  } catch (error) {
-    console.error('[Receipt] Print failed:', error);
-    return printViaWindow(data);
+export async function printReceipt(
+  data: ReceiptData,
+): Promise<{ success: boolean; drawerOpened: boolean }> {
+  if ('serial' in navigator) {
+    const result = await printViaWebSerial(data);
+    if (result !== null) return result;
   }
+  printViaWindow(data);
+  return { success: true, drawerOpened: false };
 }
 
-async function printViaWebSerial(data: ReceiptData): Promise<boolean> {
+async function printViaWebSerial(
+  data: ReceiptData,
+): Promise<{ success: boolean; drawerOpened: boolean } | null> {
   try {
-    const port = await (navigator as any).serial.requestPort();
-    await port.open({ baudRate: 9600 });
+    const port     = await getOrRequestPort();
+    const baudRate = getPrinterBaudRate();
+
+    await port.open({ baudRate });
+
     const writer = port.writable.getWriter();
-    const escPosData = generateEscPosReceipt(data);
-    await writer.write(escPosData);
+    await writer.write(generateEscPosReceipt(data));
     writer.releaseLock();
     await port.close();
-    return true;
-  } catch {
-    return false;
+
+    const drawerOpened = data.paymentMethod === 'cash';
+    console.log(`[Printer] Done — ${baudRate} bps — drawer: ${drawerOpened}`);
+    return { success: true, drawerOpened };
+
+  } catch (err: any) {
+    // Stale port (unplugged)? Clear cache so next print shows picker again
+    if (err?.name === 'NetworkError' || err?.name === 'InvalidStateError') {
+      console.warn('[Printer] Port went stale — will re-prompt next print');
+      _cachedPort = null;
+    } else {
+      console.error('[Printer] Serial error:', err);
+    }
+    return null;  // signals caller to fall back to printViaWindow
   }
 }
 
-function printViaWindow(data: ReceiptData): boolean {
+function printViaWindow(data: ReceiptData): void {
   const text = generateTextReceipt(data);
-  const printWindow = window.open('', '_blank', 'width=320,height=600');
-  if (!printWindow) return false;
-
-  printWindow.document.write(`
+  const w = window.open('', '_blank', 'width=320,height=600');
+  if (!w) return;
+  w.document.write(`
     <html><head><style>
-      body { font-family: 'Courier New', monospace; font-size: 12px; margin: 0; padding: 10px; width: 280px; }
-      pre { white-space: pre-wrap; margin: 0; }
+      body { font-family:'Courier New',monospace; font-size:12px; margin:0; padding:10px; width:280px; }
+      pre  { white-space:pre-wrap; margin:0; }
     </style></head><body>
       <pre>${text}</pre>
-      <script>window.print(); setTimeout(() => window.close(), 1000);</script>
+      <script>window.print(); setTimeout(()=>window.close(),1000);</script>
     </body></html>
   `);
-  printWindow.document.close();
-  return true;
+  w.document.close();
 }
 
-// Build receipt data from transaction context
+// ── Build receipt data ────────────────────────────────────────────────────────
+
 export function buildReceiptData(
-  config: any,
-  employee: any,
-  transaction: any,
-  cartItems: any[],
+  config       : any,
+  employee     : any,
+  transaction  : any,
+  cartItems    : any[],
   paymentMethod: string,
+  changeGiven? : number,
 ): ReceiptData {
   return {
-    businessName: config?.business?.name || 'POS Business',
-    locationName: config?.location?.name || '',
-    terminalCode: config?.terminal?.terminal_code || '',
+    businessName     : config?.business?.name || 'POS Business',
+    locationName     : config?.location?.name || '',
+    terminalCode     : config?.terminal?.terminal_code || '',
     transactionNumber: transaction?.transaction_number || `OFL-${Date.now()}`,
-    employeeName: `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim(),
+    offlineRef       : transaction?.is_offline ? transaction?.transaction_number : undefined,
+    employeeName     : `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim(),
     items: cartItems.map((item) => ({
-      name: item.product?.name || item.product_name || 'Item',
-      variant: item.variant?.name || item.variant_name,
+      name     : item.product?.name || item.product_name || 'Item',
+      variant  : item.variant?.name || item.variant_name,
       modifiers: item.selectedModifiers?.map((m: any) => m.name) ||
-        item.modifiers_json?.modifiers?.map((m: any) => m.name),
-      quantity: item.quantity,
+                 item.modifiers_json?.modifiers?.map((m: any) => m.name),
+      quantity : item.quantity,
       unitPrice: Number(item.unitPrice || item.unit_price),
       lineTotal: Number(item.lineTotal || item.line_total),
     })),
-    subtotal: Number(transaction?.subtotal || 0),
-    taxAmount: Number(transaction?.tax_amount || 0),
-    total: Number(transaction?.total || 0),
+    subtotal     : Number(transaction?.subtotal   || 0),
+    taxAmount    : Number(transaction?.tax_amount || 0),
+    total        : Number(transaction?.total      || 0),
     paymentMethod,
-    date: new Date(),
-    currency: config?.business?.currency || 'MAD',
+    changeGiven,
+    date         : new Date(),
+    currency     : config?.business?.currency || 'MAD',
   };
 }

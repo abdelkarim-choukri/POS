@@ -1,12 +1,12 @@
-// Offline storage using IndexedDB for robust persistence
+// apps/terminal-app/src/services/offlineStore.ts
 
 const DB_NAME = 'pos_terminal';
 const DB_VERSION = 1;
 const STORES = {
-  syncQueue: 'sync_queue',
-  catalog: 'catalog',
+  syncQueue   : 'sync_queue',
+  catalog     : 'catalog',
   transactions: 'local_transactions',
-  settings: 'settings',
+  settings    : 'settings',
 };
 
 function openDB(): Promise<IDBDatabase> {
@@ -38,15 +38,17 @@ async function getStore(storeName: string, mode: IDBTransactionMode = 'readonly'
   return tx.objectStore(storeName);
 }
 
-// ===== SYNC QUEUE =====
+// ── SYNC QUEUE ────────────────────────────────────────────────────────────────
 
 export interface SyncQueueItem {
-  id?: number;
-  operation_type: 'transaction' | 'clock_in' | 'clock_out' | 'void';
-  payload: any;
-  created_at: string;
-  attempts: number;
-  last_error?: string;
+  id?              : number;
+  operation_type   : 'transaction' | 'clock_in' | 'clock_out' | 'void';
+  payload          : any;
+  offline_ref?     : string;
+  created_at       : string;
+  attempts         : number;
+  last_error?      : string;
+  last_attempt_at? : string;   // ← NEW: timestamp of last retry (for backoff calc)
 }
 
 export async function addToSyncQueue(item: Omit<SyncQueueItem, 'id'>): Promise<void> {
@@ -54,7 +56,7 @@ export async function addToSyncQueue(item: Omit<SyncQueueItem, 'id'>): Promise<v
   return new Promise((resolve, reject) => {
     const req = store.add(item);
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -63,7 +65,7 @@ export async function getSyncQueue(): Promise<SyncQueueItem[]> {
   return new Promise((resolve, reject) => {
     const req = store.getAll();
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -72,7 +74,7 @@ export async function removeSyncItem(id: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = store.delete(id);
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -81,7 +83,7 @@ export async function updateSyncItem(item: SyncQueueItem): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = store.put(item);
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -90,11 +92,11 @@ export async function getSyncQueueCount(): Promise<number> {
   return new Promise((resolve, reject) => {
     const req = store.count();
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
-// ===== CATALOG CACHE =====
+// ── CATALOG CACHE ─────────────────────────────────────────────────────────────
 
 export async function cacheCatalog(categories: any[], products: any[]): Promise<void> {
   const store = await getStore(STORES.catalog, 'readwrite');
@@ -102,7 +104,7 @@ export async function cacheCatalog(categories: any[], products: any[]): Promise<
     store.put({ key: 'categories', data: categories, cached_at: new Date().toISOString() });
     const req = store.put({ key: 'products', data: products, cached_at: new Date().toISOString() });
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -125,14 +127,29 @@ export async function getCachedCatalog(): Promise<{ categories: any[]; products:
   });
 }
 
-// ===== LOCAL TRANSACTIONS =====
+// ── LOCAL TRANSACTIONS ────────────────────────────────────────────────────────
 
 export async function saveLocalTransaction(txn: any): Promise<void> {
   const store = await getStore(STORES.transactions, 'readwrite');
   return new Promise((resolve, reject) => {
     const req = store.put(txn);
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
+  });
+}
+
+export async function updateLocalTransaction(offlineId: string, updates: Partial<any>): Promise<void> {
+  const store = await getStore(STORES.transactions, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const getReq = store.get(offlineId);
+    getReq.onsuccess = () => {
+      if (!getReq.result) { resolve(); return; }
+      const updated = { ...getReq.result, ...updates };
+      const putReq = store.put(updated);
+      putReq.onsuccess = () => resolve();
+      putReq.onerror  = () => reject(putReq.error);
+    };
+    getReq.onerror = () => reject(getReq.error);
   });
 }
 
@@ -141,7 +158,7 @@ export async function getLocalTransactions(): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const req = store.getAll();
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
 
@@ -150,6 +167,6 @@ export async function clearLocalTransactions(): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = store.clear();
     req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    req.onerror  = () => reject(req.error);
   });
 }
