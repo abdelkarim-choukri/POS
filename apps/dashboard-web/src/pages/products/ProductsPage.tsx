@@ -35,11 +35,11 @@ export default function ProductsPage() {
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
-    queryFn: productApi.list,
+    queryFn: () => productApi.list().then(r => r.data),
   });
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
-    queryFn: categoryApi.list,
+    queryFn: () => categoryApi.list().then(r => r.data),
   });
 
   const qc = useQueryClient();
