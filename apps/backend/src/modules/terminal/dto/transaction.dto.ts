@@ -1,6 +1,15 @@
-import { IsString, IsOptional, IsNumber, IsUUID, IsEnum, IsArray, ValidateNested, IsInt } from 'class-validator';
+// apps/backend/src/modules/terminal/dto/transaction.dto.ts
+import {
+  IsString, IsOptional, IsNumber, IsUUID,
+  IsEnum, IsArray, ValidateNested, IsInt,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { PaymentMethod } from '../../../common/enums';
+
+// Converts null → undefined so @IsOptional() correctly skips validation.
+// Without this, sending null for variant_id fails @IsUUID() every time.
+const nullToUndefined = ({ value }: { value: any }) =>
+  value === null ? undefined : value;
 
 export class TransactionItemDto {
   @IsUUID()
@@ -8,6 +17,7 @@ export class TransactionItemDto {
 
   @IsOptional()
   @IsUUID()
+  @Transform(nullToUndefined)            // ← fix: null sent from offline payload → undefined
   variant_id?: string;
 
   @IsString()
@@ -15,10 +25,11 @@ export class TransactionItemDto {
 
   @IsOptional()
   @IsString()
+  @Transform(nullToUndefined)            // ← same fix for variant_name
   variant_name?: string;
 
   @IsInt()
-  @Transform(({ value }) => Number(value))
+  @Transform(({ value }) => Math.round(Number(value)))  // ensure integer, not 1.0
   quantity: number;
 
   @IsNumber()
@@ -26,6 +37,7 @@ export class TransactionItemDto {
   unit_price: number;
 
   @IsOptional()
+  @Transform(nullToUndefined)
   modifiers_json?: Record<string, any>;
 
   @IsNumber()
@@ -61,10 +73,12 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsUUID()
+  @Transform(nullToUndefined)
   terminal_id?: string;
 
   @IsOptional()
   @IsUUID()
+  @Transform(nullToUndefined)
   location_id?: string;
 }
 

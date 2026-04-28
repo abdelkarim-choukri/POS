@@ -1,0 +1,52 @@
+# What Claude Code skips when reading the repo.
+# Goal: don't waste context tokens on files that aren't useful for understanding
+# or implementing the project.
+
+# ---- Build outputs and dependencies ----
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.vite/
+.turbo/
+
+# ---- Lockfiles (huge, no semantic value to Claude) ----
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ---- Logs and OS junk ----
+*.log
+.DS_Store
+Thumbs.db
+
+# ---- Environment files (may have secrets) ----
+.env
+.env.local
+.env.*.local
+
+# ---- AiBao reference docs ----
+# These were used to inform the extension spec. The spec already contains
+# everything we need from them. Keep the files for traceability but don't
+# load them into Claude's context automatically. If Claude needs them,
+# explicitly point it at a specific file.
+docs/reference/aibaocloud_*
+
+# ---- graphify outputs ----
+# Claude reads GRAPH_REPORT.md only when explicitly directed (via the
+# always-on hook installed by `graphify claude install`). Don't include
+# the cache or large interactive HTML by default.
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/graph.html
+
+# ---- Docker volumes (shouldn't be in repo, but defense in depth) ----
+docker/data/
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo

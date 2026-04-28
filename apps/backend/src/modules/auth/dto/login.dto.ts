@@ -5,7 +5,6 @@ export class LoginDto {
   email: string;
 
   @IsString()
-  @MinLength(6)
   password: string;
 }
 
@@ -32,6 +31,5 @@ export class SuperAdminLoginDto {
   email: string;
 
   @IsString()
-  @MinLength(6)
   password: string;
 }

@@ -1,0 +1,92 @@
+# Development setup — run with: docker compose up
+#
+# Brings up Postgres + Redis + backend in containers.
+# Backend code is hot-reloaded via volume mount.
+# Frontend (dashboard, terminal) is NOT in this compose — frontend devs run
+# `pnpm dev` natively for the best Vite hot-reload experience, and hit the
+# backend at http://localhost:3000.
+#
+# Volumes persist across `docker compose down`. To wipe data:
+#   docker compose down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-pos_db}
+      POSTGRES_USER: ${DATABASE_USER:-pos_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-pos_password}
+    ports:
+      # Exposed on host so frontend devs (and Claude Code) can connect with
+      # any GUI client (DBeaver, TablePlus, etc.) for inspection.
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-pos_user} -d ${DATABASE_NAME:-pos_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.dev.Dockerfile
+    container_name: pos-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      # Database — uses Docker service name "postgres", not localhost
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-pos_user}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-pos_password}
+      DATABASE_NAME: ${DATABASE_NAME:-pos_db}
+      # Redis — same pattern
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-1h}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
+      # App
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      # Hot reload: source code is shared with the host. Edit on the host,
+      # NestJS reloads in the container.
+      - ./apps/backend/src:/workspace/apps/backend/src
+      - ./apps/backend/test:/workspace/apps/backend/test
+      - ./apps/backend/tsconfig.json:/workspace/apps/backend/tsconfig.json
+      - ./apps/backend/nest-cli.json:/workspace/apps/backend/nest-cli.json
+      # Anonymous volumes for node_modules so the host's (697MB!) node_modules
+      # don't override the container's. The container does its own pnpm install
+      # so deps match the container's Linux/Alpine architecture.
+      - /workspace/node_modules
+      - /workspace/apps/backend/node_modules
+
+volumes:
+  postgres_data:
+  redis_data:

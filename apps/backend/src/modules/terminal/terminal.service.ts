@@ -1,31 +1,24 @@
+// apps/backend/src/modules/terminal/terminal.service.ts
+// CHANGES: clockIn and clockOut are now idempotent.
+// If the user is already clocked in, clockIn returns the existing entry (no error).
+// If the user is not clocked in, clockOut returns a no-op success (no error).
+// This prevents sync queue items from burning through retries and dying permanently.
+
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { KdsService } from '../kds/kds.service';
 import { Repository, MoreThan } from 'typeorm';
-import { KdsService } from '../kds/kds.service';
 import { Terminal } from '../../common/entities/terminal.entity';
-import { KdsService } from '../kds/kds.service';
 import { User } from '../../common/entities/user.entity';
-import { KdsService } from '../kds/kds.service';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
-import { KdsService } from '../kds/kds.service';
 import { Category } from '../../common/entities/category.entity';
-import { KdsService } from '../kds/kds.service';
 import { Product } from '../../common/entities/product.entity';
-import { KdsService } from '../kds/kds.service';
 import { Transaction } from '../../common/entities/transaction.entity';
-import { KdsService } from '../kds/kds.service';
 import { TransactionItem } from '../../common/entities/transaction-item.entity';
-import { KdsService } from '../kds/kds.service';
 import { Void as VoidEntity } from '../../common/entities/void.entity';
-import { KdsService } from '../kds/kds.service';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
-import { KdsService } from '../kds/kds.service';
 import { TransactionStatus } from '../../common/enums';
-import { KdsService } from '../kds/kds.service';
 import { CreateTransactionDto, VoidTransactionDto } from './dto';
-import { KdsService } from '../kds/kds.service';
 
 @Injectable()
 export class TerminalService {
@@ -74,7 +67,11 @@ export class TerminalService {
       .map((f) => f.feature_key);
 
     return {
-      business: { id: terminal.location.business.id, name: terminal.location.business.name, currency: terminal.location.business.currency },
+      business: {
+        id: terminal.location.business.id,
+        name: terminal.location.business.name,
+        currency: terminal.location.business.currency,
+      },
       location: { id: terminal.location.id, name: terminal.location.name },
       features,
     };
@@ -91,9 +88,21 @@ export class TerminalService {
     const existing = await this.clockRepo.findOne({
       where: { user_id: userId, clock_out: null as any },
     });
-    if (existing) throw new BadRequestException('Already clocked in');
 
-    const entry = this.clockRepo.create({ user_id: userId, terminal_id: terminalId, clock_in: new Date() });
+    // ── Idempotency fix ──────────────────────────────────────────────────────
+    // If the employee is already clocked in (e.g. the terminal came back online
+    // and tried to sync a queued clock_in after the login flow already did it),
+    // return the existing entry instead of throwing. The desired state is met.
+    if (existing) {
+      return { ...existing, already_clocked_in: true };
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    const entry = this.clockRepo.create({
+      user_id: userId,
+      terminal_id: terminalId,
+      clock_in: new Date(),
+    });
     return this.clockRepo.save(entry);
   }
 
@@ -102,7 +111,14 @@ export class TerminalService {
       where: { user_id: userId, clock_out: null as any },
       order: { clock_in: 'DESC' },
     });
-    if (!entry) throw new BadRequestException('Not clocked in');
+
+    // ── Idempotency fix ──────────────────────────────────────────────────────
+    // If the employee is already clocked out (or was never clocked in), return
+    // a no-op success instead of throwing. The sync queue item will be removed.
+    if (!entry) {
+      return { status: 'already_clocked_out' };
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     entry.clock_out = new Date();
     const diffMs = entry.clock_out.getTime() - entry.clock_in.getTime();
@@ -137,11 +153,19 @@ export class TerminalService {
 
   // ===== TRANSACTIONS =====
 
-  async createTransaction(businessId: string, locationId: string, terminalId: string, userId: string, dto: CreateTransactionDto) {
-    // Generate transaction number
+  async createTransaction(
+    businessId: string,
+    locationId: string,
+    terminalId: string,
+    userId: string,
+    dto: CreateTransactionDto,
+  ) {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const count = await this.transactionRepo.count({
-      where: { business_id: businessId, created_at: MoreThan(new Date(new Date().setHours(0, 0, 0, 0))) },
+      where: {
+        business_id: businessId,
+        created_at: MoreThan(new Date(new Date().setHours(0, 0, 0, 0))),
+      },
     });
     const txnNumber = `TXN-${today}-${String(count + 1).padStart(3, '0')}`;
 
@@ -160,26 +184,31 @@ export class TerminalService {
     });
     const saved = await this.transactionRepo.save(transaction);
 
-    // Save items
     const items = dto.items.map((item) =>
       this.itemRepo.create({ ...item, transaction_id: saved.id }),
     );
     await this.itemRepo.save(items);
 
-    // Notify KDS
-    try { this.kdsService.notifyNewOrder(saved); } catch(e) {}
+    try { this.kdsService.notifyNewOrder(saved); } catch (e) {}
+
     return this.transactionRepo.findOne({
       where: { id: saved.id },
       relations: ['items'],
     });
   }
 
-  async voidTransaction(transactionId: string, userId: string, dto: VoidTransactionDto, userCanVoid: boolean) {
+  async voidTransaction(
+    transactionId: string,
+    userId: string,
+    dto: VoidTransactionDto,
+    userCanVoid: boolean,
+  ) {
     const txn = await this.transactionRepo.findOne({ where: { id: transactionId } });
     if (!txn) throw new NotFoundException('Transaction not found');
-    if (txn.status !== TransactionStatus.COMPLETED) throw new BadRequestException('Can only void completed transactions');
+    if (txn.status !== TransactionStatus.COMPLETED) {
+      throw new BadRequestException('Can only void completed transactions');
+    }
 
-    // Check void permission
     if (!userCanVoid) {
       if (!dto.manager_pin) throw new UnauthorizedException('Manager PIN required');
       const manager = await this.userRepo.findOne({
@@ -230,8 +259,12 @@ export class TerminalService {
   }
 
   async getSyncStatus(terminalId: string) {
-    const pending = await this.syncRepo.count({ where: { terminal_id: terminalId, status: 'pending' as any } });
-    const failed = await this.syncRepo.count({ where: { terminal_id: terminalId, status: 'failed' as any } });
+    const pending = await this.syncRepo.count({
+      where: { terminal_id: terminalId, status: 'pending' as any },
+    });
+    const failed = await this.syncRepo.count({
+      where: { terminal_id: terminalId, status: 'failed' as any },
+    });
     return { pending, failed };
   }
 }

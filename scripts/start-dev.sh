@@ -6,7 +6,12 @@ export no_proxy=localhost,127.0.0.1
 export NO_PROXY=localhost,127.0.0.1
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
 
+# Resolve project root from script location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "Starting POS development environment..."
+echo "Project root: $PROJECT_ROOT"
 echo ""
 
 # Kill any existing processes
@@ -21,7 +26,7 @@ echo "  ✓ PostgreSQL running"
 
 # Build and start backend
 echo "[2/4] Building backend..."
-cd ~/POS/apps/backend
+cd "$PROJECT_ROOT/apps/backend" || { echo "  ✗ Backend directory not found!"; exit 1; }
 rm -f tsconfig.tsbuildinfo
 rm -rf dist
 npx tsc 2>&1
@@ -35,14 +40,14 @@ echo "  ✓ Backend running on http://127.0.0.1:3000"
 
 # Start dashboard
 echo "[3/4] Starting dashboard..."
-cd ~/POS/apps/dashboard-web
+cd "$PROJECT_ROOT/apps/dashboard-web" || { echo "  ✗ Dashboard directory not found!"; exit 1; }
 npm run dev &>/dev/null &
 sleep 2
 echo "  ✓ Dashboard on http://127.0.0.1:5173"
 
 # Start terminal
 echo "[4/4] Starting terminal app..."
-cd ~/POS/apps/terminal-app
+cd "$PROJECT_ROOT/apps/terminal-app" || { echo "  ✗ Terminal directory not found!"; exit 1; }
 npm run dev &>/dev/null &
 sleep 2
 echo "  ✓ Terminal on http://127.0.0.1:5174"

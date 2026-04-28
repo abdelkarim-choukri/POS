@@ -1,0 +1,40 @@
+# What graphify skips when building the knowledge graph.
+# Same syntax as .gitignore.
+
+# ---- Don't graph what isn't yours to understand ----
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.vite/
+.turbo/
+
+# ---- Lockfiles ----
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ---- Generated migrations are noise ----
+# We graph the entity classes (where the design lives), not the SQL DDL.
+apps/backend/src/migrations/
+
+# ---- AiBao reference docs ----
+# Already condensed into the spec. Don't double-extract.
+docs/reference/aibaocloud_*
+
+# ---- Test fixtures ----
+**/*.fixture.ts
+**/*.fixture.json
+**/*.test.ts.snap
+
+# ---- graphify's own output (recursion guard) ----
+graphify-out/
+
+# ---- Don't graph the AI assistant instructions themselves ----
+CLAUDE.md
+AGENTS.md
+
+# ---- IDE ----
+.vscode/
+.idea/

@@ -2,7 +2,6 @@
 # POS System — Block E End-to-End Test Script
 # Run: bash scripts/test-e2e.sh
 
-set -e
 export no_proxy=localhost,127.0.0.1
 export NO_PROXY=localhost,127.0.0.1
 
@@ -10,25 +9,9 @@ BASE="http://127.0.0.1:3000/api"
 PASS=0
 FAIL=0
 
-test_endpoint() {
-  local METHOD=$1 URL=$2 DATA=$3 EXPECT=$4 DESC=$5
-  if [ "$METHOD" = "POST" ]; then
-    RESP=$(curl --noproxy localhost -s -w "\n%{http_code}" -X POST "$BASE$URL" -H "Content-Type: application/json" -d "$DATA" 2>/dev/null)
-  else
-    RESP=$(curl --noproxy localhost -s -w "\n%{http_code}" -X GET "$BASE$URL" -H "Content-Type: application/json" -H "Authorization: Bearer $DATA" 2>/dev/null)
-  fi
-  CODE=$(echo "$RESP" | tail -1)
-  BODY=$(echo "$RESP" | sed '$d')
-  if [ "$CODE" = "$EXPECT" ]; then
-    echo "  ✓ $DESC (HTTP $CODE)"
-    PASS=$((PASS+1))
-  else
-    echo "  ✗ $DESC — expected $EXPECT, got $CODE"
-    echo "    Response: $(echo $BODY | head -c 200)"
-    FAIL=$((FAIL+1))
-  fi
-  echo "$BODY"
-}
+# Get project root (scripts/ lives one level below root)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo ""
 echo "========================================="
@@ -37,11 +20,26 @@ echo "========================================="
 echo ""
 
 # ------------------------------------------
+echo "--- 0. Seeding test data ---"
+# ------------------------------------------
+pushd "$PROJECT_ROOT/apps/backend" > /dev/null
+npx ts-node src/scripts/seed.ts 2>&1
+SEED_EXIT=$?
+popd > /dev/null
+
+if [ $SEED_EXIT -eq 0 ]; then
+  echo "  ✓ Seed OK"
+else
+  echo "  ✗ Seed FAILED (exit $SEED_EXIT) — aborting, check database connection"
+  exit 1
+fi
+
+# ------------------------------------------
+echo ""
 echo "--- 1. Auth Endpoints ---"
 # ------------------------------------------
 
 # Super Admin login
-echo ""
 RESP=$(curl --noproxy localhost -s -X POST "$BASE/auth/super-admin/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@pos.com","password":"admin123"}')
@@ -75,11 +73,28 @@ RESP=$(curl --noproxy localhost -s -X POST "$BASE/auth/pin-login" \
   -d '{"pin":"1234","terminal_code":"T-001"}')
 PIN_TOKEN=$(echo $RESP | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
 if [ -n "$PIN_TOKEN" ]; then
-  echo "  ✓ PIN login (1234) OK"
+  echo "  ✓ PIN login (1234 / T-001) OK"
   PASS=$((PASS+1))
 else
   echo "  ✗ PIN login FAILED"
   echo "    $RESP"
+  FAIL=$((FAIL+1))
+fi
+
+# Verify JWT contains business_id
+if [ -n "$PIN_TOKEN" ]; then
+  JWT_PAYLOAD=$(echo "$PIN_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null)
+  BIZ_ID=$(echo "$JWT_PAYLOAD" | grep -o '"business_id":"[^"]*' | cut -d'"' -f4)
+  if [ -n "$BIZ_ID" ]; then
+    echo "  ✓ PIN JWT contains business_id: $BIZ_ID"
+    PASS=$((PASS+1))
+  else
+    echo "  ✗ PIN JWT missing business_id claim"
+    echo "    Payload: $JWT_PAYLOAD"
+    FAIL=$((FAIL+1))
+  fi
+else
+  echo "  ✗ PIN JWT check skipped (no token)"
   FAIL=$((FAIL+1))
 fi
 
