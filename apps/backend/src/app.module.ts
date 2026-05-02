@@ -8,6 +8,7 @@ import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { BusinessModule } from './modules/business/business.module';
 import { TerminalModule } from './modules/terminal/terminal.module';
 import { KdsModule } from './modules/kds/kds.module';
+import { HealthModule } from './modules/health/health.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -24,6 +25,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     BusinessModule,
     TerminalModule,
     KdsModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

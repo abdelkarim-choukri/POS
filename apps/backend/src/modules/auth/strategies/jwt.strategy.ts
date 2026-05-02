@@ -12,6 +12,8 @@ export interface JwtPayload {
   type: 'super_admin' | 'user';
   role?: string;
   business_id?: string;
+  terminal_id?: string;
+  location_id?: string;
 }
 
 @Injectable()

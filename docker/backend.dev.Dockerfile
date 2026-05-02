@@ -11,9 +11,7 @@ COPY package.json package-lock.json ./
 
 # Copy workspace package.json files (needed for npm workspaces)
 COPY apps/backend/package.json ./apps/backend/
-# packages/shared doesn't exist yet — Phase 0 will create it.
-# Once you scaffold it, uncomment:
-# COPY packages/shared/package.json ./packages/shared/
+COPY packages/shared/package.json ./packages/shared/
 
 # Install all workspace dependencies
 RUN npm install
