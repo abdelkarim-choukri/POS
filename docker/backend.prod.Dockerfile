@@ -4,33 +4,42 @@
 FROM node:20-alpine AS builder
 
 WORKDIR /workspace
-RUN npm install -g pnpm
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Use China npm mirror for faster installs
+RUN npm config set registry https://registry.npmmirror.com
+
+# Copy workspace manifests first (better Docker layer caching)
+COPY package.json package-lock.json ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile
 
+# Install ALL workspace deps (including dev — needed for the build step)
+RUN npm ci
+
+# Copy source for backend and shared
 COPY apps/backend ./apps/backend
 COPY packages/shared ./packages/shared
 
 # Build shared package first, then backend
-RUN pnpm --filter shared build && pnpm --filter backend build
+RUN npm run build --workspace=packages/shared && \
+    npm run build --workspace=apps/backend
 
 # --- Final stage: minimal runtime image ---
 FROM node:20-alpine
 
 WORKDIR /app
-RUN npm install -g pnpm
 
-# Copy manifests and install ONLY production deps
+# Use China npm mirror for the prod-only install too
+RUN npm config set registry https://registry.npmmirror.com
+
+# Copy manifests
 COPY --from=builder /workspace/package.json ./
-COPY --from=builder /workspace/pnpm-lock.yaml ./
-COPY --from=builder /workspace/pnpm-workspace.yaml ./
+COPY --from=builder /workspace/package-lock.json ./
 COPY --from=builder /workspace/apps/backend/package.json ./apps/backend/
 COPY --from=builder /workspace/packages/shared/package.json ./packages/shared/
 
-RUN pnpm install --prod --frozen-lockfile
+# Install ONLY production deps for a small final image
+RUN npm ci --omit=dev
 
 # Copy compiled output
 COPY --from=builder /workspace/apps/backend/dist ./apps/backend/dist

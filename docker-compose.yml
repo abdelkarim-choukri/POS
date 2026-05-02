@@ -75,17 +75,20 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Hot reload: source code is shared with the host. Edit on the host,
-      # NestJS reloads in the container.
-      - ./apps/backend/src:/workspace/apps/backend/src
-      - ./apps/backend/test:/workspace/apps/backend/test
-      - ./apps/backend/tsconfig.json:/workspace/apps/backend/tsconfig.json
-      - ./apps/backend/nest-cli.json:/workspace/apps/backend/nest-cli.json
-      # Anonymous volumes for node_modules so the host's (697MB!) node_modules
-      # don't override the container's. The container does its own pnpm install
-      # so deps match the container's Linux/Alpine architecture.
+      - ./apps/backend:/workspace/apps/backend
       - /workspace/node_modules
       - /workspace/apps/backend/node_modules
+      # # Hot reload: source code is shared with the host. Edit on the host,
+      # # NestJS reloads in the container.
+      # - ./apps/backend/src:/workspace/apps/backend/src
+      # - ./apps/backend/test:/workspace/apps/backend/test
+      # - ./apps/backend/tsconfig.json:/workspace/apps/backend/tsconfig.json
+      # - ./apps/backend/nest-cli.json:/workspace/apps/backend/nest-cli.json
+      # # Anonymous volumes for node_modules so the host's (697MB!) node_modules
+      # # don't override the container's. The container does its own pnpm install
+      # # so deps match the container's Linux/Alpine architecture.
+      # - /workspace/node_modules
+      # - /workspace/apps/backend/node_modules
 
 volumes:
   postgres_data:
