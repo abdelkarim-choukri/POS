@@ -26,6 +26,9 @@ export class Category {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
+  @Column({ type: 'numeric', precision: 5, scale: 2, default: 20.00 })
+  default_tva_rate: number;
+
   @OneToMany(() => Product, (p) => p.category)
   products: Product[];
 

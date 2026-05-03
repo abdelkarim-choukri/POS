@@ -198,14 +198,10 @@ Examples:
 > same commit.** This list should always reflect what's still pending, not
 > what's been done.
 
-1. `apps/backend/src/modules/terminal/terminal.service.ts` has the
-   `KdsService` import duplicated ~12 times. Will not compile. Fix first.
-2. SRS §3.7 TVA columns are NOT yet in the schema (ICE, IF, invoice_counter,
+1. SRS §3.7 TVA columns are NOT yet in the schema (ICE, IF, invoice_counter,
    total_ht/tva/ttc on transactions, tva_rate on transaction_items, etc.).
    The `AddTvaCompliance` migration must land before any extension work.
-3. `packages/shared` workspace is referenced in the README but doesn't exist.
-   Scaffold it during Phase 0 / 5.
-4. No background job infrastructure exists yet. BullMQ + Redis must land
+2. No background job infrastructure exists yet. BullMQ + Redis must land
    in Phase 5 (per [XCC-050]) since Phase 6 onward depends on it.
 
 ---
@@ -241,13 +237,13 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 Update this section at the end of each phase. Adding a "What's done" line
 saves Claude context tokens in subsequent sessions.
 
-### Phase 0 — Repo hygiene (PENDING)
+### Phase 0 — Repo hygiene (DONE)
 
-- [ ] Fix `terminal.service.ts` duplicated `KdsService` imports
-- [ ] Scaffold `packages/shared` workspace with TypeScript build setup
-- [ ] Verify Docker dev environment (`docker compose up` brings everything up)
-- [ ] Confirm backend container starts and connects to Postgres + Redis
-- [ ] Add a `/api/health` endpoint that pings DB and Redis
+- [x] Fix `terminal.module.ts` duplicated `KdsModule` imports (was in module, not service)
+- [x] Scaffold `packages/shared` workspace with TypeScript build setup
+- [x] Add a `/api/health` endpoint that pings DB and Redis
+- [x] Verify Docker dev environment (`docker compose up` brings everything up)
+- [x] Confirm backend container starts and connects to Postgres + Redis
 
 ### Phase 5 — TVA Foundation (PENDING — prerequisite for all extension work)
 

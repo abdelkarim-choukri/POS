@@ -4,14 +4,16 @@
   "private": true,
   "scripts": {
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "build": "npm run clean && npx tsc",
+    "build": "npm run clean && npx tsc -p tsconfig.build.json",
     "dev": "npm run build && node dist/main.js",
     "dev:watch": "nodemon --watch src -e ts --exec 'npm run dev'",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
     "migration:generate": "npx typeorm-ts-node-commonjs migration:generate -d src/config/data-source.ts",
     "migration:run": "npx typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
-    "migration:revert": "npx typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts"
+    "migration:revert": "npx typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.17",
@@ -38,13 +40,17 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.17",
     "@nestjs/schematics": "^11.0.10",
+    "@nestjs/testing": "^11.1.19",
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^1.4.12",
     "@types/node": "^25.5.0",
     "@types/passport-jwt": "^4.0.1",
     "@types/uuid": "^10.0.0",
+    "jest": "^30.3.0",
     "nodemon": "^3.1.14",
+    "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.2"
   }

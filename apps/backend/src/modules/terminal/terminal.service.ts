@@ -7,7 +7,7 @@
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, MoreThan, In } from 'typeorm';
 import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
@@ -17,13 +17,17 @@ import { Transaction } from '../../common/entities/transaction.entity';
 import { TransactionItem } from '../../common/entities/transaction-item.entity';
 import { Void as VoidEntity } from '../../common/entities/void.entity';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
+import { Business } from '../../common/entities/business.entity';
 import { TransactionStatus } from '../../common/enums';
 import { CreateTransactionDto, VoidTransactionDto } from './dto';
+import { DiscountPipelineService, PipelineLineInput } from '../../common/services/discount-pipeline.service';
+import { resolveTvaRate } from '../../common/utils/tva';
 
 @Injectable()
 export class TerminalService {
   constructor(
     private kdsService: KdsService,
+    private discountPipeline: DiscountPipelineService,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(ClockEntry) private clockRepo: Repository<ClockEntry>,
@@ -33,6 +37,7 @@ export class TerminalService {
     @InjectRepository(TransactionItem) private itemRepo: Repository<TransactionItem>,
     @InjectRepository(VoidEntity) private voidRepo: Repository<VoidEntity>,
     @InjectRepository(SyncQueue) private syncRepo: Repository<SyncQueue>,
+    @InjectRepository(Business) private businessRepo: Repository<Business>,
   ) {}
 
   // ===== TERMINAL SETUP =====
@@ -160,6 +165,50 @@ export class TerminalService {
     userId: string,
     dto: CreateTransactionDto,
   ) {
+    // 1. Batch-fetch products with their categories for TVA resolution
+    const productIds = dto.items.map((i) => i.product_id);
+    const products = await this.productRepo.find({
+      where: { id: In(productIds), business_id: businessId },
+      relations: ['category'],
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    // 2. Build pipeline inputs with resolved TVA rates
+    const pipelineLines: PipelineLineInput[] = dto.items.map((item, idx) => {
+      const product = productMap.get(item.product_id);
+      if (!product) {
+        throw new BadRequestException(`Product ${item.product_id} not found`);
+      }
+      const tvaRate = resolveTvaRate(
+        { tva_exempt: product.tva_exempt, tva_rate: product.tva_rate },
+        { default_tva_rate: product.category.default_tva_rate },
+      );
+      return {
+        id: String(idx),
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tva_rate: tvaRate,
+      };
+    });
+
+    // 3. Run discount pipeline (no discount steps yet — Phase 7)
+    const result = this.discountPipeline.calculate(pipelineLines, []);
+
+    // 4. Atomic invoice counter with year reset
+    const currentYear = new Date().getFullYear();
+    const counterRaw = await this.businessRepo.manager.query(
+      `UPDATE businesses
+       SET invoice_counter = CASE WHEN last_invoice_year = $1 THEN invoice_counter + 1 ELSE 1 END,
+           last_invoice_year = $1
+       WHERE id = $2
+       RETURNING invoice_counter, business_code`,
+      [currentYear, businessId],
+    );
+    const rows = Array.isArray(counterRaw[0]) ? counterRaw[0] : counterRaw;
+    const { invoice_counter, business_code } = rows[0];
+    const invoiceNumber = `INV-${business_code}-${currentYear}-${String(invoice_counter).padStart(6, '0')}`;
+
+    // 5. Transaction number (daily sequence for display, not the fiscal invoice)
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const count = await this.transactionRepo.count({
       where: {
@@ -169,24 +218,49 @@ export class TerminalService {
     });
     const txnNumber = `TXN-${today}-${String(count + 1).padStart(3, '0')}`;
 
+    // 6. Create transaction with TVA fields + backward compat
     const transaction = this.transactionRepo.create({
       business_id: businessId,
       location_id: locationId,
       terminal_id: terminalId,
       user_id: userId,
       transaction_number: txnNumber,
-      subtotal: dto.subtotal,
-      tax_amount: dto.tax_amount || 0,
-      total: dto.total,
+      invoice_number: invoiceNumber,
+      // TVA-authoritative fields
+      total_ht: result.total_ht,
+      total_tva: result.total_tva,
+      total_ttc: result.total_ttc,
+      // Backward compat: subtotal = HT (before tax), tax_amount = TVA, total = TTC
+      subtotal: result.total_ht,
+      tax_amount: result.total_tva,
+      total: result.total_ttc,
       payment_method: dto.payment_method,
       payment_confirmed_at: new Date(),
       notes: dto.notes,
     });
     const saved = await this.transactionRepo.save(transaction);
 
-    const items = dto.items.map((item) =>
-      this.itemRepo.create({ ...item, transaction_id: saved.id }),
-    );
+    // 7. Create items with per-line TVA decomposition
+    const items = dto.items.map((item, idx) => {
+      const lineResult = result.lines[idx];
+      return this.itemRepo.create({
+        transaction_id: saved.id,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        product_name: item.product_name,
+        variant_name: item.variant_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        modifiers_json: item.modifiers_json,
+        // TVA-authoritative fields
+        tva_rate: lineResult.tva_rate,
+        item_ht: lineResult.item_ht,
+        item_tva: lineResult.item_tva,
+        item_ttc: lineResult.item_ttc,
+        // Backward compat
+        line_total: lineResult.item_ttc,
+      });
+    });
     await this.itemRepo.save(items);
 
     try { this.kdsService.notifyNewOrder(saved); } catch (e) {}

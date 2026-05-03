@@ -39,6 +39,18 @@ export class TransactionItem {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   line_total: number;
 
+  @Column({ type: 'numeric', precision: 5, scale: 2, default: 20.00 })
+  tva_rate: number;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  item_ht: number;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  item_tva: number;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  item_ttc: number;
+
   @CreateDateColumn()
   created_at: Date;
 }

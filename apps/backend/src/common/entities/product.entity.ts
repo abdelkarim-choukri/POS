@@ -53,6 +53,12 @@ export class Product {
   @Column({ type: 'int', default: 0 })
   sort_order: number;
 
+  @Column({ type: 'numeric', precision: 5, scale: 2, nullable: true })
+  tva_rate: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  tva_exempt: boolean;
+
   @OneToMany(() => ProductVariant, (v) => v.product)
   variants: ProductVariant[];
 

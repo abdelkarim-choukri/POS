@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { KdsModule } from '../kds/kds.module';
 import { TerminalController } from './terminal.controller';
 import { TerminalService } from './terminal.service';
+import { DiscountPipelineService } from '../../common/services/discount-pipeline.service';
 import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
@@ -12,16 +13,17 @@ import { Transaction } from '../../common/entities/transaction.entity';
 import { TransactionItem } from '../../common/entities/transaction-item.entity';
 import { Void } from '../../common/entities/void.entity';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
+import { Business } from '../../common/entities/business.entity';
 
 @Module({
   imports: [
     KdsModule,
     TypeOrmModule.forFeature([
       Terminal, User, ClockEntry, Category, Product,
-      Transaction, TransactionItem, Void, SyncQueue,
+      Transaction, TransactionItem, Void, SyncQueue, Business,
     ]),
   ],
   controllers: [TerminalController],
-  providers: [TerminalService],
+  providers: [TerminalService, DiscountPipelineService],
 })
 export class TerminalModule {}

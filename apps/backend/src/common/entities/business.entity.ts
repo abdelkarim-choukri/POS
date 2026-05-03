@@ -50,6 +50,24 @@ export class Business {
   @Column({ type: 'jsonb', nullable: true })
   settings_json: Record<string, any>;
 
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  ice_number: string;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  if_number: string;
+
+  @Column({ type: 'text', nullable: true })
+  address: string;
+
+  @Column({ type: 'int', default: 0 })
+  invoice_counter: number;
+
+  @Column({ type: 'varchar', length: 10 })
+  business_code: string;
+
+  @Column({ type: 'smallint', nullable: true })
+  last_invoice_year: number;
+
   @OneToMany(() => Location, (l) => l.business)
   locations: Location[];
 
