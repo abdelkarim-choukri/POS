@@ -118,8 +118,7 @@ export class AuthService {
         last_name  : user.last_name,
         role       : user.role,
         business_id: user.business_id,     // ← was missing from original response
-        can_void   : user.can_void,
-        can_refund : user.can_refund,
+        permissions: user.permissions,
       },
       terminal: {
         id           : terminal.id,

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { TerminalService } from './terminal.service';
 import { CurrentUser, Public } from '../../common/decorators';
 import { CreateTransactionDto, VoidTransactionDto } from './dto';
+import { userHasPermission } from '../../common/utils/permissions';
 
 @Controller('terminal')
 export class TerminalController {
@@ -56,7 +57,7 @@ export class TerminalController {
 
   @Post('transactions/:id/void')
   voidTransaction(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: VoidTransactionDto) {
-    return this.service.voidTransaction(id, user.id, dto, user.can_void);
+    return this.service.voidTransaction(id, user.id, dto, userHasPermission(user, 'can_void'));
   }
 
   @Get('transactions/today')

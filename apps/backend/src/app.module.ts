@@ -3,7 +3,9 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { getDatabaseConfig } from './config/database.config';
+import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CustomerModule } from './modules/customer/customer.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { BusinessModule } from './modules/business/business.module';
 import { TerminalModule } from './modules/terminal/terminal.module';
@@ -20,9 +22,11 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     TypeOrmModule.forRootAsync({
       useFactory: getDatabaseConfig,
     }),
+    CommonModule,
     AuthModule,
     SuperAdminModule,
     BusinessModule,
+    CustomerModule,
     TerminalModule,
     KdsModule,
     HealthModule,

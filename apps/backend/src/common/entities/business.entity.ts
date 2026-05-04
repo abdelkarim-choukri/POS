@@ -68,6 +68,15 @@ export class Business {
   @Column({ type: 'smallint', nullable: true })
   last_invoice_year: number;
 
+  @Column({ type: 'numeric', precision: 10, scale: 2, default: 10 })
+  points_earn_divisor: number;
+
+  @Column({ type: 'numeric', precision: 8, scale: 4, default: 0.05 })
+  points_redeem_value: number;
+
+  @Column({ type: 'int', default: 0 })
+  customer_counter: number;
+
   @OneToMany(() => Location, (l) => l.business)
   locations: Location[];
 

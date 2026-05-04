@@ -43,11 +43,8 @@ export class User {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
-  @Column({ type: 'boolean', default: false })
-  can_void: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  can_refund: boolean;
+  @Column({ type: 'jsonb', default: {} })
+  permissions: Record<string, boolean>;
 
   @Column({ type: 'boolean', default: false })
   dashboard_access: boolean;

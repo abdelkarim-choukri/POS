@@ -52,8 +52,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       location_id: payload.location_id,
       first_name: user.first_name,
       last_name: user.last_name,
-      can_void: user.can_void,
-      can_refund: user.can_refund,
+      permissions: user.permissions,
       dashboard_access: user.dashboard_access,
     };
   }

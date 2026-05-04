@@ -51,6 +51,9 @@ export class TransactionItem {
   @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
   item_ttc: number;
 
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  discount_amount: number;
+
   @CreateDateColumn()
   created_at: Date;
 }

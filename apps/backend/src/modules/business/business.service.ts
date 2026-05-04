@@ -23,8 +23,9 @@ import {
   CreateModifierGroupDto, UpdateModifierGroupDto, CreateModifierDto, LinkModifierGroupDto,
   CreateEmployeeDto, UpdateEmployeeDto,
   CreateLocationDto, UpdateLocationDto,
-  ReportFilterDto, RefundDto,
+  ReportFilterDto, RefundDto, TvaDeclarationQueryDto,
 } from './dto';
+import { bankersRound } from '../../common/utils/money';
 
 @Injectable()
 export class BusinessService {
@@ -165,7 +166,7 @@ export class BusinessService {
     return this.userRepo.find({
       where: { business_id: businessId },
       order: { created_at: 'DESC' },
-      select: ['id', 'email', 'first_name', 'last_name', 'role', 'phone', 'is_active', 'can_void', 'can_refund', 'dashboard_access', 'created_at'],
+      select: ['id', 'email', 'first_name', 'last_name', 'role', 'phone', 'is_active', 'permissions', 'dashboard_access', 'created_at'],
     });
   }
 
@@ -180,11 +181,13 @@ export class BusinessService {
       last_name: dto.last_name,
       role: dto.role,
       phone: dto.phone,
-      can_void: dto.can_void || false,
-      can_refund: dto.can_refund || false,
+      permissions: {
+        ...(dto.can_void ? { can_void: true } : {}),
+        ...(dto.can_refund ? { can_refund: true } : {}),
+      },
       dashboard_access: dto.dashboard_access || false,
     });
-    const saved = await this.userRepo.save(user);
+    const saved = await this.userRepo.save(user) as typeof user;
     const { password_hash, ...result } = saved;
     return result;
   }
@@ -192,8 +195,15 @@ export class BusinessService {
   async updateEmployee(businessId: string, id: string, dto: UpdateEmployeeDto) {
     const user = await this.userRepo.findOne({ where: { id, business_id: businessId } });
     if (!user) throw new NotFoundException('Employee not found');
-    Object.assign(user, dto);
-    const saved = await this.userRepo.save(user);
+    const { can_void, can_refund, ...rest } = dto;
+    Object.assign(user, rest);
+    if (can_void !== undefined || can_refund !== undefined) {
+      const perms = { ...(user.permissions || {}) };
+      if (can_void !== undefined) perms['can_void'] = can_void;
+      if (can_refund !== undefined) perms['can_refund'] = can_refund;
+      user.permissions = perms;
+    }
+    const saved = await this.userRepo.save(user) as typeof user;
     const { password_hash, ...result } = saved;
     return result;
   }
@@ -365,5 +375,59 @@ export class BusinessService {
     if (filter.end_date) qb.andWhere('c.clock_in <= :end', { end: filter.end_date });
 
     return qb.getMany();
+  }
+
+  // ===== TVA DECLARATION REPORT [TVA-030, TVA-031] =====
+  //
+  // Per [XCC-018]: uses DATE(created_at AT TIME ZONE 'Africa/Casablanca') — calendar date only,
+  // never cutoff-adjusted — because DGI audits against calendar dates.
+
+  async getTvaDeclaration(businessId: string, dto: TvaDeclarationQueryDto) {
+    // Aggregate per-line TVA from transaction_items joined to completed transactions.
+    // Using transaction_items (not transaction-level totals) gives accurate per-rate breakdown.
+    const rows: Array<{
+      tva_rate: string;
+      total_ht: string;
+      total_tva: string;
+      total_ttc: string;
+      transaction_count: string;
+    }> = await this.transactionRepo.manager.query(
+      `SELECT
+         ti.tva_rate,
+         SUM(ti.item_ht)                            AS total_ht,
+         SUM(ti.item_tva)                           AS total_tva,
+         SUM(ti.item_ttc)                           AS total_ttc,
+         COUNT(DISTINCT ti.transaction_id)::text     AS transaction_count
+       FROM transaction_items ti
+       INNER JOIN transactions t ON t.id = ti.transaction_id
+       WHERE t.business_id   = $1
+         AND t.status        = 'completed'
+         AND DATE(t.created_at AT TIME ZONE 'Africa/Casablanca') BETWEEN $2 AND $3
+       GROUP BY ti.tva_rate
+       ORDER BY ti.tva_rate DESC`,
+      [businessId, dto.from_date, dto.to_date],
+    );
+
+    const by_rate = rows.map((r) => ({
+      tva_rate: bankersRound(Number(r.tva_rate)),
+      total_ht: bankersRound(Number(r.total_ht)),
+      total_tva: bankersRound(Number(r.total_tva)),
+      total_ttc: bankersRound(Number(r.total_ttc)),
+      transaction_count: Number(r.transaction_count),
+    }));
+
+    const totals = {
+      total_ht: bankersRound(by_rate.reduce((s, r) => s + r.total_ht, 0)),
+      total_tva: bankersRound(by_rate.reduce((s, r) => s + r.total_tva, 0)),
+      total_ttc: bankersRound(by_rate.reduce((s, r) => s + r.total_ttc, 0)),
+      transaction_count: by_rate.reduce((s, r) => s + r.transaction_count, 0),
+    };
+
+    return {
+      from_date: dto.from_date,
+      to_date: dto.to_date,
+      by_rate,
+      totals,
+    };
   }
 }

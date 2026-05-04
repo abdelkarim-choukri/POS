@@ -9,7 +9,7 @@ import {
   CreateModifierGroupDto, UpdateModifierGroupDto, CreateModifierDto, LinkModifierGroupDto,
   CreateEmployeeDto, UpdateEmployeeDto,
   CreateLocationDto, UpdateLocationDto,
-  ReportFilterDto, RefundDto,
+  ReportFilterDto, RefundDto, TvaDeclarationQueryDto,
 } from './dto';
 
 @Controller('business')
@@ -182,6 +182,11 @@ export class BusinessController {
   @Get('reports/clock-history')
   getClockReport(@CurrentUser('business_id') businessId: string, @Query() filter: ReportFilterDto) {
     return this.service.getClockReport(businessId, filter);
+  }
+
+  @Get('reports/tva-declaration')
+  getTvaDeclaration(@CurrentUser('business_id') businessId: string, @Query() query: TvaDeclarationQueryDto) {
+    return this.service.getTvaDeclaration(businessId, query);
   }
 
   @Get('transactions/:id')

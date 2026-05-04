@@ -95,6 +95,18 @@ export class Transaction {
   @Column({ type: 'timestamptz', nullable: true })
   simpl_tva_sent_at: Date;
 
+  @Column({ type: 'uuid', nullable: true })
+  customer_id: string;
+
+  @Column({ type: 'int', default: 0 })
+  points_earned: number;
+
+  @Column({ type: 'int', default: 0 })
+  points_redeemed: number;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  discount_total: number;
+
   @Column({ type: 'boolean', default: false })
   is_offline: boolean;
 

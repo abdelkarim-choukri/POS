@@ -66,8 +66,7 @@ export class SuperAdminService {
       last_name: dto.owner_last_name,
       role: UserRole.OWNER,
       dashboard_access: true,
-      can_void: true,
-      can_refund: true,
+      permissions: { can_void: true, can_refund: true },
     });
     await this.userRepo.save(owner);
 

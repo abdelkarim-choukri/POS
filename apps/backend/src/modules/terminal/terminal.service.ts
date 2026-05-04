@@ -22,6 +22,7 @@ import { TransactionStatus } from '../../common/enums';
 import { CreateTransactionDto, VoidTransactionDto } from './dto';
 import { DiscountPipelineService, PipelineLineInput } from '../../common/services/discount-pipeline.service';
 import { resolveTvaRate } from '../../common/utils/tva';
+import { userHasPermission } from '../../common/utils/permissions';
 
 @Injectable()
 export class TerminalService {
@@ -286,9 +287,11 @@ export class TerminalService {
     if (!userCanVoid) {
       if (!dto.manager_pin) throw new UnauthorizedException('Manager PIN required');
       const manager = await this.userRepo.findOne({
-        where: { pin: dto.manager_pin, business_id: txn.business_id, can_void: true, is_active: true },
+        where: { pin: dto.manager_pin, business_id: txn.business_id, is_active: true },
       });
-      if (!manager) throw new UnauthorizedException('Invalid manager PIN');
+      if (!manager || !userHasPermission(manager, 'can_void')) {
+        throw new UnauthorizedException('Invalid manager PIN');
+      }
     }
 
     const voidRecord = this.voidRepo.create({

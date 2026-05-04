@@ -4,3 +4,4 @@ export { CreateModifierGroupDto, UpdateModifierGroupDto, CreateModifierDto, Link
 export { CreateEmployeeDto, UpdateEmployeeDto } from './employee.dto';
 export { CreateLocationDto, UpdateLocationDto } from './location.dto';
 export { ReportFilterDto, RefundDto } from './report.dto';
+export { TvaDeclarationQueryDto } from './tva-report.dto';

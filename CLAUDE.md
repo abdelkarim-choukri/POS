@@ -198,12 +198,18 @@ Examples:
 > same commit.** This list should always reflect what's still pending, not
 > what's been done.
 
-1. SRS §3.7 TVA columns are NOT yet in the schema (ICE, IF, invoice_counter,
-   total_ht/tva/ttc on transactions, tva_rate on transaction_items, etc.).
-   The `AddTvaCompliance` migration must land before any extension work.
-2. No background job infrastructure exists yet. BullMQ + Redis must land
-   in Phase 5 (per [XCC-050]) since Phase 6 onward depends on it.
+1. No background job infrastructure exists yet. BullMQ + Redis must land
+   before Phase 7 (bulk coupon issuance requires it per [XCC-050]).
 
+## Build gotchas (do not revert)
+
+- **tsbuildinfo stale cache**: The backend Dockerfile CMD must include
+  `rm -f tsconfig.build.tsbuildinfo` before `npx nest start --watch`.
+  Without this, Docker volume-mounted incremental builds skip emit on
+  container restart, causing `Cannot find module dist/main`. Never commit
+  `*.tsbuildinfo` files — they're in .gitignore.
+- **Always use `npx nest build -p tsconfig.build.json`** for manual builds,
+  never bare `tsc`. The tsconfig.build.json excludes spec files from output.
 ---
 
 ## How to ask Claude Code to do work
@@ -245,10 +251,48 @@ saves Claude context tokens in subsequent sessions.
 - [x] Verify Docker dev environment (`docker compose up` brings everything up)
 - [x] Confirm backend container starts and connects to Postgres + Redis
 
-### Phase 5 — TVA Foundation (PENDING — prerequisite for all extension work)
+### Phase 5 — TVA Foundation (DONE)
 
-See extension spec §14, Phase 5.
+All 9 deliverables complete. 69 tests passing.
 
-### Phases 6-15 — see extension spec §14 (PENDING)
+- [x] `money.ts` — `bankersRound`, `distributeDiscount` (XCC-011)
+- [x] `tva.ts` — `resolveTvaRate` priority chain (product override → category default)
+- [x] `discount-pipeline.service.ts` — grade→promotion→coupon pipeline (XCC-017)
+- [x] Migration `1714000000000-AddTvaCompliance` — ICE/IF/invoice_counter on businesses,
+      total_ht/tva/ttc on transactions, tva_rate/item_ht/item_tva/item_ttc on transaction_items
+- [x] Entities updated: Business, Category, Product, Transaction, TransactionItem
+- [x] `TerminalService.createTransaction` wired: resolves TVA per item, runs pipeline,
+      atomic invoice counter with year reset, populates all TVA fields;
+      backward-compat: subtotal=HT, tax_amount=TVA, total=TTC (XCC-010, XCC-018)
+- [x] `GET /api/business/reports/tva-declaration` — aggregates from transaction_items,
+      groups by TVA rate band, uses calendar date per XCC-018 (TVA-030, TVA-031)
+- [x] `SimplTvaService` stub — `submitInvoice` + `checkStatus`, wired into `CommonModule`
+      (global), ready for DGI SIMPL-TVA integration (TVA-041, TVA-042)
+- [x] `receipt-builder.ts` — `buildReceipt()` returns structured receipt with all SRS §3.6.2
+      mandatory fields: ICE/IF, invoice_number, per-line TVA, TVA summary by rate band
+- [x] JWT strategy fix: `terminal_id`/`location_id` from token payload now forwarded to `request.user`
+- [x] `tsconfig.json` excludes `*.spec.ts` so `nest start --watch` compiles cleanly
 
-Order: 6 (CUST) → 7 (PROM+CPN) → 8 (PEX) → 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+### Phase 6 — Customers & Loyalty (IN PROGRESS)
+
+**Part A — DONE** (migrations 4+5 applied, 93 tests)
+
+- [x] Migration 4: `MigrateUserPermissionsToJsonb` — `users.permissions JSONB` replaces `can_void`/`can_refund` booleans
+- [x] `userHasPermission()` helper (`common/utils/permissions.ts`)
+- [x] Migration 5: `AddCustomersAndLoyalty` — 7 new tables + column additions on transactions/businesses
+- [x] 7 new entities: Customer, CustomerGrade, CustomerLabel, CustomerLabelAssignment, CustomerAttribute, CustomerAttributeValue, CustomerPointsHistory
+- [x] Customer CRUD: CUST-001–005 (list, getDetail, create with auto-code, update, softDelete)
+- [x] Grade CRUD: CUST-020–023 (list, create, update, deleteGrade with transactional demotion)
+
+**Part B — DONE** (110 tests)
+
+- [x] Label CRUD: CUST-030–034 (list, create, update, deleteLabel cascade, assignLabels replace-set)
+- [x] Custom Attributes: CUST-040–045 (list, create, updateAttribute with data_type guard, delete cascade, getCustomerAttributes, setCustomerAttributes with per-field validation)
+- [x] Points management: CUST-050–051 (getPointsHistory paginated+filtered, adjustPoints atomic UPDATE…RETURNING with 422 on negative balance)
+- [x] Batch import stub: CUST-052 → 501 Not Implemented
+
+**Part C — PENDING**: terminal integration CUST-100–102/110, receipt updates, offline sync
+
+### Phases 7-15 — see extension spec §14 (PENDING)
+
+Order: 7 (PROM+CPN) → 8 (PEX) → 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
