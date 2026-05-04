@@ -4,7 +4,7 @@
 // If the user is not clocked in, clockOut returns a no-op success (no error).
 // This prevents sync queue items from burning through retries and dying permanently.
 
-import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, In } from 'typeorm';
@@ -18,8 +18,11 @@ import { TransactionItem } from '../../common/entities/transaction-item.entity';
 import { Void as VoidEntity } from '../../common/entities/void.entity';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
 import { Business } from '../../common/entities/business.entity';
+import { Customer } from '../../common/entities/customer.entity';
+import { CustomerGrade } from '../../common/entities/customer-grade.entity';
+import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
 import { TransactionStatus } from '../../common/enums';
-import { CreateTransactionDto, VoidTransactionDto } from './dto';
+import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto } from './dto';
 import { DiscountPipelineService, PipelineLineInput } from '../../common/services/discount-pipeline.service';
 import { resolveTvaRate } from '../../common/utils/tva';
 import { userHasPermission } from '../../common/utils/permissions';
@@ -39,6 +42,9 @@ export class TerminalService {
     @InjectRepository(VoidEntity) private voidRepo: Repository<VoidEntity>,
     @InjectRepository(SyncQueue) private syncRepo: Repository<SyncQueue>,
     @InjectRepository(Business) private businessRepo: Repository<Business>,
+    @InjectRepository(Customer) private customerRepo: Repository<Customer>,
+    @InjectRepository(CustomerGrade) private gradeRepo: Repository<CustomerGrade>,
+    @InjectRepository(CustomerPointsHistory) private pointsHistoryRepo: Repository<CustomerPointsHistory>,
   ) {}
 
   // ===== TERMINAL SETUP =====
@@ -157,6 +163,59 @@ export class TerminalService {
     return { categories, products };
   }
 
+  // ===== CUSTOMER TERMINAL OPERATIONS =====
+
+  async lookupCustomer(businessId: string, phone: string) {
+    const customer = await this.customerRepo.findOne({
+      where: { business_id: businessId, phone, is_active: true },
+      relations: ['grade'],
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    return {
+      id: customer.id,
+      customer_code: customer.customer_code,
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      grade: customer.grade
+        ? { name: customer.grade.name, color_hex: customer.grade.color_hex }
+        : null,
+      points_balance: customer.points_balance,
+    };
+  }
+
+  async quickAddCustomer(businessId: string, dto: QuickAddCustomerDto) {
+    const existing = await this.customerRepo.findOne({
+      where: { business_id: businessId, phone: dto.phone },
+    });
+    if (existing) throw new ConflictException('Phone number already registered');
+
+    const counterRaw = await this.businessRepo.manager.query(
+      `UPDATE businesses SET customer_counter = customer_counter + 1 WHERE id = $1 RETURNING customer_counter`,
+      [businessId],
+    );
+    const counterRows = Array.isArray(counterRaw[0]) ? counterRaw[0] : counterRaw;
+    const customerCode = `C-${String(counterRows[0].customer_counter).padStart(6, '0')}`;
+
+    const customer = this.customerRepo.create({
+      business_id: businessId,
+      customer_code: customerCode,
+      phone: dto.phone,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+    });
+    const saved = await this.customerRepo.save(customer);
+
+    return {
+      id: saved.id,
+      customer_code: saved.customer_code,
+      first_name: saved.first_name,
+      last_name: saved.last_name,
+      grade: null,
+      points_balance: saved.points_balance,
+    };
+  }
+
   // ===== TRANSACTIONS =====
 
   async createTransaction(
@@ -174,7 +233,15 @@ export class TerminalService {
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // 2. Build pipeline inputs with resolved TVA rates
+    // 2. Verify customer belongs to this business (if provided)
+    if (dto.customer_id) {
+      const customer = await this.customerRepo.findOne({
+        where: { id: dto.customer_id, business_id: businessId, is_active: true },
+      });
+      if (!customer) throw new NotFoundException('Customer not found');
+    }
+
+    // 3. Build pipeline inputs with resolved TVA rates
     const pipelineLines: PipelineLineInput[] = dto.items.map((item, idx) => {
       const product = productMap.get(item.product_id);
       if (!product) {
@@ -192,10 +259,10 @@ export class TerminalService {
       };
     });
 
-    // 3. Run discount pipeline (no discount steps yet — Phase 7)
+    // 4. Run discount pipeline (no discount steps yet — Phase 7)
     const result = this.discountPipeline.calculate(pipelineLines, []);
 
-    // 4. Atomic invoice counter with year reset
+    // 5. Atomic invoice counter with year reset
     const currentYear = new Date().getFullYear();
     const counterRaw = await this.businessRepo.manager.query(
       `UPDATE businesses
@@ -209,7 +276,7 @@ export class TerminalService {
     const { invoice_counter, business_code } = rows[0];
     const invoiceNumber = `INV-${business_code}-${currentYear}-${String(invoice_counter).padStart(6, '0')}`;
 
-    // 5. Transaction number (daily sequence for display, not the fiscal invoice)
+    // 6. Transaction number (daily sequence for display, not the fiscal invoice)
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const count = await this.transactionRepo.count({
       where: {
@@ -219,7 +286,7 @@ export class TerminalService {
     });
     const txnNumber = `TXN-${today}-${String(count + 1).padStart(3, '0')}`;
 
-    // 6. Create transaction with TVA fields + backward compat
+    // 7. Create transaction with TVA fields + backward compat
     const transaction = this.transactionRepo.create({
       business_id: businessId,
       location_id: locationId,
@@ -238,10 +305,11 @@ export class TerminalService {
       payment_method: dto.payment_method,
       payment_confirmed_at: new Date(),
       notes: dto.notes,
+      customer_id: dto.customer_id,
     });
-    const saved = await this.transactionRepo.save(transaction);
+    const saved = await this.transactionRepo.save(transaction) as Transaction;
 
-    // 7. Create items with per-line TVA decomposition
+    // 8. Create items with per-line TVA decomposition
     const items = dto.items.map((item, idx) => {
       const lineResult = result.lines[idx];
       return this.itemRepo.create({
@@ -264,12 +332,82 @@ export class TerminalService {
     });
     await this.itemRepo.save(items);
 
+    // 9. Earn points if customer attached (CUST-110)
+    if (dto.customer_id) {
+      await this.earnPoints(saved, businessId, dto.customer_id);
+    }
+
     try { this.kdsService.notifyNewOrder(saved); } catch (e) {}
 
     return this.transactionRepo.findOne({
       where: { id: saved.id },
       relations: ['items'],
     });
+  }
+
+  private async earnPoints(
+    transaction: Transaction,
+    businessId: string,
+    customerId: string,
+  ): Promise<void> {
+    const business = await this.businessRepo.findOne({ where: { id: businessId } });
+    if (!business) return;
+
+    const customer = await this.customerRepo.findOne({
+      where: { id: customerId },
+      relations: ['grade'],
+    });
+    if (!customer) return;
+
+    const divisor = Number(business.points_earn_divisor);
+    if (divisor <= 0) return;
+
+    const totalTtc = Number(transaction.total_ttc);
+    const base = Math.floor(totalTtc / divisor);
+    const multiplier = customer.grade ? Number(customer.grade.points_multiplier) : 1.0;
+    const points = Math.floor(base * multiplier);
+
+    if (points <= 0) return;
+
+    // Atomic increment — returns the new balance
+    const updateRaw = await this.customerRepo.manager.query(
+      `UPDATE customers
+       SET points_balance = points_balance + $1, lifetime_points = lifetime_points + $1
+       WHERE id = $2
+       RETURNING points_balance, lifetime_points`,
+      [points, customerId],
+    );
+    const updateRows = Array.isArray(updateRaw[0]) ? updateRaw[0] : updateRaw;
+    const { points_balance: balanceAfter, lifetime_points: lifetimeAfter } = updateRows[0];
+
+    // Insert points history row
+    const historyEntry = this.pointsHistoryRepo.create({
+      business_id: businessId,
+      customer_id: customerId,
+      delta: points,
+      balance_after: balanceAfter,
+      source: 'sale',
+      transaction_id: transaction.id,
+    });
+    await this.pointsHistoryRepo.save(historyEntry);
+
+    // Grade promotion: find the highest grade whose min_points <= lifetime_points
+    const grades = await this.gradeRepo.find({
+      where: { business_id: businessId, is_active: true },
+      order: { min_points: 'DESC' },
+    });
+    const newGrade = grades.find((g) => lifetimeAfter >= g.min_points);
+    const newGradeId = newGrade?.id ?? null;
+    if (newGradeId !== (customer.grade_id ?? null)) {
+      await this.customerRepo.manager.query(
+        `UPDATE customers SET grade_id = $1 WHERE id = $2`,
+        [newGradeId, customerId],
+      );
+    }
+
+    // Update transaction with earned points
+    await this.transactionRepo.update(transaction.id, { points_earned: points });
+    transaction.points_earned = points;
   }
 
   async voidTransaction(

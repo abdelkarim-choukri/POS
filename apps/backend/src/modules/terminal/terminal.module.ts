@@ -14,6 +14,9 @@ import { TransactionItem } from '../../common/entities/transaction-item.entity';
 import { Void } from '../../common/entities/void.entity';
 import { SyncQueue } from '../../common/entities/sync-queue.entity';
 import { Business } from '../../common/entities/business.entity';
+import { Customer } from '../../common/entities/customer.entity';
+import { CustomerGrade } from '../../common/entities/customer-grade.entity';
+import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
 
 @Module({
   imports: [
@@ -21,6 +24,7 @@ import { Business } from '../../common/entities/business.entity';
     TypeOrmModule.forFeature([
       Terminal, User, ClockEntry, Category, Product,
       Transaction, TransactionItem, Void, SyncQueue, Business,
+      Customer, CustomerGrade, CustomerPointsHistory,
     ]),
   ],
   controllers: [TerminalController],

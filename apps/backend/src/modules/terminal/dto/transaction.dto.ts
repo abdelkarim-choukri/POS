@@ -80,6 +80,22 @@ export class CreateTransactionDto {
   @IsUUID()
   @Transform(nullToUndefined)
   location_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  @Transform(nullToUndefined)
+  customer_id?: string;
+}
+
+export class QuickAddCustomerDto {
+  @IsString()
+  phone: string;
+
+  @IsString()
+  first_name: string;
+
+  @IsString()
+  last_name: string;
 }
 
 export class VoidTransactionDto {

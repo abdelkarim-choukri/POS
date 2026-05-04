@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { TerminalService } from './terminal.service';
 import { CurrentUser, Public } from '../../common/decorators';
-import { CreateTransactionDto, VoidTransactionDto } from './dto';
+import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto } from './dto';
 import { userHasPermission } from '../../common/utils/permissions';
 
 @Controller('terminal')
@@ -42,6 +42,22 @@ export class TerminalController {
   @Get('catalog')
   getCatalog(@CurrentUser('business_id') businessId: string) {
     return this.service.getCatalog(businessId);
+  }
+
+  @Get('customers/lookup')
+  lookupCustomer(
+    @CurrentUser('business_id') businessId: string,
+    @Query('phone') phone: string,
+  ) {
+    return this.service.lookupCustomer(businessId, phone);
+  }
+
+  @Post('customers/quick-add')
+  quickAddCustomer(
+    @CurrentUser('business_id') businessId: string,
+    @Body() dto: QuickAddCustomerDto,
+  ) {
+    return this.service.quickAddCustomer(businessId, dto);
   }
 
   @Post('transactions')

@@ -1,1 +1,1 @@
-export { CreateTransactionDto, TransactionItemDto, VoidTransactionDto } from './transaction.dto';
+export { CreateTransactionDto, TransactionItemDto, VoidTransactionDto, QuickAddCustomerDto } from './transaction.dto';

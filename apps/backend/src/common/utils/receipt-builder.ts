@@ -33,6 +33,9 @@ export interface ReceiptTransaction {
   total_tva: number;
   total_ttc: number;
   items: ReceiptItem[];
+  customer_phone?: string | null;
+  points_earned?: number | null;
+  points_balance_after?: number | null;
 }
 
 // ── Output types ────────────────────────────────────────────────────────────
@@ -78,6 +81,11 @@ export interface ReceiptData {
   total_ttc: number;
 
   payment_method: string;
+
+  // Customer & loyalty (§2.8 — present only when a customer was attached)
+  customer_phone: string | null;
+  points_earned: number | null;
+  points_balance: number | null;
 }
 
 /**
@@ -140,5 +148,9 @@ export function buildReceipt(
     total_ttc: bankersRound(Number(transaction.total_ttc)),
 
     payment_method: transaction.payment_method,
+
+    customer_phone: transaction.customer_phone ?? null,
+    points_earned: transaction.points_earned ?? null,
+    points_balance: transaction.points_balance_after ?? null,
   };
 }

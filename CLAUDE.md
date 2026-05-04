@@ -273,9 +273,11 @@ All 9 deliverables complete. 69 tests passing.
 - [x] JWT strategy fix: `terminal_id`/`location_id` from token payload now forwarded to `request.user`
 - [x] `tsconfig.json` excludes `*.spec.ts` so `nest start --watch` compiles cleanly
 
-### Phase 6 — Customers & Loyalty (IN PROGRESS)
+### Phase 6 — Customers & Loyalty (DONE)
 
-**Part A — DONE** (migrations 4+5 applied, 93 tests)
+All 13 deliverables complete. 121 tests passing.
+
+**Part A — DONE** (migrations 4+5 applied)
 
 - [x] Migration 4: `MigrateUserPermissionsToJsonb` — `users.permissions JSONB` replaces `can_void`/`can_refund` booleans
 - [x] `userHasPermission()` helper (`common/utils/permissions.ts`)
@@ -284,14 +286,25 @@ All 9 deliverables complete. 69 tests passing.
 - [x] Customer CRUD: CUST-001–005 (list, getDetail, create with auto-code, update, softDelete)
 - [x] Grade CRUD: CUST-020–023 (list, create, update, deleteGrade with transactional demotion)
 
-**Part B — DONE** (110 tests)
+**Part B — DONE**
 
 - [x] Label CRUD: CUST-030–034 (list, create, update, deleteLabel cascade, assignLabels replace-set)
 - [x] Custom Attributes: CUST-040–045 (list, create, updateAttribute with data_type guard, delete cascade, getCustomerAttributes, setCustomerAttributes with per-field validation)
 - [x] Points management: CUST-050–051 (getPointsHistory paginated+filtered, adjustPoints atomic UPDATE…RETURNING with 422 on negative balance)
 - [x] Batch import stub: CUST-052 → 501 Not Implemented
 
-**Part C — PENDING**: terminal integration CUST-100–102/110, receipt updates, offline sync
+**Part C — DONE**
+
+- [x] `GET /api/terminal/customers/lookup?phone=...` — returns customer summary + grade + points_balance or 404 (CUST-100)
+- [x] `POST /api/terminal/customers/quick-add` — phone/first_name/last_name, atomic customer_code counter, 409 on phone dupe (CUST-101)
+- [x] `customer_id` field added to `CreateTransactionDto`; verified against business on transaction create; written to `transactions.customer_id` (CUST-102 simplified)
+- [x] Points earning wired into `createTransaction`: `floor(ttc / points_earn_divisor) × grade.points_multiplier`, atomic UPDATE…RETURNING, `customer_points_history` row, grade promotion check (CUST-110)
+- [x] `receipt-builder.ts` extended: optional `customer_phone`, `points_earned`, `points_balance` fields per spec §2.8
+
+**Deferred (not backend concerns for Part C)**
+
+- CUST-052 batch import — needs BullMQ (Phase 7 prerequisite)
+- Offline SQLite cache (XCC-030/031) — terminal app state, not backend
 
 ### Phases 7-15 — see extension spec §14 (PENDING)
 

@@ -141,4 +141,24 @@ describe('buildReceipt (SRS §3.6.2)', () => {
     expect(r.tva_summary[0].total_tva).toBe(5);
     expect(r.tva_summary[0].total_ttc).toBe(30);
   });
+
+  it('includes customer phone and points fields when customer is attached (§2.8)', () => {
+    const txnWithCustomer: ReceiptTransaction = {
+      ...transaction,
+      customer_phone: '0612345678',
+      points_earned: 6,
+      points_balance_after: 106,
+    };
+    const r = buildReceipt(txnWithCustomer, business);
+    expect(r.customer_phone).toBe('0612345678');
+    expect(r.points_earned).toBe(6);
+    expect(r.points_balance).toBe(106);
+  });
+
+  it('omits customer and points fields (null) when no customer attached (§2.8)', () => {
+    const r = buildReceipt(transaction, business);
+    expect(r.customer_phone).toBeNull();
+    expect(r.points_earned).toBeNull();
+    expect(r.points_balance).toBeNull();
+  });
 });
