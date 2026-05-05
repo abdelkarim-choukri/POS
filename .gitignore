@@ -33,6 +33,10 @@ Thumbs.db
 # ---- IDE ----
 .vscode/
 .idea/
+
+# ---- Claude Code (local only, never commit) ----
+.claude/
+CLAUDE.md
 *.swp
 *.swo
 *.swn
