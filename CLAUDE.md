@@ -198,8 +198,7 @@ Examples:
 > same commit.** This list should always reflect what's still pending, not
 > what's been done.
 
-1. No background job infrastructure exists yet. BullMQ + Redis must land
-   before Phase 7 (bulk coupon issuance requires it per [XCC-050]).
+*(All known issues resolved.)*
 
 ## Build gotchas (do not revert)
 
@@ -210,6 +209,11 @@ Examples:
   `*.tsbuildinfo` files — they're in .gitignore.
 - **Always use `npx nest build -p tsconfig.build.json`** for manual builds,
   never bare `tsc`. The tsconfig.build.json excludes spec files from output.
+- **Curl test sequences**: When running multi-step curl tests, combine all
+  steps into a single bash script. Login once, store the token, reuse it.
+  Don't run separate bash commands for each step.
+- **npm in China**: Always use `--registry=https://registry.npmmirror.com`
+  when installing npm packages.
 ---
 
 ## How to ask Claude Code to do work
@@ -306,6 +310,33 @@ All 13 deliverables complete. 121 tests passing.
 - CUST-052 batch import — needs BullMQ (Phase 7 prerequisite)
 - Offline SQLite cache (XCC-030/031) — terminal app state, not backend
 
-### Phases 7-15 — see extension spec §14 (PENDING)
+### Phase 7 — Promotions & Coupons (IN PROGRESS — Part A done)
 
-Order: 7 (PROM+CPN) → 8 (PEX) → 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+**Part A — DONE** (migrations 3+4 applied)
+
+- [x] BullMQ + Redis infrastructure: `JobModule` (@Global), `JobService`, `RedisLockService` (XCC-050–XCC-055)
+- [x] Migration `1714003000000-AddBackgroundJobInfrastructure` — `background_jobs` table + partial unique index (XCC-051, XCC-052)
+- [x] Migration `1714004000000-AddPromotionsAndCoupons` — 6 new tables: promotions, promotion_redemptions, coupon_types, coupons, coupon_redemptions, discount_write_offs + all §13.3 indexes + businesses.promotion_stacking_mode (PROM-MOD-002)
+- [x] 7 new entities: BackgroundJob, Promotion, PromotionRedemption, CouponType, Coupon, CouponRedemption, DiscountWriteOff
+- [x] `GET /api/business/jobs/:id` — job status polling, scoped to business (XCC-055)
+- [x] Promotion CRUD: PROM-001–007 (list+filter+is_currently_running, detail+stats, create, update with locked-fields guard, activate, pause, archive)
+- [x] `PromotionEvaluatorService.evaluate()` — full 11-step filter chain including Moroccan holiday list (2026) and blackout periods; `evaluateWithStackingMode()` respects best_only vs stack (PROM-020, PROM-021)
+
+**Part B — PENDING** (coupon CRUD, createTransaction integration, terminal endpoints)
+
+### Phases 8-15 — see extension spec §14 (PENDING)
+
+Order: 8 (PEX) → 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+
+## Planned cross-cutting features (post Phase 15)
+
+These are NOT part of any current phase. They will be implemented as a
+single pass after core modules are complete.
+
+1. **Real-time dashboard** — WebSocket event gateway emitting events
+   (transaction:created, customer:created, etc.) from all services.
+   Dashboard subscribes and updates live. Backend: ~1 session. Frontend: teammate.
+
+2. **i18n (Arabic, French, English)** — Backend: add users.language_preference
+   column, refactor error messages to translation keys. Frontend: react-i18next,
+   RTL layout for Arabic, translation files. Backend: ~1 session. Frontend: significant.

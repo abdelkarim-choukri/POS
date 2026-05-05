@@ -77,6 +77,9 @@ export class Business {
   @Column({ type: 'int', default: 0 })
   customer_counter: number;
 
+  @Column({ type: 'varchar', length: 20, default: 'best_only' })
+  promotion_stacking_mode: string;
+
   @OneToMany(() => Location, (l) => l.business)
   locations: Location[];
 
