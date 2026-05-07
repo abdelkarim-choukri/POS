@@ -3,6 +3,7 @@ import {
   IsString, IsOptional, IsNumber, IsUUID,
   IsEnum, IsArray, ValidateNested, IsInt,
 } from 'class-validator';
+
 import { Type, Transform } from 'class-transformer';
 import { PaymentMethod } from '../../../common/enums';
 
@@ -85,6 +86,16 @@ export class CreateTransactionDto {
   @IsUUID()
   @Transform(nullToUndefined)
   customer_id?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  promotion_ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  coupon_codes?: string[];
 }
 
 export class QuickAddCustomerDto {

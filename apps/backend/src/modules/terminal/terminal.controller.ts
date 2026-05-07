@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { TerminalService } from './terminal.service';
 import { CurrentUser, Public } from '../../common/decorators';
-import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto } from './dto';
+import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto, EvaluateCartDto } from './dto';
 import { userHasPermission } from '../../common/utils/permissions';
 
 @Controller('terminal')
@@ -58,6 +58,26 @@ export class TerminalController {
     @Body() dto: QuickAddCustomerDto,
   ) {
     return this.service.quickAddCustomer(businessId, dto);
+  }
+
+  // [PROM-100] Evaluate cart promotions before checkout
+  @Post('promotions/evaluate')
+  evaluatePromotions(@CurrentUser() user: any, @Body() dto: EvaluateCartDto) {
+    return this.service.evaluatePromotions(
+      user.business_id,
+      user.location_id,
+      user.id,
+      dto,
+    );
+  }
+
+  // [CPN-100] Validate coupon code at terminal
+  @Get('coupons/validate')
+  validateCoupon(
+    @CurrentUser('business_id') businessId: string,
+    @Query('code') code: string,
+  ) {
+    return this.service.validateCoupon(code, businessId);
   }
 
   @Post('transactions')

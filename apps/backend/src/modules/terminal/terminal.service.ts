@@ -1,13 +1,11 @@
-// apps/backend/src/modules/terminal/terminal.service.ts
-// CHANGES: clockIn and clockOut are now idempotent.
-// If the user is already clocked in, clockIn returns the existing entry (no error).
-// If the user is not clocked in, clockOut returns a no-op success (no error).
-// This prevents sync queue items from burning through retries and dying permanently.
-
-import { Injectable, NotFoundException, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException, ConflictException, UnauthorizedException,
+  BadRequestException, HttpException, HttpStatus,
+} from '@nestjs/common';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, In } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, MoreThan, In, DataSource, QueryRunner } from 'typeorm';
 import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
@@ -21,17 +19,25 @@ import { Business } from '../../common/entities/business.entity';
 import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
+import { Coupon } from '../../common/entities/coupon.entity';
+import { CouponType } from '../../common/entities/coupon-type.entity';
+import { CouponRedemption } from '../../common/entities/coupon-redemption.entity';
+import { PromotionRedemption } from '../../common/entities/promotion-redemption.entity';
+import { DiscountWriteOff } from '../../common/entities/discount-write-off.entity';
 import { TransactionStatus } from '../../common/enums';
-import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto } from './dto';
-import { DiscountPipelineService, PipelineLineInput } from '../../common/services/discount-pipeline.service';
+import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto, EvaluateCartDto } from './dto';
+import { DiscountPipelineService, PipelineLineInput, DiscountStep } from '../../common/services/discount-pipeline.service';
 import { resolveTvaRate } from '../../common/utils/tva';
 import { userHasPermission } from '../../common/utils/permissions';
+import { PromotionEvaluatorService, CartItem, ApplicablePromotion } from '../promotion/promotion-evaluator.service';
 
 @Injectable()
 export class TerminalService {
   constructor(
     private kdsService: KdsService,
     private discountPipeline: DiscountPipelineService,
+    private evaluator: PromotionEvaluatorService,
+    @InjectDataSource() private dataSource: DataSource,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(ClockEntry) private clockRepo: Repository<ClockEntry>,
@@ -45,6 +51,7 @@ export class TerminalService {
     @InjectRepository(Customer) private customerRepo: Repository<Customer>,
     @InjectRepository(CustomerGrade) private gradeRepo: Repository<CustomerGrade>,
     @InjectRepository(CustomerPointsHistory) private pointsHistoryRepo: Repository<CustomerPointsHistory>,
+    @InjectRepository(Coupon) private couponRepo: Repository<Coupon>,
   ) {}
 
   // ===== TERMINAL SETUP =====
@@ -101,14 +108,9 @@ export class TerminalService {
       where: { user_id: userId, clock_out: null as any },
     });
 
-    // ── Idempotency fix ──────────────────────────────────────────────────────
-    // If the employee is already clocked in (e.g. the terminal came back online
-    // and tried to sync a queued clock_in after the login flow already did it),
-    // return the existing entry instead of throwing. The desired state is met.
     if (existing) {
       return { ...existing, already_clocked_in: true };
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     const entry = this.clockRepo.create({
       user_id: userId,
@@ -124,13 +126,9 @@ export class TerminalService {
       order: { clock_in: 'DESC' },
     });
 
-    // ── Idempotency fix ──────────────────────────────────────────────────────
-    // If the employee is already clocked out (or was never clocked in), return
-    // a no-op success instead of throwing. The sync queue item will be removed.
     if (!entry) {
       return { status: 'already_clocked_out' };
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     entry.clock_out = new Date();
     const diffMs = entry.clock_out.getTime() - entry.clock_in.getTime();
@@ -216,6 +214,58 @@ export class TerminalService {
     };
   }
 
+  // ===== PROMOTION / COUPON TERMINAL ENDPOINTS =====
+
+  // [PROM-100] Evaluate cart promotions
+  async evaluatePromotions(businessId: string, locationId: string, customerId: string | null, dto: EvaluateCartDto) {
+    const business = await this.businessRepo.findOne({ where: { id: businessId } });
+    const stackingMode = ((business as any)?.promotion_stacking_mode || 'best_only') as 'best_only' | 'stack';
+
+    const cartItems: CartItem[] = dto.items.map((item, idx) => ({
+      product_id: item.product_id,
+      category_id: item.category_id,
+      quantity: item.quantity,
+      unit_price_ttc: item.unit_price_ttc,
+      line_index: idx,
+    }));
+
+    return this.evaluator.evaluateWithStackingMode(
+      businessId,
+      cartItems,
+      dto.customer_id || null,
+      locationId,
+      new Date(),
+      stackingMode,
+    );
+  }
+
+  // [CPN-100] Validate coupon code at terminal — 404 if unknown, 410 if redeemed
+  async validateCoupon(couponCode: string, businessId: string) {
+    const coupon = await this.couponRepo.findOne({
+      where: { coupon_code: couponCode, business_id: businessId },
+      relations: ['coupon_type'],
+    });
+    if (!coupon) throw new NotFoundException('Coupon not found');
+    if (coupon.status === 'redeemed') {
+      throw new HttpException({ status: 'redeemed', message: 'Coupon already redeemed' }, HttpStatus.GONE);
+    }
+
+    const now = new Date();
+    const isExpired = now > coupon.expires_at;
+    const ct = (coupon as any).coupon_type as CouponType | undefined;
+
+    return {
+      id: coupon.id,
+      coupon_code: coupon.coupon_code,
+      status: isExpired ? 'expired' : coupon.status,
+      discount_type: ct?.discount_type,
+      discount_value: ct?.discount_value,
+      min_order_total_ttc: ct?.min_order_total_ttc,
+      expires_at: coupon.expires_at,
+      customer_id: coupon.customer_id,
+    };
+  }
+
   // ===== TRANSACTIONS =====
 
   async createTransaction(
@@ -225,7 +275,7 @@ export class TerminalService {
     userId: string,
     dto: CreateTransactionDto,
   ) {
-    // 1. Batch-fetch products with their categories for TVA resolution
+    // ── 1. Batch-fetch products with categories for TVA resolution ─────────────
     const productIds = dto.items.map((i) => i.product_id);
     const products = await this.productRepo.find({
       where: { id: In(productIds), business_id: businessId },
@@ -233,50 +283,109 @@ export class TerminalService {
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // 2. Verify customer belongs to this business (if provided)
+    // ── 2. Verify + pre-load customer with grade (single query) ───────────────
+    let customerWithGrade: Customer | null = null;
     if (dto.customer_id) {
-      const customer = await this.customerRepo.findOne({
+      customerWithGrade = await this.customerRepo.findOne({
         where: { id: dto.customer_id, business_id: businessId, is_active: true },
+        relations: ['grade'],
       });
-      if (!customer) throw new NotFoundException('Customer not found');
+      if (!customerWithGrade) throw new NotFoundException('Customer not found');
     }
 
-    // 3. Build pipeline inputs with resolved TVA rates
+    // ── 3. Pre-load business (stacking mode + points config) ──────────────────
+    const business = await this.businessRepo.findOne({ where: { id: businessId } });
+
+    // ── 4. Build pipeline inputs with resolved TVA rates ──────────────────────
     const pipelineLines: PipelineLineInput[] = dto.items.map((item, idx) => {
       const product = productMap.get(item.product_id);
-      if (!product) {
-        throw new BadRequestException(`Product ${item.product_id} not found`);
-      }
+      if (!product) throw new BadRequestException(`Product ${item.product_id} not found`);
       const tvaRate = resolveTvaRate(
         { tva_exempt: product.tva_exempt, tva_rate: product.tva_rate },
         { default_tva_rate: product.category.default_tva_rate },
       );
+      return { id: String(idx), quantity: item.quantity, unit_price: item.unit_price, tva_rate: tvaRate };
+    });
+
+    // ── 5. Evaluate applicable promotions ─────────────────────────────────────
+    const cartItems: CartItem[] = dto.items.map((item, idx) => {
+      const product = productMap.get(item.product_id)!;
       return {
-        id: String(idx),
+        product_id: item.product_id,
+        category_id: product.category_id,
         quantity: item.quantity,
-        unit_price: item.unit_price,
-        tva_rate: tvaRate,
+        unit_price_ttc: item.unit_price,
+        line_index: idx,
       };
     });
 
-    // 4. Run discount pipeline (no discount steps yet — Phase 7)
-    const result = this.discountPipeline.calculate(pipelineLines, []);
-
-    // 5. Atomic invoice counter with year reset
-    const currentYear = new Date().getFullYear();
-    const counterRaw = await this.businessRepo.manager.query(
-      `UPDATE businesses
-       SET invoice_counter = CASE WHEN last_invoice_year = $1 THEN invoice_counter + 1 ELSE 1 END,
-           last_invoice_year = $1
-       WHERE id = $2
-       RETURNING invoice_counter, business_code`,
-      [currentYear, businessId],
+    const stackingMode = ((business as any)?.promotion_stacking_mode || 'best_only') as 'best_only' | 'stack';
+    const { applicable_promotions } = await this.evaluator.evaluateWithStackingMode(
+      businessId, cartItems, dto.customer_id || null, locationId, new Date(), stackingMode,
     );
-    const rows = Array.isArray(counterRaw[0]) ? counterRaw[0] : counterRaw;
-    const { invoice_counter, business_code } = rows[0];
-    const invoiceNumber = `INV-${business_code}-${currentYear}-${String(invoice_counter).padStart(6, '0')}`;
 
-    // 6. Transaction number (daily sequence for display, not the fiscal invoice)
+    // Honour explicit promotion_ids filter from the DTO
+    const promotionsToApply: ApplicablePromotion[] = dto.promotion_ids?.length
+      ? applicable_promotions.filter((ap) => dto.promotion_ids!.includes(ap.promotion_id))
+      : applicable_promotions;
+
+    // ── 6. Pre-validate coupons ────────────────────────────────────────────────
+    const unsupportedCouponCodes: string[] = [];
+    const validCoupons: Array<Coupon & { coupon_type: CouponType }> = [];
+
+    if (dto.coupon_codes?.length) {
+      const now = new Date();
+      for (const code of dto.coupon_codes) {
+        const coupon = await this.couponRepo.findOne({
+          where: { coupon_code: code, business_id: businessId },
+          relations: ['coupon_type'],
+        }) as (Coupon & { coupon_type: CouponType }) | null;
+
+        if (!coupon || coupon.status !== 'available' || now > coupon.expires_at) continue;
+
+        if (['free_item', 'bogo'].includes(coupon.coupon_type.discount_type)) {
+          unsupportedCouponCodes.push(code);
+          continue;
+        }
+        validCoupons.push(coupon);
+      }
+    }
+
+    // ── 7. Build discount steps: grade (skip) → promotion → coupon (XCC-017) ──
+    const discountSteps: DiscountStep[] = [];
+
+    for (const ap of promotionsToApply) {
+      const applicableLineIds = ap.affected_line_indexes.length < pipelineLines.length
+        ? ap.affected_line_indexes.map(String)
+        : null;
+      discountSteps.push({
+        type: 'promotion',
+        fixed_amount: ap.computed_discount,
+        applicable_line_ids: applicableLineIds,
+      });
+    }
+
+    for (const coupon of validCoupons) {
+      const ct = coupon.coupon_type;
+      const lineIds = this.buildCouponLineIds(ct, dto.items, productMap);
+      if (lineIds !== null && lineIds.length === 0) continue; // coupon targets items not in cart
+
+      const step: DiscountStep = ct.discount_type === 'percent_off'
+        ? { type: 'coupon', percent: Number(ct.discount_value), applicable_line_ids: lineIds }
+        : { type: 'coupon', fixed_amount: Number(ct.discount_value), applicable_line_ids: lineIds };
+
+      discountSteps.push(step);
+    }
+
+    // ── 8. Run discount pipeline ───────────────────────────────────────────────
+    const result = this.discountPipeline.calculate(pipelineLines, discountSteps);
+
+    // Approximate coupon discount for redemption records
+    const totalPromoDiscount = promotionsToApply.reduce((s, ap) => s + ap.computed_discount, 0);
+    const totalCouponDiscount = Math.max(0, result.total_discount - totalPromoDiscount);
+    const perCouponDiscount = validCoupons.length > 0 ? totalCouponDiscount / validCoupons.length : 0;
+
+    // ── 9. Daily txn number (outside QR — approximate, not fiscal) ─────────────
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const count = await this.transactionRepo.count({
       where: {
@@ -285,92 +394,184 @@ export class TerminalService {
       },
     });
     const txnNumber = `TXN-${today}-${String(count + 1).padStart(3, '0')}`;
+    const currentYear = new Date().getFullYear();
 
-    // 7. Create transaction with TVA fields + backward compat
-    const transaction = this.transactionRepo.create({
-      business_id: businessId,
-      location_id: locationId,
-      terminal_id: terminalId,
-      user_id: userId,
-      transaction_number: txnNumber,
-      invoice_number: invoiceNumber,
-      // TVA-authoritative fields
-      total_ht: result.total_ht,
-      total_tva: result.total_tva,
-      total_ttc: result.total_ttc,
-      // Backward compat: subtotal = HT (before tax), tax_amount = TVA, total = TTC
-      subtotal: result.total_ht,
-      tax_amount: result.total_tva,
-      total: result.total_ttc,
-      payment_method: dto.payment_method,
-      payment_confirmed_at: new Date(),
-      notes: dto.notes,
-      customer_id: dto.customer_id,
-    });
-    const saved = await this.transactionRepo.save(transaction) as Transaction;
+    // ── 10. All writes in a single DB transaction ──────────────────────────────
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // 8. Create items with per-line TVA decomposition
-    const items = dto.items.map((item, idx) => {
-      const lineResult = result.lines[idx];
-      return this.itemRepo.create({
-        transaction_id: saved.id,
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        product_name: item.product_name,
-        variant_name: item.variant_name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        modifiers_json: item.modifiers_json,
-        // TVA-authoritative fields
-        tva_rate: lineResult.tva_rate,
-        item_ht: lineResult.item_ht,
-        item_tva: lineResult.item_tva,
-        item_ttc: lineResult.item_ttc,
-        // Backward compat
-        line_total: lineResult.item_ttc,
+    let savedTxn!: Transaction;
+    try {
+      // Atomic invoice counter with year reset
+      const counterRaw = await queryRunner.manager.query(
+        `UPDATE businesses
+         SET invoice_counter = CASE WHEN last_invoice_year = $1 THEN invoice_counter + 1 ELSE 1 END,
+             last_invoice_year = $1
+         WHERE id = $2
+         RETURNING invoice_counter, business_code`,
+        [currentYear, businessId],
+      );
+      const rows = Array.isArray(counterRaw[0]) ? counterRaw[0] : counterRaw;
+      const { invoice_counter, business_code } = rows[0];
+      const invoiceNumber = `INV-${business_code}-${currentYear}-${String(invoice_counter).padStart(6, '0')}`;
+
+      // Insert transaction
+      const txnEntity = this.transactionRepo.create({
+        business_id: businessId,
+        location_id: locationId,
+        terminal_id: terminalId,
+        user_id: userId,
+        transaction_number: txnNumber,
+        invoice_number: invoiceNumber,
+        total_ht: result.total_ht,
+        total_tva: result.total_tva,
+        total_ttc: result.total_ttc,
+        discount_total: result.total_discount,
+        subtotal: result.total_ht,
+        tax_amount: result.total_tva,
+        total: result.total_ttc,
+        payment_method: dto.payment_method,
+        payment_confirmed_at: new Date(),
+        notes: dto.notes,
+        customer_id: dto.customer_id,
       });
-    });
-    await this.itemRepo.save(items);
+      savedTxn = await queryRunner.manager.save(txnEntity) as Transaction;
 
-    // 9. Earn points if customer attached (CUST-110)
-    if (dto.customer_id) {
-      await this.earnPoints(saved, businessId, dto.customer_id);
+      // Insert items
+      const items = dto.items.map((item, idx) => {
+        const lineResult = result.lines[idx];
+        return this.itemRepo.create({
+          transaction_id: savedTxn.id,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          product_name: item.product_name,
+          variant_name: item.variant_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          modifiers_json: item.modifiers_json,
+          tva_rate: lineResult.tva_rate,
+          item_ht: lineResult.item_ht,
+          item_tva: lineResult.item_tva,
+          item_ttc: lineResult.item_ttc,
+          line_total: lineResult.item_ttc,
+        });
+      });
+      await queryRunner.manager.save(items);
+
+      // Atomic promotion claims + redemption records
+      for (const ap of promotionsToApply) {
+        const claimRows = await queryRunner.manager.query(
+          `UPDATE promotions SET current_uses = current_uses + 1
+           WHERE id = $1 AND (max_total_uses = 0 OR current_uses < max_total_uses)
+           RETURNING id`,
+          [ap.promotion_id],
+        );
+        if (!claimRows.length) continue; // race: max_uses hit, skip silently
+
+        await queryRunner.manager.save(PromotionRedemption, {
+          business_id: businessId,
+          promotion_id: ap.promotion_id,
+          transaction_id: savedTxn.id,
+          customer_id: dto.customer_id,
+          discount_applied: ap.computed_discount,
+        });
+      }
+
+      // Atomic coupon claims + redemption + write-off records
+      for (const coupon of validCoupons) {
+        const claimRows = await queryRunner.manager.query(
+          `UPDATE coupons
+           SET status = 'redeemed', redeemed_at = now(),
+               redeemed_in_transaction_id = $1, redeemed_by_terminal_id = $2
+           WHERE id = $3 AND status = 'available'
+           RETURNING id`,
+          [savedTxn.id, terminalId, coupon.id],
+        );
+        if (!claimRows.length) continue; // race: another request claimed it first, skip
+
+        await queryRunner.manager.save(CouponRedemption, {
+          business_id: businessId,
+          coupon_id: coupon.id,
+          transaction_id: savedTxn.id,
+          customer_id: dto.customer_id || coupon.customer_id || undefined,
+          discount_applied: perCouponDiscount,
+        });
+
+        await queryRunner.manager.save(DiscountWriteOff, {
+          business_id: businessId,
+          transaction_id: savedTxn.id,
+          terminal_id: terminalId,
+          coupon_id: coupon.id,
+          written_off_amount: perCouponDiscount,
+          reason: `Coupon ${coupon.coupon_code}`,
+        });
+      }
+
+      // Points earning (CUST-110) — inside QR so rollback reverts points too
+      if (dto.customer_id && customerWithGrade && business) {
+        await this.earnPointsInQr(queryRunner, savedTxn, businessId, dto.customer_id, customerWithGrade, business);
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
 
-    try { this.kdsService.notifyNewOrder(saved); } catch (e) {}
+    try { this.kdsService.notifyNewOrder(savedTxn); } catch (_e) {}
 
-    return this.transactionRepo.findOne({
-      where: { id: saved.id },
+    const finalTxn = await this.transactionRepo.findOne({
+      where: { id: savedTxn.id },
       relations: ['items'],
     });
+
+    if (unsupportedCouponCodes.length > 0) {
+      return { ...finalTxn, unsupported_coupon_types: unsupportedCouponCodes };
+    }
+    return finalTxn;
   }
 
-  private async earnPoints(
+  private buildCouponLineIds(
+    ct: CouponType,
+    items: CreateTransactionDto['items'],
+    productMap: Map<string, Product>,
+  ): string[] | null {
+    if (!ct.applicable_product_ids?.length && !ct.applicable_category_ids?.length) {
+      return null; // applies to all lines
+    }
+    const matching: string[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
+      const product = productMap.get(item.product_id);
+      if (!product) continue;
+      const matchesProduct = ct.applicable_product_ids?.includes(item.product_id);
+      const matchesCategory = ct.applicable_category_ids?.includes(product.category_id ?? '');
+      if (matchesProduct || matchesCategory) matching.push(String(idx));
+    }
+    return matching;
+  }
+
+  private async earnPointsInQr(
+    queryRunner: QueryRunner,
     transaction: Transaction,
     businessId: string,
     customerId: string,
+    customer: Customer,
+    business: Business,
   ): Promise<void> {
-    const business = await this.businessRepo.findOne({ where: { id: businessId } });
-    if (!business) return;
-
-    const customer = await this.customerRepo.findOne({
-      where: { id: customerId },
-      relations: ['grade'],
-    });
-    if (!customer) return;
-
-    const divisor = Number(business.points_earn_divisor);
+    const divisor = Number((business as any).points_earn_divisor);
     if (divisor <= 0) return;
 
     const totalTtc = Number(transaction.total_ttc);
     const base = Math.floor(totalTtc / divisor);
-    const multiplier = customer.grade ? Number(customer.grade.points_multiplier) : 1.0;
+    const multiplier = (customer as any).grade ? Number((customer as any).grade.points_multiplier) : 1.0;
     const points = Math.floor(base * multiplier);
-
     if (points <= 0) return;
 
-    // Atomic increment — returns the new balance
-    const updateRaw = await this.customerRepo.manager.query(
+    const updateRaw = await queryRunner.manager.query(
       `UPDATE customers
        SET points_balance = points_balance + $1, lifetime_points = lifetime_points + $1
        WHERE id = $2
@@ -380,7 +581,6 @@ export class TerminalService {
     const updateRows = Array.isArray(updateRaw[0]) ? updateRaw[0] : updateRaw;
     const { points_balance: balanceAfter, lifetime_points: lifetimeAfter } = updateRows[0];
 
-    // Insert points history row
     const historyEntry = this.pointsHistoryRepo.create({
       business_id: businessId,
       customer_id: customerId,
@@ -389,25 +589,26 @@ export class TerminalService {
       source: 'sale',
       transaction_id: transaction.id,
     });
-    await this.pointsHistoryRepo.save(historyEntry);
+    await queryRunner.manager.save(historyEntry);
 
-    // Grade promotion: find the highest grade whose min_points <= lifetime_points
+    // Grade promotion check
     const grades = await this.gradeRepo.find({
       where: { business_id: businessId, is_active: true },
       order: { min_points: 'DESC' },
     });
     const newGrade = grades.find((g) => lifetimeAfter >= g.min_points);
     const newGradeId = newGrade?.id ?? null;
-    if (newGradeId !== (customer.grade_id ?? null)) {
-      await this.customerRepo.manager.query(
+    if (newGradeId !== ((customer as any).grade_id ?? null)) {
+      await queryRunner.manager.query(
         `UPDATE customers SET grade_id = $1 WHERE id = $2`,
         [newGradeId, customerId],
       );
     }
 
-    // Update transaction with earned points
-    await this.transactionRepo.update(transaction.id, { points_earned: points });
-    transaction.points_earned = points;
+    await queryRunner.manager.query(
+      `UPDATE transactions SET points_earned = $1 WHERE id = $2`,
+      [points, transaction.id],
+    );
   }
 
   async voidTransaction(

@@ -310,7 +310,7 @@ All 13 deliverables complete. 121 tests passing.
 - CUST-052 batch import — needs BullMQ (Phase 7 prerequisite)
 - Offline SQLite cache (XCC-030/031) — terminal app state, not backend
 
-### Phase 7 — Promotions & Coupons (IN PROGRESS — Part A done)
+### Phase 7 — Promotions & Coupons (DONE)
 
 **Part A — DONE** (migrations 3+4 applied)
 
@@ -322,7 +322,21 @@ All 13 deliverables complete. 121 tests passing.
 - [x] Promotion CRUD: PROM-001–007 (list+filter+is_currently_running, detail+stats, create, update with locked-fields guard, activate, pause, archive)
 - [x] `PromotionEvaluatorService.evaluate()` — full 11-step filter chain including Moroccan holiday list (2026) and blackout periods; `evaluateWithStackingMode()` respects best_only vs stack (PROM-020, PROM-021)
 
-**Part B — PENDING** (coupon CRUD, createTransaction integration, terminal endpoints)
+**Part B — DONE**
+
+- [x] CouponType CRUD: `CouponService` with create, update (locked-fields guard → 422 when coupons exist), clone (name gets "(Copy)", is_active=false), deactivate (CPN-001–006)
+- [x] Issue coupon: 12-char uppercase alphanumeric code, collision-retried, linked to coupon_type + optional customer_id (CPN-010)
+- [x] Lookup coupon: by code, 404 if not found, 410 if redeemed, status includes expiry (CPN-020)
+- [x] `CouponController` — business dashboard endpoints under `/api/business/coupon-types/…` and `/api/business/coupons/lookup`
+- [x] `createTransaction` wrapped in `QueryRunner` DB transaction — INSERT transaction, items, promotion_redemptions, coupon_redemptions, discount_write_offs, points all commit/rollback atomically
+- [x] `CreateTransactionDto` extended with `promotion_ids?: string[]` and `coupon_codes?: string[]`
+- [x] Discount pipeline order enforced: grade (skip, future) → promotion → coupon (XCC-017)
+- [x] Atomic promotion claim: `UPDATE promotions SET current_uses + 1 WHERE max_uses = 0 OR current_uses < max_uses` — skips silently on race
+- [x] Atomic coupon claim: `UPDATE coupons SET status='redeemed' WHERE id=$1 AND status='available'` — skips silently on race; free_item/bogo types returned as `unsupported_coupon_types` warning
+- [x] `POST /api/terminal/promotions/evaluate` — cart evaluation endpoint returning applicable promotions with discounts (PROM-100)
+- [x] `GET /api/terminal/coupons/validate?code=…` — coupon validity + discount preview at terminal (CPN-100)
+- [x] `coupon.service.spec.ts` — 8 test cases covering all CouponService operations + cross-tenant 404
+- [x] `terminal.service.spec.ts` updated — existing tests adapted to QueryRunner mock + 6 new tests (promo applied, coupon applied, combined, max_uses race, coupon race, TVA invariant)
 
 ### Phases 8-15 — see extension spec §14 (PENDING)
 

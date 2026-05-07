@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KdsModule } from '../kds/kds.module';
+import { PromotionModule } from '../promotion/promotion.module';
 import { TerminalController } from './terminal.controller';
 import { TerminalService } from './terminal.service';
 import { DiscountPipelineService } from '../../common/services/discount-pipeline.service';
@@ -17,14 +18,17 @@ import { Business } from '../../common/entities/business.entity';
 import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
+import { Coupon } from '../../common/entities/coupon.entity';
 
 @Module({
   imports: [
     KdsModule,
+    PromotionModule,
     TypeOrmModule.forFeature([
       Terminal, User, ClockEntry, Category, Product,
       Transaction, TransactionItem, Void, SyncQueue, Business,
       Customer, CustomerGrade, CustomerPointsHistory,
+      Coupon,
     ]),
   ],
   controllers: [TerminalController],

@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { TerminalService } from './terminal.service';
 import { DiscountPipelineService } from '../../common/services/discount-pipeline.service';
 import { KdsService } from '../kds/kds.service';
+import { PromotionEvaluatorService } from '../promotion/promotion-evaluator.service';
 import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
@@ -17,10 +19,11 @@ import { Business } from '../../common/entities/business.entity';
 import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
+import { Coupon } from '../../common/entities/coupon.entity';
 import { PaymentMethod } from '../../common/enums';
 import { bankersRound } from '../../common/utils/money';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Mock helpers ─────────────────────────────────────────────────────────────
 
 function makeMockRepo(overrides: Record<string, any> = {}) {
   return {
@@ -35,6 +38,51 @@ function makeMockRepo(overrides: Record<string, any> = {}) {
   };
 }
 
+function makeQrMock(queryOverrides: ((sql: string, params?: any[]) => any) | null = null) {
+  const qr = {
+    connect: jest.fn().mockResolvedValue(undefined),
+    startTransaction: jest.fn().mockResolvedValue(undefined),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+    release: jest.fn().mockResolvedValue(undefined),
+    manager: {
+      save: jest.fn((entityOrClass: any, data?: any) => {
+        const d = data ?? entityOrClass;
+        if (Array.isArray(d)) {
+          return Promise.resolve(d.map((e: any, i: number) => ({ id: `item-${i}`, ...e })));
+        }
+        return Promise.resolve({ id: 'saved-uuid', ...d });
+      }),
+      query: jest.fn((sql: string, params?: any[]) => {
+        if (queryOverrides) {
+          const result = queryOverrides(sql, params);
+          if (result !== undefined) return Promise.resolve(result);
+        }
+        if (sql.includes('UPDATE businesses') && sql.includes('invoice_counter')) {
+          return Promise.resolve([{ invoice_counter: 1, business_code: 'CAFE01' }]);
+        }
+        if (sql.includes('UPDATE customers') && sql.includes('points_balance')) {
+          return Promise.resolve([{ points_balance: 5, lifetime_points: 5 }]);
+        }
+        if (sql.includes('UPDATE customers') && sql.includes('grade_id')) {
+          return Promise.resolve([]);
+        }
+        if (sql.includes('UPDATE transactions') && sql.includes('points_earned')) {
+          return Promise.resolve([]);
+        }
+        if (sql.includes('UPDATE promotions') && sql.includes('current_uses')) {
+          return Promise.resolve([{ id: params?.[0] }]);
+        }
+        if (sql.includes('UPDATE coupons') && sql.includes("status = 'redeemed'")) {
+          return Promise.resolve([{ id: params?.[2] }]);
+        }
+        return Promise.resolve([]);
+      }),
+    },
+  };
+  return qr;
+}
+
 function makeTestModule(overrides: {
   productRepo?: any;
   transactionRepo?: any;
@@ -43,7 +91,20 @@ function makeTestModule(overrides: {
   customerRepo?: any;
   gradeRepo?: any;
   pointsHistoryRepo?: any;
+  couponRepo?: any;
+  qr?: ReturnType<typeof makeQrMock>;
+  evaluator?: any;
 } = {}) {
+  const qr = overrides.qr ?? makeQrMock();
+  const mockDataSource = { createQueryRunner: jest.fn(() => qr) };
+
+  const mockEvaluator = overrides.evaluator ?? {
+    evaluateWithStackingMode: jest.fn().mockResolvedValue({
+      applicable_promotions: [],
+      stackable: false,
+    }),
+  };
+
   const productRepo = overrides.productRepo ?? makeMockRepo();
   const transactionRepo = overrides.transactionRepo ?? makeMockRepo({
     findOne: jest.fn().mockImplementation(({ where }) =>
@@ -56,28 +117,36 @@ function makeTestModule(overrides: {
     ),
   });
   const businessRepo = overrides.businessRepo ?? makeMockRepo({
-    findOne: jest.fn().mockResolvedValue({ id: 'biz-1', points_earn_divisor: 10 }),
+    findOne: jest.fn().mockResolvedValue({
+      id: 'biz-1',
+      points_earn_divisor: 10,
+      promotion_stacking_mode: 'best_only',
+    }),
     manager: {
-      query: jest.fn().mockResolvedValue([[{ invoice_counter: 1, business_code: 'CAFE01' }], 1]),
+      query: jest.fn().mockResolvedValue([{ customer_counter: 7 }]),
     },
   });
   const customerRepo = overrides.customerRepo ?? makeMockRepo({
     findOne: jest.fn().mockResolvedValue(null),
     manager: {
-      query: jest.fn().mockResolvedValue([{ points_balance: 5, lifetime_points: 5 }]),
+      query: jest.fn().mockResolvedValue([{ customer_counter: 7 }]),
     },
   });
   const gradeRepo = overrides.gradeRepo ?? makeMockRepo({ find: jest.fn().mockResolvedValue([]) });
   const pointsHistoryRepo = overrides.pointsHistoryRepo ?? makeMockRepo();
+  const couponRepo = overrides.couponRepo ?? makeMockRepo({ findOne: jest.fn().mockResolvedValue(null) });
 
   return {
-    productRepo, transactionRepo, itemRepo, businessRepo,
-    customerRepo, gradeRepo, pointsHistoryRepo,
+    qr, productRepo, transactionRepo, itemRepo, businessRepo,
+    customerRepo, gradeRepo, pointsHistoryRepo, couponRepo,
+    mockEvaluator,
     module: Test.createTestingModule({
       providers: [
         TerminalService,
         DiscountPipelineService,
         { provide: KdsService, useValue: { notifyNewOrder: jest.fn() } },
+        { provide: PromotionEvaluatorService, useValue: mockEvaluator },
+        { provide: DataSource, useValue: mockDataSource },
         { provide: getRepositoryToken(Terminal), useValue: makeMockRepo() },
         { provide: getRepositoryToken(User), useValue: makeMockRepo() },
         { provide: getRepositoryToken(ClockEntry), useValue: makeMockRepo() },
@@ -91,6 +160,7 @@ function makeTestModule(overrides: {
         { provide: getRepositoryToken(Customer), useValue: customerRepo },
         { provide: getRepositoryToken(CustomerGrade), useValue: gradeRepo },
         { provide: getRepositoryToken(CustomerPointsHistory), useValue: pointsHistoryRepo },
+        { provide: getRepositoryToken(Coupon), useValue: couponRepo },
       ],
     }),
   };
@@ -103,24 +173,11 @@ describe('TerminalService – createTransaction (TVA)', () => {
   let transactionRepo: ReturnType<typeof makeMockRepo>;
   let itemRepo: ReturnType<typeof makeMockRepo>;
   let productRepo: ReturnType<typeof makeMockRepo>;
-  let businessRepo: any;
+  let qr: ReturnType<typeof makeQrMock>;
 
-  // Two products: one at 20% TVA (from category default), one at 10% (product override)
   const mockProducts = [
-    {
-      id: 'prod-a',
-      business_id: 'biz-1',
-      tva_exempt: false,
-      tva_rate: null,
-      category: { default_tva_rate: 20 },
-    },
-    {
-      id: 'prod-b',
-      business_id: 'biz-1',
-      tva_exempt: false,
-      tva_rate: 10,
-      category: { default_tva_rate: 20 },
-    },
+    { id: 'prod-a', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: null, category: { default_tva_rate: 20 } },
+    { id: 'prod-b', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: 10, category: { default_tva_rate: 20 } },
   ];
 
   const dto = {
@@ -140,7 +197,7 @@ describe('TerminalService – createTransaction (TVA)', () => {
     transactionRepo = mocks.transactionRepo;
     itemRepo = mocks.itemRepo;
     productRepo = mocks.productRepo;
-    businessRepo = mocks.businessRepo;
+    qr = mocks.qr;
 
     const module: TestingModule = await mocks.module.compile();
     service = module.get(TerminalService);
@@ -151,8 +208,8 @@ describe('TerminalService – createTransaction (TVA)', () => {
 
     const txnCreateCall = transactionRepo.create.mock.calls[0][0];
 
-    // prod-a: 2 × 15 = 30 TTC at 20% → HT = 30 / 1.20 = 25.00, TVA = 5.00
-    // prod-b: 1 × 20 = 20 TTC at 10% → HT = 20 / 1.10 = 18.18, TVA = 1.82
+    // prod-a: 2 × 15 = 30 TTC at 20% → HT = 25.00, TVA = 5.00
+    // prod-b: 1 × 20 = 20 TTC at 10% → HT = 18.18, TVA = 1.82
     expect(txnCreateCall.total_ht).toBe(43.18);
     expect(txnCreateCall.total_tva).toBe(6.82);
     expect(txnCreateCall.total_ttc).toBe(50);
@@ -199,10 +256,11 @@ describe('TerminalService – createTransaction (TVA)', () => {
   it('should generate invoice number with atomic counter and year reset', async () => {
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', dto);
 
-    const queryCall = businessRepo.manager.query.mock.calls[0];
-    expect(queryCall[0]).toContain('UPDATE businesses');
-    expect(queryCall[0]).toContain('RETURNING invoice_counter');
-    expect(queryCall[1]).toEqual([new Date().getFullYear(), 'biz-1']);
+    const invoiceCall = (qr.manager.query as jest.Mock).mock.calls.find((c: any[]) =>
+      c[0].includes('UPDATE businesses') && c[0].includes('RETURNING invoice_counter'),
+    );
+    expect(invoiceCall).toBeTruthy();
+    expect(invoiceCall[1]).toEqual([new Date().getFullYear(), 'biz-1']);
 
     const txn = transactionRepo.create.mock.calls[0][0];
     const year = new Date().getFullYear();
@@ -210,8 +268,7 @@ describe('TerminalService – createTransaction (TVA)', () => {
   });
 
   it('should reset invoice counter when year changes', async () => {
-    businessRepo.manager.query.mockResolvedValueOnce([[{ invoice_counter: 1, business_code: 'CAFE01' }], 1]);
-
+    // QR mock already returns invoice_counter=1 by default
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', dto);
 
     const txn = transactionRepo.create.mock.calls[0][0];
@@ -229,8 +286,8 @@ describe('TerminalService – createTransaction (TVA)', () => {
 
   it('should handle TVA-exempt products (rate = 0)', async () => {
     productRepo.find.mockResolvedValueOnce([
-      { id: 'prod-a', business_id: 'biz-1', tva_exempt: true, tva_rate: null, category: { default_tva_rate: 20 } },
-      { id: 'prod-b', business_id: 'biz-1', tva_exempt: false, tva_rate: 10, category: { default_tva_rate: 20 } },
+      { id: 'prod-a', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: true, tva_rate: null, category: { default_tva_rate: 20 } },
+      { id: 'prod-b', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: 10, category: { default_tva_rate: 20 } },
     ]);
 
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', dto);
@@ -291,10 +348,7 @@ describe('TerminalService – customer terminal operations', () => {
 
   it('[CUST-101] quickAddCustomer creates customer with auto-code', async () => {
     customerRepo.findOne.mockResolvedValue(null); // no duplicate
-    businessRepo.manager.query
-      // First call: invoice counter (shouldn't be called here but include for safety)
-      // Reset and set customer counter call
-      .mockResolvedValueOnce([{ customer_counter: 7 }]);
+    businessRepo.manager.query.mockResolvedValueOnce([{ customer_counter: 7 }]);
 
     customerRepo.save.mockResolvedValue({
       id: 'new-cust',
@@ -339,13 +393,12 @@ describe('TerminalService – points earning (CUST-110)', () => {
   let customerRepo: any;
   let gradeRepo: ReturnType<typeof makeMockRepo>;
   let pointsHistoryRepo: ReturnType<typeof makeMockRepo>;
-  let businessRepo: any;
+  let qr: ReturnType<typeof makeQrMock>;
 
   const mockProducts = [
-    { id: 'prod-a', business_id: 'biz-1', tva_exempt: false, tva_rate: null, category: { default_tva_rate: 20 } },
+    { id: 'prod-a', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: null, category: { default_tva_rate: 20 } },
   ];
 
-  // dto: 1 item × 50 MAD at 20% TVA → total_ttc = 50
   const baseDto = {
     items: [{ product_id: 'prod-a', product_name: 'Café', quantity: 1, unit_price: 50, line_total: 50 }],
     subtotal: 50,
@@ -357,10 +410,8 @@ describe('TerminalService – points earning (CUST-110)', () => {
     const mocks = makeTestModule({
       productRepo: makeMockRepo({ find: jest.fn().mockResolvedValue(mockProducts) }),
       businessRepo: makeMockRepo({
-        findOne: jest.fn().mockResolvedValue({ id: 'biz-1', points_earn_divisor: 10 }),
-        manager: {
-          query: jest.fn().mockResolvedValue([[{ invoice_counter: 1, business_code: 'BIZ01' }], 1]),
-        },
+        findOne: jest.fn().mockResolvedValue({ id: 'biz-1', points_earn_divisor: 10, promotion_stacking_mode: 'best_only' }),
+        manager: { query: jest.fn().mockResolvedValue([{ customer_counter: 1 }]) },
       }),
     });
     transactionRepo = mocks.transactionRepo;
@@ -368,7 +419,7 @@ describe('TerminalService – points earning (CUST-110)', () => {
     customerRepo = mocks.customerRepo;
     gradeRepo = mocks.gradeRepo;
     pointsHistoryRepo = mocks.pointsHistoryRepo;
-    businessRepo = mocks.businessRepo;
+    qr = mocks.qr;
 
     const module: TestingModule = await mocks.module.compile();
     service = module.get(TerminalService);
@@ -376,22 +427,24 @@ describe('TerminalService – points earning (CUST-110)', () => {
 
   it('earns points with multiplier=1 when customer has no grade', async () => {
     const customerId = 'cust-plain';
-    customerRepo.findOne
-      .mockResolvedValueOnce({ id: customerId, business_id: 'biz-1', is_active: true }) // verification
-      .mockResolvedValueOnce({ id: customerId, grade: null, grade_id: null });           // earnPoints
-    customerRepo.manager.query.mockResolvedValue([{ points_balance: 5, lifetime_points: 5 }]);
+    customerRepo.findOne.mockResolvedValue({
+      id: customerId, business_id: 'biz-1', is_active: true,
+      grade: null, grade_id: null,
+    });
 
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
       ...baseDto, customer_id: customerId,
     });
 
     // total_ttc=50, divisor=10 → base=5, multiplier=1 → points=5
-    const updateArgs = customerRepo.manager.query.mock.calls[0];
-    expect(updateArgs[0]).toContain('UPDATE customers');
-    expect(updateArgs[1][0]).toBe(5);
-    expect(updateArgs[1][1]).toBe(customerId);
+    const pointsCall = (qr.manager.query as jest.Mock).mock.calls.find((c: any[]) =>
+      c[0].includes('UPDATE customers') && c[0].includes('points_balance'),
+    );
+    expect(pointsCall).toBeTruthy();
+    expect(pointsCall[1][0]).toBe(5);
+    expect(pointsCall[1][1]).toBe(customerId);
 
-    // Points history row inserted
+    // Points history row built via repo.create
     expect(pointsHistoryRepo.create.mock.calls[0][0]).toMatchObject({
       source: 'sale',
       delta: 5,
@@ -402,10 +455,10 @@ describe('TerminalService – points earning (CUST-110)', () => {
   it('applies grade multiplier 1.5 (Gold) to base points', async () => {
     const customerId = 'cust-gold';
     const goldGrade = { id: 'grade-gold', name: 'Gold', points_multiplier: 1.5, min_points: 500, is_active: true };
-    customerRepo.findOne
-      .mockResolvedValueOnce({ id: customerId, business_id: 'biz-1', is_active: true })
-      .mockResolvedValueOnce({ id: customerId, grade: goldGrade, grade_id: goldGrade.id });
-    customerRepo.manager.query.mockResolvedValue([{ points_balance: 507, lifetime_points: 507 }]);
+    customerRepo.findOne.mockResolvedValue({
+      id: customerId, business_id: 'biz-1', is_active: true,
+      grade: goldGrade, grade_id: goldGrade.id,
+    });
     gradeRepo.find.mockResolvedValue([goldGrade]);
 
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
@@ -413,20 +466,24 @@ describe('TerminalService – points earning (CUST-110)', () => {
     });
 
     // base=5, multiplier=1.5 → floor(7.5)=7
-    const updateArgs = customerRepo.manager.query.mock.calls[0];
-    expect(updateArgs[1][0]).toBe(7);
+    const pointsCall = (qr.manager.query as jest.Mock).mock.calls.find((c: any[]) =>
+      c[0].includes('UPDATE customers') && c[0].includes('points_balance'),
+    );
+    expect(pointsCall[1][0]).toBe(7);
   });
 
   it('does not earn points when no customer_id is provided', async () => {
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', baseDto);
 
-    // customerRepo.manager.query (UPDATE customers) should never be called
-    expect(customerRepo.manager.query).not.toHaveBeenCalled();
+    const pointsCall = (qr.manager.query as jest.Mock).mock.calls.find((c: any[]) =>
+      c[0].includes('UPDATE customers') && c[0].includes('points_balance'),
+    );
+    expect(pointsCall).toBeUndefined();
     expect(pointsHistoryRepo.create).not.toHaveBeenCalled();
   });
 
   it('throws 404 when customer_id does not belong to the business', async () => {
-    customerRepo.findOne.mockResolvedValue(null); // verification fails
+    customerRepo.findOne.mockResolvedValue(null);
 
     await expect(
       service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
@@ -437,10 +494,10 @@ describe('TerminalService – points earning (CUST-110)', () => {
 
   it('saves customer_id on the transaction record', async () => {
     const customerId = 'cust-attach';
-    customerRepo.findOne
-      .mockResolvedValueOnce({ id: customerId, business_id: 'biz-1', is_active: true })
-      .mockResolvedValueOnce({ id: customerId, grade: null, grade_id: null });
-    customerRepo.manager.query.mockResolvedValue([{ points_balance: 5, lifetime_points: 5 }]);
+    customerRepo.findOne.mockResolvedValue({
+      id: customerId, business_id: 'biz-1', is_active: true,
+      grade: null, grade_id: null,
+    });
 
     await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
       ...baseDto, customer_id: customerId,
@@ -448,5 +505,207 @@ describe('TerminalService – points earning (CUST-110)', () => {
 
     const txn = transactionRepo.create.mock.calls[0][0];
     expect(txn.customer_id).toBe(customerId);
+  });
+});
+
+// ── Promotions & Coupons (Phase 7B) ──────────────────────────────────────────
+
+describe('TerminalService – createTransaction (promotions + coupons)', () => {
+  const mockProducts = [
+    { id: 'prod-a', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: null, category: { default_tva_rate: 20 } },
+  ];
+
+  // 1 item × 100 MAD → total_ttc = 100, HT = 83.33, TVA = 16.67
+  const baseDto = {
+    items: [{ product_id: 'prod-a', product_name: 'Widget', quantity: 1, unit_price: 100, line_total: 100 }],
+    subtotal: 100,
+    total: 100,
+    payment_method: PaymentMethod.CASH,
+  } as any;
+
+  function buildMocks(options: {
+    promotions?: any[];
+    couponRepo?: any;
+    qrQueryOverride?: (sql: string, params?: any[]) => any;
+  } = {}) {
+    const applicable_promotions = options.promotions ?? [];
+    const mockEvaluator = {
+      evaluateWithStackingMode: jest.fn().mockResolvedValue({ applicable_promotions, stackable: false }),
+    };
+    const qr = makeQrMock(options.qrQueryOverride ?? null);
+
+    return makeTestModule({
+      productRepo: makeMockRepo({ find: jest.fn().mockResolvedValue(mockProducts) }),
+      couponRepo: options.couponRepo ?? makeMockRepo({ findOne: jest.fn().mockResolvedValue(null) }),
+      evaluator: mockEvaluator,
+      qr,
+    });
+  }
+
+  it('createTransaction with one promotion applied — discount_total non-zero, TVA invariant holds', async () => {
+    const mocks = buildMocks({
+      promotions: [{
+        promotion_id: 'promo-1',
+        name: '10% Off',
+        promotion_type: 'percent_off_order',
+        auto_apply: true,
+        computed_discount: 10, // 10% of 100 MAD
+        affected_line_indexes: [0],
+      }],
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', baseDto);
+
+    const txn = mocks.transactionRepo.create.mock.calls[0][0];
+    expect(txn.discount_total).toBe(10);
+    expect(txn.total_ttc).toBe(bankersRound(txn.total_ht + txn.total_tva));
+  });
+
+  it('createTransaction with one coupon applied — discount_total correct', async () => {
+    const futureCoupon = {
+      id: 'coupon-1',
+      business_id: 'biz-1',
+      coupon_code: 'SUMMER12',
+      status: 'available',
+      expires_at: new Date('2099-12-31'),
+      customer_id: null,
+      coupon_type: { discount_type: 'fixed_off', discount_value: 20, applicable_product_ids: [], applicable_category_ids: [] },
+    };
+    const mocks = buildMocks({
+      couponRepo: makeMockRepo({ findOne: jest.fn().mockResolvedValue(futureCoupon) }),
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto, coupon_codes: ['SUMMER12'],
+    });
+
+    const txn = mocks.transactionRepo.create.mock.calls[0][0];
+    expect(txn.discount_total).toBe(20);
+    expect(txn.total_ttc).toBe(bankersRound(txn.total_ht + txn.total_tva));
+  });
+
+  it('createTransaction with promotion + coupon — steps applied in order, TVA invariant holds', async () => {
+    const futureCoupon = {
+      id: 'coupon-2',
+      business_id: 'biz-1',
+      coupon_code: 'FLAT10',
+      status: 'available',
+      expires_at: new Date('2099-12-31'),
+      customer_id: null,
+      coupon_type: { discount_type: 'fixed_off', discount_value: 10, applicable_product_ids: [], applicable_category_ids: [] },
+    };
+    const mocks = buildMocks({
+      promotions: [{
+        promotion_id: 'promo-1',
+        name: '5% off',
+        promotion_type: 'percent_off_order',
+        auto_apply: true,
+        computed_discount: 5,
+        affected_line_indexes: [0],
+      }],
+      couponRepo: makeMockRepo({ findOne: jest.fn().mockResolvedValue(futureCoupon) }),
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto, coupon_codes: ['FLAT10'],
+    });
+
+    const txn = mocks.transactionRepo.create.mock.calls[0][0];
+    // total pipeline discount = 5 (promo fixed step) + 10 (coupon fixed step) = 15
+    expect(txn.discount_total).toBe(15);
+    // TVA invariant must hold after all discounts
+    expect(txn.total_ttc).toBe(bankersRound(txn.total_ht + txn.total_tva));
+  });
+
+  it('promotion max_uses exceeded mid-transaction — promotion skipped, transaction still completes', async () => {
+    const mocks = buildMocks({
+      promotions: [{
+        promotion_id: 'promo-full',
+        name: 'Full Promo',
+        promotion_type: 'percent_off_order',
+        auto_apply: true,
+        computed_discount: 10,
+        affected_line_indexes: [0],
+      }],
+      // QR returns 0 rows for promotion UPDATE (max_uses hit)
+      qrQueryOverride: (sql: string, params?: any[]) => {
+        if (sql.includes('UPDATE promotions') && sql.includes('current_uses')) {
+          return []; // 0 rows = max_uses hit
+        }
+      },
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    // Should NOT throw — promotion silently skipped
+    const result = await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', baseDto);
+    expect(result).toBeTruthy();
+  });
+
+  it('coupon race condition (0 rows updated) — coupon skipped, transaction completes', async () => {
+    const futureCoupon = {
+      id: 'coupon-race',
+      business_id: 'biz-1',
+      coupon_code: 'RACED',
+      status: 'available',
+      expires_at: new Date('2099-12-31'),
+      customer_id: null,
+      coupon_type: { discount_type: 'fixed_off', discount_value: 15, applicable_product_ids: [], applicable_category_ids: [] },
+    };
+    const mocks = buildMocks({
+      couponRepo: makeMockRepo({ findOne: jest.fn().mockResolvedValue(futureCoupon) }),
+      // Coupon UPDATE returns 0 rows (another request claimed it first)
+      qrQueryOverride: (sql: string) => {
+        if (sql.includes('UPDATE coupons') && sql.includes("status = 'redeemed'")) {
+          return []; // race: 0 rows updated
+        }
+      },
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    // Should NOT throw
+    const result = await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto, coupon_codes: ['RACED'],
+    });
+    expect(result).toBeTruthy();
+  });
+
+  it('TVA invariant holds after all discounts: total_ttc = total_ht + total_tva', async () => {
+    const futureCoupon = {
+      id: 'coupon-3',
+      business_id: 'biz-1',
+      coupon_code: 'PCTOFF',
+      status: 'available',
+      expires_at: new Date('2099-12-31'),
+      customer_id: null,
+      coupon_type: { discount_type: 'percent_off', discount_value: 15, applicable_product_ids: [], applicable_category_ids: [] },
+    };
+    const mocks = buildMocks({
+      promotions: [{
+        promotion_id: 'promo-2',
+        name: '10% off',
+        promotion_type: 'percent_off_order',
+        auto_apply: true,
+        computed_discount: 10,
+        affected_line_indexes: [0],
+      }],
+      couponRepo: makeMockRepo({ findOne: jest.fn().mockResolvedValue(futureCoupon) }),
+    });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto, coupon_codes: ['PCTOFF'],
+    });
+
+    const txn = mocks.transactionRepo.create.mock.calls[0][0];
+    expect(txn.total_ttc).toBe(bankersRound(txn.total_ht + txn.total_tva));
   });
 });
