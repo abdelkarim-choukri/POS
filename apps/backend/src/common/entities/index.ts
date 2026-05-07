@@ -19,3 +19,6 @@ export { Void } from './void.entity';
 export { Refund } from './refund.entity';
 export { SyncQueue } from './sync-queue.entity';
 export { AuditLog } from './audit-log.entity';
+export { PointsExchangeRule } from './points-exchange-rule.entity';
+export { PointsExchangeRuleDetail } from './points-exchange-rule-detail.entity';
+export { PointsExchangeRedemption } from './points-exchange-redemption.entity';
