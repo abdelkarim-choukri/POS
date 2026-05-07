@@ -5,6 +5,8 @@ import { PromotionService } from './promotion.service';
 import { PromotionEvaluatorService } from './promotion-evaluator.service';
 import { CouponController } from './coupon.controller';
 import { CouponService } from './coupon.service';
+import { PointsExchangeController } from './pex.controller';
+import { PointsExchangeService } from './pex.service';
 import { Promotion } from '../../common/entities/promotion.entity';
 import { PromotionRedemption } from '../../common/entities/promotion-redemption.entity';
 import { CouponType } from '../../common/entities/coupon-type.entity';
@@ -16,6 +18,10 @@ import { CustomerLabel } from '../../common/entities/customer-label.entity';
 import { Customer } from '../../common/entities/customer.entity';
 import { CustomerLabelAssignment } from '../../common/entities/customer-label-assignment.entity';
 import { Location } from '../../common/entities/location.entity';
+import { PointsExchangeRule } from '../../common/entities/points-exchange-rule.entity';
+import { PointsExchangeRuleDetail } from '../../common/entities/points-exchange-rule-detail.entity';
+import { PointsExchangeRedemption } from '../../common/entities/points-exchange-redemption.entity';
+import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
 
 @Module({
   imports: [
@@ -25,10 +31,12 @@ import { Location } from '../../common/entities/location.entity';
       Category, Product,
       CustomerGrade, CustomerLabel, Customer, CustomerLabelAssignment,
       Location,
+      PointsExchangeRule, PointsExchangeRuleDetail, PointsExchangeRedemption,
+      CustomerPointsHistory,
     ]),
   ],
-  controllers: [PromotionController, CouponController],
-  providers: [PromotionService, PromotionEvaluatorService, CouponService],
-  exports: [PromotionService, PromotionEvaluatorService, CouponService],
+  controllers: [PromotionController, CouponController, PointsExchangeController],
+  providers: [PromotionService, PromotionEvaluatorService, CouponService, PointsExchangeService],
+  exports: [PromotionService, PromotionEvaluatorService, CouponService, PointsExchangeService],
 })
 export class PromotionModule {}

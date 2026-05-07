@@ -3,7 +3,7 @@ import {
   UnprocessableEntityException, HttpException, HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, QueryRunner } from 'typeorm';
 import { CouponType } from '../../common/entities/coupon-type.entity';
 import { Coupon } from '../../common/entities/coupon.entity';
 import {
@@ -135,6 +135,41 @@ export class CouponService {
       issue_source: 'manual',
     });
     return this.couponRepo.save(coupon);
+  }
+
+  // [PEX-011 helper] Issue coupon inside an existing QueryRunner transaction
+  async issueCouponInQr(
+    queryRunner: QueryRunner,
+    couponTypeId: string,
+    businessId: string,
+    validityDays: number,
+    customerId?: string,
+    issueSource = 'points_exchange',
+  ): Promise<Coupon> {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + validityDays);
+
+    let couponCode = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      couponCode = randomAlphanumeric(12);
+      const dupe = await queryRunner.manager.findOne(Coupon, {
+        where: { business_id: businessId, coupon_code: couponCode },
+      });
+      if (!dupe) break;
+      if (attempt === 4) throw new ConflictException('Could not generate unique coupon code');
+    }
+
+    const coupon = queryRunner.manager.create(Coupon, {
+      business_id: businessId,
+      coupon_type_id: couponTypeId,
+      coupon_code: couponCode,
+      customer_id: customerId,
+      issued_at: new Date(),
+      expires_at: expiresAt,
+      status: 'available',
+      issue_source: issueSource,
+    });
+    return queryRunner.manager.save(Coupon, coupon);
   }
 
   // [CPN-020] Lookup coupon by code — 404 if not found, 410 if redeemed
