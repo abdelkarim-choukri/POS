@@ -338,9 +338,22 @@ All 13 deliverables complete. 121 tests passing.
 - [x] `coupon.service.spec.ts` — 8 test cases covering all CouponService operations + cross-tenant 404
 - [x] `terminal.service.spec.ts` updated — existing tests adapted to QueryRunner mock + 6 new tests (promo applied, coupon applied, combined, max_uses race, coupon race, TVA invariant)
 
-### Phases 8-15 — see extension spec §14 (PENDING)
+### Phase 8 — Points Exchange (DONE)
 
-Order: 8 (PEX) → 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+All 9 deliverables complete.
+
+- [x] Migration `1714005000000-AddPointsExchange` — `points_exchange_rules`, `points_exchange_rule_details`, `points_exchange_redemptions` + §13.3 indexes
+- [x] 3 entities: `PointsExchangeRule`, `PointsExchangeRuleDetail`, `PointsExchangeRedemption`
+- [x] `CouponService.issueCouponInQr()` — issues coupon inside an existing QueryRunner transaction (used by PEX-011)
+- [x] `PointsExchangeService` — list/getDetail/checkPointValue/create (atomic QR)/update (point_value immutable once used)/deactivate/listRedeemableForCustomer/redeem (full atomic QueryRunner flow)/report (PEX-001–PEX-020)
+- [x] PEX-011 atomic flow: `SELECT FOR UPDATE` customer, check points + per-customer/daily/total limits, `UPDATE points_exchange_rules ... RETURNING id` (concurrent race guard), decrement points, insert history, create ephemeral CouponType for `free_product`/`discount` rule types, issue coupon via `issueCouponInQr`, insert redemption — all in one transaction
+- [x] `PointsExchangeController` — 9 endpoints under `/api/business/points-exchange-rules/…` and `/api/business/reports/points-exchange`; `check-point-value` and `redeemable-for-customer` routes declared before `/:id`; `can_redeem_points` guard on PEX-011
+- [x] `PromotionModule` updated — PEX entities, service, controller registered
+- [x] `pex.service.spec.ts` — 10 test cases covering all PEX operations + cross-tenant 404
+
+### Phases 9-15 — see extension spec §14 (PENDING)
+
+Order: 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 
