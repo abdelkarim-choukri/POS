@@ -19,21 +19,21 @@ export class PointsExchangeRuleDetail {
   rule: PointsExchangeRule;
 
   @Column({ type: 'uuid', nullable: true })
-  coupon_type_id: string;
+  coupon_type_id: string | null;
 
   @ManyToOne(() => CouponType, { nullable: true })
   @JoinColumn({ name: 'coupon_type_id' })
   coupon_type: CouponType;
 
   @Column({ type: 'uuid', nullable: true })
-  product_id: string;
+  product_id: string | null;
 
   @ManyToOne(() => Product, { nullable: true })
   @JoinColumn({ name: 'product_id' })
   product: Product;
 
   @Column({ type: 'uuid', nullable: true })
-  variant_id: string;
+  variant_id: string | null;
 
   @ManyToOne(() => ProductVariant, { nullable: true })
   @JoinColumn({ name: 'variant_id' })
@@ -43,5 +43,5 @@ export class PointsExchangeRuleDetail {
   quantity_per_redemption: number;
 
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
-  discount_amount_mad: number;
+  discount_amount_mad: number | null;
 }

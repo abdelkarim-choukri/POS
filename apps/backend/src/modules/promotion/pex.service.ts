@@ -313,7 +313,8 @@ export class PointsExchangeService {
       expiresAt.setDate(expiresAt.getDate() + rule.validity_days);
 
       if (rule.rule_type === 'coupon') {
-        // Use the linked coupon_type directly
+        // Use the linked coupon_type directly — guaranteed non-null for coupon rule_type
+        if (!detail.coupon_type_id) throw new UnprocessableEntityException('Rule detail missing coupon_type_id');
         couponTypeId = detail.coupon_type_id;
       } else if (rule.rule_type === 'free_product') {
         // Create ephemeral CouponType with free_item discount type

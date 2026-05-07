@@ -37,14 +37,14 @@ export class PointsExchangeRedemption {
   points_spent: number;
 
   @Column({ type: 'uuid', nullable: true })
-  granted_coupon_id: string;
+  granted_coupon_id: string | null;
 
   @ManyToOne(() => Coupon, { nullable: true })
   @JoinColumn({ name: 'granted_coupon_id' })
   granted_coupon: Coupon;
 
   @Column({ type: 'uuid', nullable: true })
-  granted_in_transaction_id: string;
+  granted_in_transaction_id: string | null;
 
   @ManyToOne(() => Transaction, { nullable: true })
   @JoinColumn({ name: 'granted_in_transaction_id' })

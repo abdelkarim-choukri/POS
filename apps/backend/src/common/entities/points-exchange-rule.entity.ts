@@ -34,10 +34,10 @@ export class PointsExchangeRule {
   validity_days: number;
 
   @Column({ type: 'date', nullable: true })
-  rule_start_date: string;
+  rule_start_date: string | null;
 
   @Column({ type: 'date', nullable: true })
-  rule_end_date: string;
+  rule_end_date: string | null;
 
   @Column({ type: 'uuid', array: true, default: '{}' })
   applicable_location_ids: string[];
@@ -55,7 +55,7 @@ export class PointsExchangeRule {
   current_redemptions: number;
 
   @Column({ type: 'text', nullable: true })
-  remark: string;
+  remark: string | null;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;

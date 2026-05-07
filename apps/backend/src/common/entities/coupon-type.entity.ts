@@ -25,7 +25,7 @@ export class CouponType {
   name: string;
 
   @Column({ type: 'text', nullable: true })
-  description: string;
+  description: string | null;
 
   @Column({ type: 'varchar', length: 20 })
   discount_type: string;
@@ -34,14 +34,14 @@ export class CouponType {
   discount_value: number;
 
   @Column({ type: 'uuid', nullable: true })
-  free_item_product_id: string;
+  free_item_product_id: string | null;
 
   @ManyToOne(() => Product, { nullable: true })
   @JoinColumn({ name: 'free_item_product_id' })
   free_item_product: Product;
 
   @Column({ type: 'uuid', nullable: true })
-  free_item_variant_id: string;
+  free_item_variant_id: string | null;
 
   @ManyToOne(() => ProductVariant, { nullable: true })
   @JoinColumn({ name: 'free_item_variant_id' })

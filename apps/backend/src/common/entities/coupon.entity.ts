@@ -29,7 +29,7 @@ export class Coupon {
   coupon_code: string;
 
   @Column({ type: 'uuid', nullable: true })
-  customer_id: string;
+  customer_id: string | null;
 
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'customer_id' })
@@ -39,7 +39,7 @@ export class Coupon {
   issued_at: Date;
 
   @Column({ type: 'uuid', nullable: true })
-  issued_by_user_id: string;
+  issued_by_user_id: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'issued_by_user_id' })
@@ -52,17 +52,17 @@ export class Coupon {
   expires_at: Date;
 
   @Column({ type: 'timestamptz', nullable: true })
-  redeemed_at: Date;
+  redeemed_at: Date | null;
 
   @Column({ type: 'uuid', nullable: true })
-  redeemed_in_transaction_id: string;
+  redeemed_in_transaction_id: string | null;
 
   @ManyToOne(() => Transaction, { nullable: true })
   @JoinColumn({ name: 'redeemed_in_transaction_id' })
   redeemed_in_transaction: Transaction;
 
   @Column({ type: 'uuid', nullable: true })
-  redeemed_by_terminal_id: string;
+  redeemed_by_terminal_id: string | null;
 
   @ManyToOne(() => Terminal, { nullable: true })
   @JoinColumn({ name: 'redeemed_by_terminal_id' })
