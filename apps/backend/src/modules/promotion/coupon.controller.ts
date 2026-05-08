@@ -3,14 +3,22 @@ import {
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { CouponService } from './coupon.service';
+import { CouponExtService } from './coupon-ext.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
-import { CreateCouponTypeDto, UpdateCouponTypeDto, IssueCouponDto } from './dto/coupon.dto';
+import {
+  CreateCouponTypeDto, UpdateCouponTypeDto, IssueCouponDto,
+  VoidCouponDto, BulkIssueCouponDto, IssueToSegmentDto,
+  CouponReportQueryDto, DiscountWriteOffReportQueryDto,
+} from './dto/coupon.dto';
 
 @Controller('business')
 @UseGuards(RolesGuard)
 export class CouponController {
-  constructor(private readonly service: CouponService) {}
+  constructor(
+    private readonly service: CouponService,
+    private readonly extService: CouponExtService,
+  ) {}
 
   // [CPN-001]
   @Get('coupon-types')
@@ -83,7 +91,7 @@ export class CouponController {
     return this.service.issueCoupon(id, businessId, dto);
   }
 
-  // [CPN-020]
+  // [CPN-020] — must be declared before /:id/void to avoid route collision
   @Get('coupons/lookup')
   @Roles('owner', 'manager', 'employee')
   lookupCoupon(
@@ -91,5 +99,58 @@ export class CouponController {
     @Query('code') code: string,
   ) {
     return this.service.lookupCoupon(code, businessId);
+  }
+
+  // [CPN-021] Bulk issue — declared before /:id routes
+  @Post('coupons/bulk-issue')
+  @Roles('owner', 'manager')
+  bulkIssueCoupons(
+    @CurrentUser('business_id') businessId: string,
+    @Body() dto: BulkIssueCouponDto,
+  ) {
+    return this.extService.bulkIssueCoupons(businessId, dto);
+  }
+
+  // [CPN-022] Issue to segment — declared before /:id routes
+  @Post('coupons/issue-to-segment')
+  @Roles('owner', 'manager')
+  issueToSegment(
+    @CurrentUser('business_id') businessId: string,
+    @Body() dto: IssueToSegmentDto,
+  ) {
+    return this.extService.issueToSegment(businessId, dto);
+  }
+
+  // [CPN-033] Void coupon
+  @Post('coupons/:id/void')
+  @Roles('owner', 'manager')
+  @HttpCode(HttpStatus.OK)
+  voidCoupon(
+    @Param('id') id: string,
+    @CurrentUser('business_id') businessId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: VoidCouponDto,
+  ) {
+    return this.service.voidCoupon(id, businessId, dto, userId);
+  }
+
+  // [CPN-040] Coupon usage report
+  @Get('reports/coupons')
+  @Roles('owner', 'manager')
+  couponReport(
+    @CurrentUser('business_id') businessId: string,
+    @Query() query: CouponReportQueryDto,
+  ) {
+    return this.extService.couponReport(businessId, query);
+  }
+
+  // [XCC-040] Discount write-off report
+  @Get('reports/discount-write-offs')
+  @Roles('owner', 'manager')
+  discountWriteOffReport(
+    @CurrentUser('business_id') businessId: string,
+    @Query() query: DiscountWriteOffReportQueryDto,
+  ) {
+    return this.extService.discountWriteOffReport(businessId, query);
   }
 }

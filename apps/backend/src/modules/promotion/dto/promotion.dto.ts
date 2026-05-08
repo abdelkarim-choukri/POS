@@ -358,3 +358,16 @@ export class ListPromotionsQueryDto {
   @IsString()
   search?: string;
 }
+
+// [PROM-050]
+export class PromotionReportQueryDto {
+  @IsDateString()
+  from_date: string;
+
+  @IsDateString()
+  to_date: string;
+
+  @IsOptional()
+  @IsUUID()
+  promotion_id?: string;
+}

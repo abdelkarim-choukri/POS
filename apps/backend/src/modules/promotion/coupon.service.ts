@@ -7,7 +7,7 @@ import { Repository, QueryRunner } from 'typeorm';
 import { CouponType } from '../../common/entities/coupon-type.entity';
 import { Coupon } from '../../common/entities/coupon.entity';
 import {
-  CreateCouponTypeDto, UpdateCouponTypeDto, IssueCouponDto,
+  CreateCouponTypeDto, UpdateCouponTypeDto, IssueCouponDto, VoidCouponDto,
   COUPON_TYPE_LOCKED_FIELDS,
 } from './dto/coupon.dto';
 
@@ -170,6 +170,27 @@ export class CouponService {
       issue_source: issueSource,
     });
     return queryRunner.manager.save(Coupon, coupon);
+  }
+
+  // [CPN-033] Void coupon — only available coupons can be voided
+  async voidCoupon(
+    id: string,
+    businessId: string,
+    dto: VoidCouponDto,
+    voidedByUserId: string,
+  ): Promise<{ coupon: Coupon; voided_by_user_id: string; reason: string }> {
+    const coupon = await this.couponRepo.findOne({ where: { id, business_id: businessId } });
+    if (!coupon) throw new NotFoundException('Coupon not found');
+
+    if (coupon.status !== 'available') {
+      throw new UnprocessableEntityException(
+        `Cannot void a coupon with status "${coupon.status}". Only available coupons can be voided.`,
+      );
+    }
+
+    coupon.status = 'voided';
+    const saved = await this.couponRepo.save(coupon);
+    return { coupon: saved, voided_by_user_id: voidedByUserId, reason: dto.reason };
   }
 
   // [CPN-020] Lookup coupon by code — 404 if not found, 410 if redeemed

@@ -12,7 +12,7 @@ import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerLabel } from '../../common/entities/customer-label.entity';
 import { Customer } from '../../common/entities/customer.entity';
 import { Location } from '../../common/entities/location.entity';
-import { CreatePromotionDto, UpdatePromotionDto, ListPromotionsQueryDto } from './dto/promotion.dto';
+import { CreatePromotionDto, UpdatePromotionDto, ListPromotionsQueryDto, PromotionReportQueryDto } from './dto/promotion.dto';
 
 // Fields that become immutable once a promotion has been redeemed at least once
 const LOCKED_FIELDS = ['value', 'promotion_type', 'target_category_id', 'target_product_id',
@@ -242,5 +242,53 @@ export class PromotionService {
     }
     p.status = 'archived';
     return this.promoRepo.save(p);
+  }
+
+  // ── PROM-050: Promotion performance report ────────────────────────────────
+
+  async promotionReport(businessId: string, query: PromotionReportQueryDto) {
+    const from = new Date(query.from_date);
+    const to = new Date(query.to_date + 'T23:59:59.999Z');
+
+    const qb = this.redemptionRepo
+      .createQueryBuilder('pr')
+      .innerJoin('pr.promotion', 'p')
+      .innerJoin('pr.transaction', 't')
+      .select('pr.promotion_id', 'promotion_id')
+      .addSelect('p.name', 'promotion_name')
+      .addSelect('COUNT(pr.id)', 'total_redemptions')
+      .addSelect('COALESCE(SUM(pr.discount_applied), 0)', 'total_discount_given')
+      .addSelect('COUNT(DISTINCT pr.customer_id)', 'unique_customers')
+      .addSelect('COALESCE(SUM(t.total_ttc), 0)', 'revenue_with_promotion')
+      .where('pr.business_id = :businessId', { businessId })
+      .andWhere('pr.redeemed_at >= :from', { from })
+      .andWhere('pr.redeemed_at <= :to', { to })
+      .groupBy('pr.promotion_id, p.name');
+
+    if (query.promotion_id) {
+      qb.andWhere('pr.promotion_id = :promoId', { promoId: query.promotion_id });
+    }
+
+    const rows = await qb.getRawMany();
+
+    const perPromotion = rows.map((r) => ({
+      promotion_id: r.promotion_id,
+      promotion_name: r.promotion_name,
+      total_redemptions: parseInt(r.total_redemptions ?? '0'),
+      total_discount_given: parseFloat(r.total_discount_given ?? '0'),
+      unique_customers: parseInt(r.unique_customers ?? '0'),
+      revenue_with_promotion: parseFloat(r.revenue_with_promotion ?? '0'),
+    }));
+
+    const totals = perPromotion.reduce(
+      (acc, r) => ({
+        total_redemptions: acc.total_redemptions + r.total_redemptions,
+        total_discount_given: parseFloat((acc.total_discount_given + r.total_discount_given).toFixed(2)),
+        revenue_with_promotion: parseFloat((acc.revenue_with_promotion + r.revenue_with_promotion).toFixed(2)),
+      }),
+      { total_redemptions: 0, total_discount_given: 0, revenue_with_promotion: 0 },
+    );
+
+    return { per_promotion: perPromotion, totals };
   }
 }

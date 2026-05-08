@@ -338,6 +338,20 @@ All 13 deliverables complete. 121 tests passing.
 - [x] `coupon.service.spec.ts` — 8 test cases covering all CouponService operations + cross-tenant 404
 - [x] `terminal.service.spec.ts` updated — existing tests adapted to QueryRunner mock + 6 new tests (promo applied, coupon applied, combined, max_uses race, coupon race, TVA invariant)
 
+### Phase 7 Part C — Promotions & Coupons Reports + Bulk Issuance (DONE)
+
+All 6 deliverables complete. 211 tests passing.
+
+- [x] `CouponService.voidCoupon` — `POST /api/business/coupons/:id/void`; 422 if not available; returns `voided_by_user_id` in response (CPN-033)
+- [x] `CouponExtService.bulkIssueCoupons` — `POST /api/business/coupons/bulk-issue`; sync (≤100 customers) or BullMQ background job (>100) (CPN-021)
+- [x] `CouponExtService.issueToSegment` — `POST /api/business/coupons/issue-to-segment`; always async; processor resolves all/grade/label segments (CPN-022)
+- [x] `PromotionService.promotionReport` — `GET /api/business/reports/promotions`; per-promotion + grand totals from `promotion_redemptions` JOIN `transactions` (PROM-050)
+- [x] `CouponExtService.couponReport` — `GET /api/business/reports/coupons`; per-coupon-type breakdown: issued/redeemed/expired/voided/discount_given/redemption_rate (CPN-040)
+- [x] `CouponExtService.discountWriteOffReport` — `GET /api/business/reports/discount-write-offs`; per-terminal breakdown + grand totals (XCC-040)
+- [x] `CouponBulkIssueProcessor` — BullMQ `@Processor('coupon-bulk-issue')`; per-item error isolation; tracks `{ issued, failed, total, errors }` in `result_json`
+- [x] `PromotionModule` updated — `CouponExtService`, `CouponBulkIssueProcessor`, `BullModule.registerQueue`, `CouponRedemption`, `DiscountWriteOff` entities added
+- [x] 18 new tests across 3 spec files: `coupon-void.spec.ts`, `coupon-ext.spec.ts`, `promotion-report.spec.ts`
+
 ### Phase 8 — Points Exchange (DONE)
 
 All 9 deliverables complete.

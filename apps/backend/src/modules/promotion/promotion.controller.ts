@@ -5,7 +5,7 @@ import {
 import { PromotionService } from './promotion.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
-import { CreatePromotionDto, UpdatePromotionDto, ListPromotionsQueryDto } from './dto/promotion.dto';
+import { CreatePromotionDto, UpdatePromotionDto, ListPromotionsQueryDto, PromotionReportQueryDto } from './dto/promotion.dto';
 
 @Controller('business')
 @UseGuards(RolesGuard)
@@ -85,5 +85,15 @@ export class PromotionController {
     @CurrentUser('business_id') businessId: string,
   ) {
     return this.service.archive(id, businessId);
+  }
+
+  // [PROM-050]
+  @Get('reports/promotions')
+  @Roles('owner', 'manager')
+  promotionReport(
+    @CurrentUser('business_id') businessId: string,
+    @Query() query: PromotionReportQueryDto,
+  ) {
+    return this.service.promotionReport(businessId, query);
   }
 }

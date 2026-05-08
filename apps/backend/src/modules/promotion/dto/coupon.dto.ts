@@ -1,5 +1,5 @@
 import {
-  IsString, IsOptional, IsNumber, IsBoolean, IsUUID,
+  IsString, IsOptional, IsNumber, IsBoolean, IsUUID, IsDateString,
   IsIn, IsInt, Min, IsArray,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -97,4 +97,81 @@ export class IssueCouponDto {
   @IsOptional()
   @IsUUID()
   customer_id?: string;
+}
+
+// [CPN-033]
+export class VoidCouponDto {
+  @IsString()
+  reason: string;
+}
+
+// [CPN-021]
+export class BulkIssueCouponDto {
+  @IsUUID()
+  coupon_type_id: string;
+
+  @IsArray()
+  @IsUUID('all', { each: true })
+  customer_ids: string[];
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+// [CPN-022]
+export class IssueToSegmentDto {
+  @IsUUID()
+  coupon_type_id: string;
+
+  @IsIn(['all', 'grade', 'label'])
+  target_audience: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  target_grade_ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  target_label_ids?: string[];
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+// [CPN-040]
+export class CouponReportQueryDto {
+  @IsDateString()
+  from_date: string;
+
+  @IsDateString()
+  to_date: string;
+
+  @IsOptional()
+  @IsUUID()
+  coupon_type_id?: string;
+
+  @IsOptional()
+  @IsString()
+  issue_source?: string;
+}
+
+// [XCC-040]
+export class DiscountWriteOffReportQueryDto {
+  @IsDateString()
+  from_date: string;
+
+  @IsDateString()
+  to_date: string;
+
+  @IsOptional()
+  @IsUUID()
+  terminal_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  coupon_id?: string;
 }
