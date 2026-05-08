@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { SuperAdminService } from './super-admin.service';
-import { Roles } from '../../common/decorators';
+import { Roles, CurrentUser } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 import { PaginationDto } from '../../common/dto';
 import {
@@ -9,6 +9,9 @@ import {
   CreateBusinessTypeDto, UpdateFeaturesDto,
   CreateSubscriptionDto, UpdateSubscriptionDto,
 } from './dto';
+import {
+  CreatePlatformAnnouncementDto, UpdatePlatformAnnouncementDto, ListPlatformAnnouncementsQueryDto,
+} from '../communications/dto/communications.dto';
 
 @Controller('super')
 @Roles('super_admin')
@@ -104,5 +107,34 @@ export class SuperAdminController {
   @Get('audit-logs')
   getAuditLogs(@Query() pagination: PaginationDto) {
     return this.service.getAuditLogs(pagination);
+  }
+
+  // ── COM-001/002/003/004: Platform announcements ────────────────────────────
+
+  @Get('announcements')
+  listPlatformAnnouncements(@Query() query: ListPlatformAnnouncementsQueryDto) {
+    return this.service.listPlatformAnnouncements(query);
+  }
+
+  @Post('announcements')
+  createPlatformAnnouncement(
+    @Body() dto: CreatePlatformAnnouncementDto,
+    @CurrentUser('id') superAdminId: string,
+  ) {
+    return this.service.createPlatformAnnouncement(dto, superAdminId);
+  }
+
+  @Patch('announcements/:id')
+  updatePlatformAnnouncement(
+    @Param('id') id: string,
+    @Body() dto: UpdatePlatformAnnouncementDto,
+  ) {
+    return this.service.updatePlatformAnnouncement(id, dto);
+  }
+
+  @Delete('announcements/:id')
+  @HttpCode(HttpStatus.OK)
+  deletePlatformAnnouncement(@Param('id') id: string) {
+    return this.service.deletePlatformAnnouncement(id);
   }
 }

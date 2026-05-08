@@ -13,6 +13,7 @@ import { KdsModule } from './modules/kds/kds.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobModule } from './modules/jobs/job.module';
 import { PromotionModule } from './modules/promotion/promotion.module';
+import { CommunicationsModule } from './modules/communications/communications.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -31,6 +32,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     BusinessModule,
     CustomerModule,
     PromotionModule,
+    CommunicationsModule,
     TerminalModule,
     KdsModule,
     HealthModule,

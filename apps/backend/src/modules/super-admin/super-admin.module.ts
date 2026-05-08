@@ -10,12 +10,14 @@ import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { Subscription } from '../../common/entities/subscription.entity';
 import { AuditLog } from '../../common/entities/audit-log.entity';
+import { PlatformAnnouncement } from '../../common/entities/platform-announcement.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Business, BusinessType, BusinessTypeFeature,
       Location, Terminal, User, Subscription, AuditLog,
+      PlatformAnnouncement,
     ]),
   ],
   controllers: [SuperAdminController],

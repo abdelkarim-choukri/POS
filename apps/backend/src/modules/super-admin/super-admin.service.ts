@@ -10,6 +10,7 @@ import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { Subscription } from '../../common/entities/subscription.entity';
 import { AuditLog } from '../../common/entities/audit-log.entity';
+import { PlatformAnnouncement } from '../../common/entities/platform-announcement.entity';
 import { UserRole, SubscriptionStatus } from '../../common/enums';
 import { PaginationDto, PaginatedResult } from '../../common/dto';
 import {
@@ -18,6 +19,9 @@ import {
   CreateBusinessTypeDto, UpdateFeaturesDto,
   CreateSubscriptionDto, UpdateSubscriptionDto,
 } from './dto';
+import {
+  CreatePlatformAnnouncementDto, UpdatePlatformAnnouncementDto, ListPlatformAnnouncementsQueryDto,
+} from '../communications/dto/communications.dto';
 
 @Injectable()
 export class SuperAdminService {
@@ -30,6 +34,8 @@ export class SuperAdminService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Subscription) private subscriptionRepo: Repository<Subscription>,
     @InjectRepository(AuditLog) private auditLogRepo: Repository<AuditLog>,
+    @InjectRepository(PlatformAnnouncement)
+    private platformAnnouncementRepo: Repository<PlatformAnnouncement>,
   ) {}
 
   // ---- Business Management ----
@@ -240,5 +246,63 @@ export class SuperAdminService {
       take: limit,
     });
     return new PaginatedResult(data, total, page, limit);
+  }
+
+  // ── COM-001: List platform announcements ────────────────────────────────────
+
+  async listPlatformAnnouncements(query: ListPlatformAnnouncementsQueryDto) {
+    const { page = 1, limit = 20, severity } = query;
+    const qb = this.platformAnnouncementRepo
+      .createQueryBuilder('a')
+      .orderBy('a.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (severity) qb.where('a.severity = :severity', { severity });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  // ── COM-002: Create platform announcement ───────────────────────────────────
+
+  async createPlatformAnnouncement(dto: CreatePlatformAnnouncementDto, superAdminId: string) {
+    const a = this.platformAnnouncementRepo.create({
+      title: dto.title,
+      body: dto.body,
+      severity: dto.severity ?? 'info',
+      target_business_type_ids: dto.target_business_type_ids ?? [],
+      target_business_ids: dto.target_business_ids ?? [],
+      display_on_homepage: dto.display_on_homepage ?? false,
+      display_until: dto.display_until ? new Date(dto.display_until) : null,
+      created_by_user_id: superAdminId,
+    });
+    return this.platformAnnouncementRepo.save(a);
+  }
+
+  // ── COM-003: Update platform announcement ───────────────────────────────────
+
+  async updatePlatformAnnouncement(id: string, dto: UpdatePlatformAnnouncementDto) {
+    const a = await this.platformAnnouncementRepo.findOne({ where: { id } });
+    if (!a) throw new NotFoundException('Announcement not found');
+
+    if (dto.title !== undefined) a.title = dto.title;
+    if (dto.body !== undefined) a.body = dto.body;
+    if (dto.severity !== undefined) a.severity = dto.severity;
+    if (dto.target_business_type_ids !== undefined) a.target_business_type_ids = dto.target_business_type_ids;
+    if (dto.target_business_ids !== undefined) a.target_business_ids = dto.target_business_ids;
+    if (dto.display_on_homepage !== undefined) a.display_on_homepage = dto.display_on_homepage;
+    if (dto.display_until !== undefined) a.display_until = dto.display_until ? new Date(dto.display_until) : null;
+
+    return this.platformAnnouncementRepo.save(a);
+  }
+
+  // ── COM-004: Delete platform announcement (hard delete) ─────────────────────
+
+  async deletePlatformAnnouncement(id: string) {
+    const a = await this.platformAnnouncementRepo.findOne({ where: { id } });
+    if (!a) throw new NotFoundException('Announcement not found');
+    await this.platformAnnouncementRepo.remove(a);
+    return { deleted: true };
   }
 }

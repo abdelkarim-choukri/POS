@@ -365,9 +365,28 @@ All 9 deliverables complete.
 - [x] `PromotionModule` updated — PEX entities, service, controller registered
 - [x] `pex.service.spec.ts` — 10 test cases covering all PEX operations + cross-tenant 404
 
-### Phases 9-15 — see extension spec §14 (PENDING)
+### Phase 9 Part A — Communications: Announcements + Channels (DONE)
 
-Order: 9 (COM) → 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+All deliverables complete. 234 tests passing.
+
+- [x] Migration `1714006000000-AddCommunications` — 6 tables: `platform_announcements`, `user_announcement_dismissals`, `business_announcements`, `notification_channels` (composite PK `business_id+channel`), `notification_templates`, `notification_sends` + §13.3 indexes
+- [x] 6 new entities: `PlatformAnnouncement`, `UserAnnouncementDismissal`, `BusinessAnnouncement`, `NotificationChannel`, `NotificationTemplate`, `NotificationSend`
+- [x] `SuperAdminService` + `SuperAdminController` extended — `GET/POST/PATCH/DELETE /api/super/announcements[/:id]` (COM-001–004)
+- [x] `CommunicationsModule` — new module at `src/modules/communications/`
+- [x] `CommunicationsService.getActivePlatformAnnouncements` — filters by business type + business ID, excludes dismissed (COM-005)
+- [x] `CommunicationsService.dismissPlatformAnnouncement` — idempotent, `POST /api/business/platform-announcements/:id/dismiss` (COM-006)
+- [x] Business Announcements CRUD — `GET/POST/PATCH/DELETE /api/business/announcements[/:id]` (COM-010)
+- [x] `CommunicationsService.getAnnouncementsForMe` — `GET /api/business/announcements/for-me`, filters by role + active + display_until (COM-011)
+- [x] `getChannels` — returns channels with `provider_config_json` fully redacted (COM-020)
+- [x] `upsertChannel` — TypeORM upsert on `(business_id, channel)` PK (COM-021)
+- [x] `testChannel` — stub (COM-022); `refreshSmsBalance` — stub (COM-030); `getSmsBalance` — cached value or null (COM-031)
+- [x] 23 new tests across 2 spec files: `communications.service.spec.ts`, `super-admin-announcements.spec.ts`
+
+### Phase 9 Part B — Communications: Templates + Sending + Opt-out (PENDING)
+
+### Phases 10-15 — see extension spec §14 (PENDING)
+
+Order: 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 
