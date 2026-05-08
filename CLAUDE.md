@@ -365,24 +365,38 @@ All 9 deliverables complete.
 - [x] `PromotionModule` updated — PEX entities, service, controller registered
 - [x] `pex.service.spec.ts` — 10 test cases covering all PEX operations + cross-tenant 404
 
-### Phase 9 Part A — Communications: Announcements + Channels (DONE)
+### Phase 9 — Communications (DONE)
 
-All deliverables complete. 234 tests passing.
+All deliverables complete. 262 tests passing (22 suites).
+
+**Part A — Announcements + Channels**
 
 - [x] Migration `1714006000000-AddCommunications` — 6 tables: `platform_announcements`, `user_announcement_dismissals`, `business_announcements`, `notification_channels` (composite PK `business_id+channel`), `notification_templates`, `notification_sends` + §13.3 indexes
 - [x] 6 new entities: `PlatformAnnouncement`, `UserAnnouncementDismissal`, `BusinessAnnouncement`, `NotificationChannel`, `NotificationTemplate`, `NotificationSend`
-- [x] `SuperAdminService` + `SuperAdminController` extended — `GET/POST/PATCH/DELETE /api/super/announcements[/:id]` (COM-001–004)
+- [x] Super admin platform announcement CRUD — `GET/POST/PATCH/DELETE /api/super/announcements[/:id]` (COM-001–004)
 - [x] `CommunicationsModule` — new module at `src/modules/communications/`
-- [x] `CommunicationsService.getActivePlatformAnnouncements` — filters by business type + business ID, excludes dismissed (COM-005)
-- [x] `CommunicationsService.dismissPlatformAnnouncement` — idempotent, `POST /api/business/platform-announcements/:id/dismiss` (COM-006)
-- [x] Business Announcements CRUD — `GET/POST/PATCH/DELETE /api/business/announcements[/:id]` (COM-010)
-- [x] `CommunicationsService.getAnnouncementsForMe` — `GET /api/business/announcements/for-me`, filters by role + active + display_until (COM-011)
-- [x] `getChannels` — returns channels with `provider_config_json` fully redacted (COM-020)
-- [x] `upsertChannel` — TypeORM upsert on `(business_id, channel)` PK (COM-021)
-- [x] `testChannel` — stub (COM-022); `refreshSmsBalance` — stub (COM-030); `getSmsBalance` — cached value or null (COM-031)
-- [x] 23 new tests across 2 spec files: `communications.service.spec.ts`, `super-admin-announcements.spec.ts`
+- [x] `GET /api/business/platform-announcements` — active announcements filtered by business type + ID, excludes dismissed (COM-005)
+- [x] `POST /api/business/platform-announcements/:id/dismiss` — idempotent per-user dismissal (COM-006)
+- [x] Business announcements CRUD — `GET/POST/PATCH/DELETE /api/business/announcements[/:id]` (COM-010)
+- [x] `GET /api/business/announcements/for-me` — filters by role + active + display_until (COM-011)
+- [x] `GET /api/business/notifications/channels` — credentials fully redacted in response (COM-020)
+- [x] `PUT /api/business/notifications/channels` — upsert on composite PK (COM-021)
+- [x] Channel test stub (COM-022); SMS balance refresh stub (COM-030); cached balance read (COM-031)
+- [x] 23 tests: `communications.service.spec.ts`, `super-admin-announcements.spec.ts`
 
-### Phase 9 Part B — Communications: Templates + Sending + Opt-out (PENDING)
+**Part B — Templates + Sending + Opt-out**
+
+- [x] Migration `1714007000000-AddNotificationOptOutToken` — `opt_out_token VARCHAR(64) UNIQUE` + partial index on `notification_sends`
+- [x] `NotificationProviderService` — stub `send()` abstraction; real provider = implement this service only, no other changes needed
+- [x] Template CRUD — `GET/POST/PATCH/DELETE /api/business/notifications/templates[/:id]`; delete blocked if template has sends (COM-040–043)
+- [x] `POST /api/business/notifications/templates/:id/preview` — renders `{{ placeholder }}` with real customer data or sample fallback (COM-044)
+- [x] `POST /api/business/notifications/send` — consent + SMS balance guards; generates `opt_out_token` for marketing sends; provider call + status update (COM-050)
+- [x] `POST /api/business/notifications/send-to-segment` — BullMQ campaign job; returns `{ job_id, estimated_recipients, estimated_cost }` (COM-051)
+- [x] `GET /api/business/notifications/sends` — paginated history with channel/status/date/customer/template filters (COM-052)
+- [x] `POST /api/webhooks/notifications/:provider` — public; updates status/delivered_at/read_at by provider_message_id; TODO signature verification (COM-053)
+- [x] `POST /api/public/notifications/opt-out` — public; sets `consent_marketing = false`; writes Law 09-08 audit log row (COM-060)
+- [x] `NotificationCampaignProcessor` — resolves all/grade/label/specific segments; filters by `consent_marketing = true`; per-item error isolation; SMS balance decremented in-memory, flushed to DB every 25 sends, halts campaign on exhaustion; tracks `{ sent, skipped_no_consent, failed, total }` (COM-051)
+- [x] 28 new tests: `notifications-send.service.spec.ts` (22 cases), `notification-campaign.processor.spec.ts` (6 cases)
 
 ### Phases 10-15 — see extension spec §14 (PENDING)
 

@@ -83,6 +83,10 @@ export class NotificationSend {
   @JoinColumn({ name: 'campaign_job_id' })
   campaign_job: BackgroundJob;
 
+  // Unique per-send token embedded in marketing messages for one-click opt-out (COM-060)
+  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
+  opt_out_token: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 }
