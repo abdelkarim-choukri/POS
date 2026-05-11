@@ -1,4 +1,5 @@
 import { bankersRound } from './money';
+import { RECEIPT_LABELS, ReceiptLanguage, ReceiptLabelSet } from '../i18n/receipt-labels';
 
 /**
  * Input types — only the fields receipt-builder needs from each entity.
@@ -86,6 +87,9 @@ export interface ReceiptData {
   customer_phone: string | null;
   points_earned: number | null;
   points_balance: number | null;
+
+  // i18n labels for receipt rendering (fr | ar | en)
+  labels: ReceiptLabelSet;
 }
 
 /**
@@ -97,6 +101,7 @@ export interface ReceiptData {
 export function buildReceipt(
   transaction: ReceiptTransaction,
   business: ReceiptBusiness,
+  language: ReceiptLanguage = 'fr',
 ): ReceiptData {
   // Group items by TVA rate for the summary section
   const rateMap = new Map<number, { ht: number; tva: number; ttc: number }>();
@@ -152,5 +157,7 @@ export function buildReceipt(
     customer_phone: transaction.customer_phone ?? null,
     points_earned: transaction.points_earned ?? null,
     points_balance: transaction.points_balance_after ?? null,
+
+    labels: RECEIPT_LABELS[language] ?? RECEIPT_LABELS.fr,
   };
 }

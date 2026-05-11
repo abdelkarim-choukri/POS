@@ -96,6 +96,11 @@ export class CreateTransactionDto {
   @IsArray()
   @IsString({ each: true })
   coupon_codes?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  @Transform(nullToUndefined)
+  table_session_id?: string;
 }
 
 export class QuickAddCustomerDto {

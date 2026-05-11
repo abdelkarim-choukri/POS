@@ -19,6 +19,7 @@ import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
 import { Coupon } from '../../common/entities/coupon.entity';
+import { TableSession } from '../../common/entities/table-session.entity';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { Coupon } from '../../common/entities/coupon.entity';
       Terminal, User, ClockEntry, Category, Product,
       Transaction, TransactionItem, Void, SyncQueue, Business,
       Customer, CustomerGrade, CustomerPointsHistory,
-      Coupon,
+      Coupon, TableSession,
     ]),
   ],
   controllers: [TerminalController],

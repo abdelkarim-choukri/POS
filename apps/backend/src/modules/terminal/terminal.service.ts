@@ -1,6 +1,6 @@
 import {
   Injectable, NotFoundException, ConflictException, UnauthorizedException,
-  BadRequestException, HttpException, HttpStatus,
+  BadRequestException, HttpException, HttpStatus, UnprocessableEntityException,
 } from '@nestjs/common';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -30,6 +30,8 @@ import { DiscountPipelineService, PipelineLineInput, DiscountStep } from '../../
 import { resolveTvaRate } from '../../common/utils/tva';
 import { userHasPermission } from '../../common/utils/permissions';
 import { PromotionEvaluatorService, CartItem, ApplicablePromotion } from '../promotion/promotion-evaluator.service';
+import { EventGateway } from '../../common/gateways/event.gateway';
+import { TableSession } from '../../common/entities/table-session.entity';
 
 @Injectable()
 export class TerminalService {
@@ -37,6 +39,7 @@ export class TerminalService {
     private kdsService: KdsService,
     private discountPipeline: DiscountPipelineService,
     private evaluator: PromotionEvaluatorService,
+    private eventGateway: EventGateway,
     @InjectDataSource() private dataSource: DataSource,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -52,6 +55,7 @@ export class TerminalService {
     @InjectRepository(CustomerGrade) private gradeRepo: Repository<CustomerGrade>,
     @InjectRepository(CustomerPointsHistory) private pointsHistoryRepo: Repository<CustomerPointsHistory>,
     @InjectRepository(Coupon) private couponRepo: Repository<Coupon>,
+    @InjectRepository(TableSession) private tableSessionRepo: Repository<TableSession>,
   ) {}
 
   // ===== TERMINAL SETUP =====
@@ -296,6 +300,19 @@ export class TerminalService {
     // ── 3. Pre-load business (stacking mode + points config) ──────────────────
     const business = await this.businessRepo.findOne({ where: { id: businessId } });
 
+    // ── 3b. Pre-validate table session (fast-fail before starting QR) ─────────
+    if (dto.table_session_id) {
+      const sess = await this.tableSessionRepo.findOne({
+        where: { id: dto.table_session_id, business_id: businessId },
+      });
+      if (!sess || sess.status !== 'awaiting_payment') {
+        throw new UnprocessableEntityException({
+          error: 'RST_SESSION_NOT_AWAITING_PAYMENT',
+          message: 'Table session is not awaiting payment',
+        });
+      }
+    }
+
     // ── 4. Build pipeline inputs with resolved TVA rates ──────────────────────
     const pipelineLines: PipelineLineInput[] = dto.items.map((item, idx) => {
       const product = productMap.get(item.product_id);
@@ -397,6 +414,9 @@ export class TerminalService {
     const currentYear = new Date().getFullYear();
 
     // ── 10. All writes in a single DB transaction ──────────────────────────────
+    let sessionPaid = false;
+    let sessionTableId: string | null = null;
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -435,6 +455,7 @@ export class TerminalService {
         payment_confirmed_at: new Date(),
         notes: dto.notes,
         customer_id: dto.customer_id,
+        table_session_id: dto.table_session_id ?? null,
       });
       savedTxn = await queryRunner.manager.save(txnEntity) as Transaction;
 
@@ -513,6 +534,46 @@ export class TerminalService {
         await this.earnPointsInQr(queryRunner, savedTxn, businessId, dto.customer_id, customerWithGrade, business);
       }
 
+      // Table session close tracking — INSIDE QR for atomicity (TRAP 4 corrected)
+      // FOR UPDATE prevents two concurrent split payments from both seeing count N-1
+      if (dto.table_session_id) {
+        const sessionRows = await queryRunner.manager.query(
+          `SELECT id, table_id, expected_split_count, status
+           FROM table_sessions
+           WHERE id = $1 AND business_id = $2
+           FOR UPDATE`,
+          [dto.table_session_id, businessId],
+        );
+        const sessionRow = sessionRows[0];
+
+        if (!sessionRow || sessionRow.status !== 'awaiting_payment') {
+          throw new UnprocessableEntityException({
+            error: 'RST_SESSION_NOT_AWAITING_PAYMENT',
+            message: 'Table session is not awaiting payment',
+          });
+        }
+
+        // Count includes the transaction we just saved (same QR transaction)
+        const countRows = await queryRunner.manager.query(
+          `SELECT COUNT(*) AS count FROM transactions WHERE table_session_id = $1`,
+          [dto.table_session_id],
+        );
+        const completedCount = Number(countRows[0].count);
+        const expectedSplitCount = Number(sessionRow.expected_split_count);
+
+        if (completedCount >= expectedSplitCount) {
+          const closedInTxnId = expectedSplitCount === 1 ? savedTxn.id : null;
+          await queryRunner.manager.query(
+            `UPDATE table_sessions
+             SET status = 'paid', closed_at = NOW(), closed_in_transaction_id = $2
+             WHERE id = $1`,
+            [dto.table_session_id, closedInTxnId],
+          );
+          sessionPaid = true;
+          sessionTableId = sessionRow.table_id;
+        }
+      }
+
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -522,6 +583,20 @@ export class TerminalService {
     }
 
     try { this.kdsService.notifyNewOrder(savedTxn); } catch (_e) {}
+
+    // Emit dashboard event for every transaction (table or direct)
+    this.eventGateway.emitToRoom(`dashboard:${businessId}`, 'dashboard:transaction_created', {
+      transaction_id: savedTxn.id,
+      total_ttc: Number(savedTxn.total_ttc),
+    });
+
+    // Emit floor event when the last split payment closes the session
+    if (sessionPaid && sessionTableId) {
+      this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:session_paid', {
+        table_id: sessionTableId,
+        session_id: dto.table_session_id,
+      });
+    }
 
     const finalTxn = await this.transactionRepo.findOne({
       where: { id: savedTxn.id },

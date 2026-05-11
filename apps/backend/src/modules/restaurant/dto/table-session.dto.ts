@@ -1,6 +1,6 @@
 import {
   IsUUID, IsOptional, IsInt, Min, IsString, MinLength, IsBoolean,
-  IsArray, ValidateNested, MaxLength,
+  IsArray, ValidateNested, MaxLength, IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -98,4 +98,31 @@ export class CancelSessionDto {
   @IsOptional()
   @IsBoolean()
   force_close_partial?: boolean;
+}
+
+// RST-036
+export class SplitItemAssignmentDto {
+  @IsString()
+  label: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  item_ids?: string[];
+}
+
+export class SplitBillDto {
+  @IsEnum(['by_item', 'even', 'custom'])
+  split_type: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SplitItemAssignmentDto)
+  splits?: SplitItemAssignmentDto[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  customer_split_index?: number;
 }

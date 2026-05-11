@@ -3,17 +3,21 @@ import {
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { TableSessionService } from './table-session.service';
+import { CheckoutService } from './checkout.service';
 import { CurrentUser } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 import {
   FloorPlanQueryDto, OpenTableDto, AddItemsDto,
-  ModifyItemDto, TransferItemsDto, CancelSessionDto,
+  ModifyItemDto, TransferItemsDto, CancelSessionDto, SplitBillDto,
 } from './dto/table-session.dto';
 
 @Controller('terminal')
 @UseGuards(RolesGuard)
 export class TableSessionController {
-  constructor(private readonly service: TableSessionService) {}
+  constructor(
+    private readonly service: TableSessionService,
+    private readonly checkoutService: CheckoutService,
+  ) {}
 
   // RST-030: Floor plan view
   @Get('tables/floor-plan')
@@ -79,6 +83,31 @@ export class TableSessionController {
     @CurrentUser() user: any,
   ) {
     return this.service.removeItem(businessId, itemId, user);
+  }
+
+  // RST-035: Close table → single checkout payload
+  @Post('table-sessions/:id/close')
+  @HttpCode(HttpStatus.OK)
+  closeTable(
+    @Param('id') sessionId: string,
+    @CurrentUser('business_id') businessId: string,
+    @CurrentUser() user: any,
+  ) {
+    const terminalId = user.terminal_id ?? null;
+    return this.checkoutService.closeTable(businessId, sessionId, terminalId, user);
+  }
+
+  // RST-036: Split bill → multiple checkout payloads
+  @Post('table-sessions/:id/split')
+  @HttpCode(HttpStatus.OK)
+  splitBill(
+    @Param('id') sessionId: string,
+    @CurrentUser('business_id') businessId: string,
+    @CurrentUser() user: any,
+    @Body() dto: SplitBillDto,
+  ) {
+    const terminalId = user.terminal_id ?? null;
+    return this.checkoutService.splitBill(businessId, sessionId, terminalId, dto, user);
   }
 
   // RST-038: Cancel or partially close session

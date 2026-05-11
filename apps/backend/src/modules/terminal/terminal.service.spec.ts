@@ -6,6 +6,7 @@ import { TerminalService } from './terminal.service';
 import { DiscountPipelineService } from '../../common/services/discount-pipeline.service';
 import { KdsService } from '../kds/kds.service';
 import { PromotionEvaluatorService } from '../promotion/promotion-evaluator.service';
+import { EventGateway } from '../../common/gateways/event.gateway';
 import { Terminal } from '../../common/entities/terminal.entity';
 import { User } from '../../common/entities/user.entity';
 import { ClockEntry } from '../../common/entities/clock-entry.entity';
@@ -20,8 +21,11 @@ import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
 import { CustomerPointsHistory } from '../../common/entities/customer-points-history.entity';
 import { Coupon } from '../../common/entities/coupon.entity';
+import { TableSession } from '../../common/entities/table-session.entity';
 import { PaymentMethod } from '../../common/enums';
 import { bankersRound } from '../../common/utils/money';
+
+const mockEventGateway = { emitToRoom: jest.fn() };
 
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -92,6 +96,7 @@ function makeTestModule(overrides: {
   gradeRepo?: any;
   pointsHistoryRepo?: any;
   couponRepo?: any;
+  tableSessionRepo?: any;
   qr?: ReturnType<typeof makeQrMock>;
   evaluator?: any;
 } = {}) {
@@ -135,10 +140,11 @@ function makeTestModule(overrides: {
   const gradeRepo = overrides.gradeRepo ?? makeMockRepo({ find: jest.fn().mockResolvedValue([]) });
   const pointsHistoryRepo = overrides.pointsHistoryRepo ?? makeMockRepo();
   const couponRepo = overrides.couponRepo ?? makeMockRepo({ findOne: jest.fn().mockResolvedValue(null) });
+  const tableSessionRepo = overrides.tableSessionRepo ?? makeMockRepo({ findOne: jest.fn().mockResolvedValue(null) });
 
   return {
     qr, productRepo, transactionRepo, itemRepo, businessRepo,
-    customerRepo, gradeRepo, pointsHistoryRepo, couponRepo,
+    customerRepo, gradeRepo, pointsHistoryRepo, couponRepo, tableSessionRepo,
     mockEvaluator,
     module: Test.createTestingModule({
       providers: [
@@ -146,6 +152,7 @@ function makeTestModule(overrides: {
         DiscountPipelineService,
         { provide: KdsService, useValue: { notifyNewOrder: jest.fn() } },
         { provide: PromotionEvaluatorService, useValue: mockEvaluator },
+        { provide: EventGateway, useValue: mockEventGateway },
         { provide: DataSource, useValue: mockDataSource },
         { provide: getRepositoryToken(Terminal), useValue: makeMockRepo() },
         { provide: getRepositoryToken(User), useValue: makeMockRepo() },
@@ -161,6 +168,7 @@ function makeTestModule(overrides: {
         { provide: getRepositoryToken(CustomerGrade), useValue: gradeRepo },
         { provide: getRepositoryToken(CustomerPointsHistory), useValue: pointsHistoryRepo },
         { provide: getRepositoryToken(Coupon), useValue: couponRepo },
+        { provide: getRepositoryToken(TableSession), useValue: tableSessionRepo },
       ],
     }),
   };
@@ -707,5 +715,155 @@ describe('TerminalService – createTransaction (promotions + coupons)', () => {
 
     const txn = mocks.transactionRepo.create.mock.calls[0][0];
     expect(txn.total_ttc).toBe(bankersRound(txn.total_ht + txn.total_tva));
+  });
+});
+
+// ── Table session integration (Phase 10 Part D) ───────────────────────────────
+
+describe('TerminalService – createTransaction with table_session_id', () => {
+  const SESSION_ID = 'session-abc';
+  const TABLE_ID = 'table-1';
+
+  const mockProducts = [
+    { id: 'prod-a', business_id: 'biz-1', category_id: 'cat-1', tva_exempt: false, tva_rate: null, category: { default_tva_rate: 20 } },
+  ];
+
+  const baseDto = {
+    items: [{ product_id: 'prod-a', product_name: 'Café', quantity: 1, unit_price: 100, line_total: 100 }],
+    subtotal: 100,
+    total: 100,
+    payment_method: PaymentMethod.CASH,
+  } as any;
+
+  function buildTableMocks(opts: {
+    sessionStatus?: string;
+    expectedSplitCount?: number;
+    completedCountAfterSave?: number;
+  } = {}) {
+    const {
+      sessionStatus = 'awaiting_payment',
+      expectedSplitCount = 1,
+      completedCountAfterSave = 1,
+    } = opts;
+
+    const tableSessionRepo = makeMockRepo({
+      findOne: jest.fn().mockResolvedValue(
+        sessionStatus === 'awaiting_payment'
+          ? { id: SESSION_ID, status: 'awaiting_payment', expected_split_count: expectedSplitCount, table_id: TABLE_ID }
+          : null,
+      ),
+    });
+
+    const qr = makeQrMock((sql: string, params?: any[]) => {
+      if (sql.includes('UPDATE businesses') && sql.includes('invoice_counter')) {
+        return [{ invoice_counter: 1, business_code: 'CAFE01' }];
+      }
+      // FOR UPDATE lock on session
+      if (sql.includes('FROM table_sessions') && sql.includes('FOR UPDATE')) {
+        if (sessionStatus !== 'awaiting_payment') return [];
+        return [{ id: SESSION_ID, table_id: TABLE_ID, expected_split_count: expectedSplitCount, status: 'awaiting_payment' }];
+      }
+      // Count completed transactions
+      if (sql.includes('COUNT(*)') && sql.includes('table_session_id')) {
+        return [{ count: String(completedCountAfterSave) }];
+      }
+      // Session UPDATE to paid
+      if (sql.includes("SET status = 'paid'")) {
+        return [];
+      }
+      return [];
+    });
+
+    return makeTestModule({
+      productRepo: makeMockRepo({ find: jest.fn().mockResolvedValue(mockProducts) }),
+      tableSessionRepo,
+      qr,
+    });
+  }
+
+  it('auto-transitions session to paid when single-split payment completes', async () => {
+    const mocks = buildTableMocks({ expectedSplitCount: 1, completedCountAfterSave: 1 });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto,
+      table_session_id: SESSION_ID,
+    });
+
+    // Verify the QR issued the UPDATE to set status='paid'
+    const paidUpdate = (mocks.qr.manager.query as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0].includes("SET status = 'paid'"),
+    );
+    expect(paidUpdate).toBeTruthy();
+    expect(paidUpdate[1][0]).toBe(SESSION_ID);
+  });
+
+  it('first of 2 splits does NOT transition session to paid; second does', async () => {
+    // ── First payment: count=1, expected=2 → still awaiting ──
+    const mocks1 = buildTableMocks({ expectedSplitCount: 2, completedCountAfterSave: 1 });
+    const module1 = await mocks1.module.compile();
+    const service1 = module1.get(TerminalService);
+
+    await service1.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto,
+      table_session_id: SESSION_ID,
+    });
+
+    const paidUpdate1 = (mocks1.qr.manager.query as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0].includes("SET status = 'paid'"),
+    );
+    expect(paidUpdate1).toBeUndefined(); // still awaiting
+
+    // ── Second payment: count=2, expected=2 → transitions to paid ──
+    const mocks2 = buildTableMocks({ expectedSplitCount: 2, completedCountAfterSave: 2 });
+    const module2 = await mocks2.module.compile();
+    const service2 = module2.get(TerminalService);
+
+    await service2.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto,
+      table_session_id: SESSION_ID,
+    });
+
+    const paidUpdate2 = (mocks2.qr.manager.query as jest.Mock).mock.calls.find(
+      (c: any[]) => c[0].includes("SET status = 'paid'"),
+    );
+    expect(paidUpdate2).toBeTruthy(); // now paid
+  });
+
+  it('emits dashboard:transaction_created for every transaction', async () => {
+    mockEventGateway.emitToRoom.mockClear();
+    const mocks = buildTableMocks({ expectedSplitCount: 1, completedCountAfterSave: 1 });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto,
+      table_session_id: SESSION_ID,
+    });
+
+    const dashboardEmit = (mockEventGateway.emitToRoom as jest.Mock).mock.calls.find(
+      (c: any[]) => c[1] === 'dashboard:transaction_created',
+    );
+    expect(dashboardEmit).toBeTruthy();
+    expect(dashboardEmit[0]).toBe('dashboard:biz-1');
+  });
+
+  it('emits floor:session_paid when the session transitions to paid', async () => {
+    mockEventGateway.emitToRoom.mockClear();
+    const mocks = buildTableMocks({ expectedSplitCount: 1, completedCountAfterSave: 1 });
+    const module = await mocks.module.compile();
+    const service = module.get(TerminalService);
+
+    await service.createTransaction('biz-1', 'loc-1', 'term-1', 'user-1', {
+      ...baseDto,
+      table_session_id: SESSION_ID,
+    });
+
+    const paidEmit = (mockEventGateway.emitToRoom as jest.Mock).mock.calls.find(
+      (c: any[]) => c[1] === 'floor:session_paid',
+    );
+    expect(paidEmit).toBeTruthy();
+    expect(paidEmit[2]).toMatchObject({ session_id: SESSION_ID, table_id: TABLE_ID });
   });
 });
