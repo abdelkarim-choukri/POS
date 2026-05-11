@@ -9,6 +9,7 @@ import { TableSessionItem } from '../../common/entities/table-session-item.entit
 import { RestaurantTable } from '../../common/entities/table.entity';
 import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
+import { EventGateway } from '../../common/gateways/event.gateway';
 import { userHasPermission } from '../../common/utils/permissions';
 import { UserRole } from '../../common/enums';
 import {
@@ -26,6 +27,7 @@ export class TableSessionService {
     @InjectRepository(TableSessionItem) private itemRepo: Repository<TableSessionItem>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(ProductVariant) private variantRepo: Repository<ProductVariant>,
+    private eventGateway: EventGateway,
   ) {}
 
   // ── RST-030: Floor plan view ──────────────────────────────────────────────
@@ -156,6 +158,12 @@ export class TableSessionService {
     });
     const saved = await this.sessionRepo.save(session);
 
+    this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:table_opened', {
+      table_id: tableId,
+      session_id: saved.id,
+      table_number: table.table_number,
+    });
+
     return {
       id: saved.id,
       table_id: saved.table_id,
@@ -238,6 +246,20 @@ export class TableSessionService {
       .where('i.table_session_id = :sessionId', { sessionId })
       .getRawOne();
 
+    // Emit to KDS — fetch table_number best-effort
+    const table = await this.tableRepo.findOne({ where: { id: session.table_id } });
+    this.eventGateway.emitToRoom(`kds:${businessId}`, 'kds:items_added', {
+      session_id: sessionId,
+      table_number: table?.table_number ?? null,
+      items: savedItems.map((item) => ({
+        id: item.id,
+        product_name: productMap.get(item.product_id)?.name ?? null,
+        quantity: item.quantity,
+        kds_status: item.kds_status,
+        notes: item.notes,
+      })),
+    });
+
     return {
       added_items: savedItems.map((item) => ({
         id: item.id,
@@ -305,6 +327,18 @@ export class TableSessionService {
       );
       item.kds_status = 'cancelled';
       await this.itemRepo.save(item);
+
+      // Emit event — fetch table_number best-effort
+      const session = await this.sessionRepo.findOne({ where: { id: item.table_session_id } });
+      const table = session
+        ? await this.tableRepo.findOne({ where: { id: session.table_id } })
+        : null;
+      this.eventGateway.emitToRoom(`kds:${businessId}`, 'kds:item_cancelled', {
+        item_id: itemId,
+        session_id: item.table_session_id,
+        table_number: table?.table_number ?? null,
+      });
+
       return { deleted: false, cancelled: true };
     }
 
@@ -359,6 +393,12 @@ export class TableSessionService {
     }
     await this.itemRepo.save(items);
 
+    this.eventGateway.emitToRoom(`kds:${businessId}`, 'kds:items_transferred', {
+      item_ids: dto.item_ids,
+      source_session: sourceSessionId,
+      target_session: dto.target_table_session_id,
+    });
+
     return {
       transferred: items.length,
       source_session_id: sourceSessionId,
@@ -394,6 +434,13 @@ export class TableSessionService {
       console.log(
         `[AUDIT] Session ${sessionId} cancelled by user ${user.id} — reason: ${dto.reason}`,
       );
+
+      this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:table_closed', {
+        table_id: session.table_id,
+        session_id: sessionId,
+        status: 'cancelled',
+      });
+
       return { status: 'cancelled', partial_payment: false };
     }
 
@@ -411,6 +458,13 @@ export class TableSessionService {
       console.log(
         `[AUDIT] Session ${sessionId} force-closed (partial payment) by user ${user.id} — session shortfall. Reason: ${dto.reason}`,
       );
+
+      this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:table_closed', {
+        table_id: session.table_id,
+        session_id: sessionId,
+        status: 'paid',
+      });
+
       return { status: 'paid', partial_payment: true };
     }
 

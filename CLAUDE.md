@@ -446,7 +446,31 @@ Implementation split into 4 parts:
       open→cancelled (bulk-cancels all items); awaiting_payment+force_close_partial→paid+partial_payment=true
 - [x] 25 unit tests: all happy paths + 409/422/403/404 guards + cross-tenant 404
 
-- [ ] Part C: KDS refactor + WebSocket events + OSS
+**Part C — DONE**. 309 tests passing (27 suites).
+
+- [x] `EventGateway` — `@WebSocketGateway({ namespace: '/events' })` in `src/common/gateways/event.gateway.ts`;
+      `emitToRoom(room, event, payload)` method; room-join on connect via handshake query + `join` message;
+      wired into `CommonModule` (@Global) — available to all modules without explicit import
+- [x] KDS refactor (RST-MOD-001): `getKdsItems(businessId, query)` — merges `table_session_items`
+      (QueryBuilder with JOINs to products/tables/users) + direct transaction items (backward compat);
+      `order_source: 'table_session' | 'direct_transaction'` field distinguishes sources;
+      `GET /api/terminal/kds/items` via new `KdsItemsController` (`@Controller('terminal/kds')`)
+- [x] KDS status update (RST-MOD-001): `POST /api/terminal/kds/items/:id/status` — validates transitions
+      (new→preparing, preparing→ready, ready→served); 422 on invalid transition;
+      emits `kds:item_status_changed` + `floor:item_ready` (when ready) + `oss:order_updated` (to OSS room)
+- [x] Existing KDS endpoints (`GET /api/kds/orders`, `PATCH /api/kds/orders/:id/status`,
+      `KdsGateway` namespace `/kds`) **preserved untouched** — backward compat for non-restaurant businesses
+- [x] WebSocket events wired into `TableSessionService`:
+      RST-031 → `floor:table_opened`; RST-032 → `kds:items_added`;
+      RST-034 (cancel) → `kds:item_cancelled`; RST-037 → `kds:items_transferred`;
+      RST-038 → `floor:table_closed`
+- [x] `OssService` + `OssController` — `GET /api/public/oss?location_id=` (no auth);
+      preparing[] = sessions with any item in 'preparing' + direct txns in 'preparing';
+      ready[] = sessions where all non-cancelled items are 'ready' + direct txns in 'ready'
+- [x] 10 new unit tests across 3 spec files: `kds-items.spec.ts` (8 tests),
+      `oss.service.spec.ts` (1 test), `event.gateway.spec.ts` (1 test)
+- [x] `table-session.service.spec.ts` updated — EventGateway mock added; all 25 existing tests pass
+
 - [ ] Part D: Checkout/split + createTransaction integration + i18n + EventGateway
 
 ### Phases 11-15 — see extension spec §14 (PENDING)

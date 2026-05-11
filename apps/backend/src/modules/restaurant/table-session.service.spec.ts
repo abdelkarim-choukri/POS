@@ -10,7 +10,10 @@ import { TableSessionItem } from '../../common/entities/table-session-item.entit
 import { RestaurantTable } from '../../common/entities/table.entity';
 import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
+import { EventGateway } from '../../common/gateways/event.gateway';
 import { UserRole } from '../../common/enums';
+
+const mockEventGateway = { emitToRoom: jest.fn() };
 
 const BIZ_A = 'biz-a';
 const BIZ_B = 'biz-b';
@@ -157,6 +160,7 @@ describe('TableSessionService', () => {
         { provide: getRepositoryToken(TableSessionItem), useValue: itemRepo },
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: getRepositoryToken(ProductVariant), useValue: variantRepo },
+        { provide: EventGateway, useValue: mockEventGateway },
       ],
     }).compile();
 

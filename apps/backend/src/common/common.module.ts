@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { SimplTvaService } from './services/simpl-tva.service';
+import { EventGateway } from './gateways/event.gateway';
 
 /**
  * Global module for shared services that any feature module may inject.
@@ -7,7 +8,7 @@ import { SimplTvaService } from './services/simpl-tva.service';
  */
 @Global()
 @Module({
-  providers: [SimplTvaService],
-  exports: [SimplTvaService],
+  providers: [SimplTvaService, EventGateway],
+  exports: [SimplTvaService, EventGateway],
 })
 export class CommonModule {}
