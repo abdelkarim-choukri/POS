@@ -49,6 +49,12 @@ types there is part of backend work, since the backend defines the contract.
   exchange, restaurant operations, inventory, chain, recommendations,
   communications, and platform admin features built on top of the SRS.
 
+- **`docs/phase-10-reference.md`** — Phase 10 (Restaurant Operations) build
+  reference. Contains all API contracts, migration SQL, WebSocket events,
+  split-bill logic, KDS refactor rules, i18n foundation, and implementation
+  traps. **Read this file FIRST for any Phase 10 work — it supersedes the
+  extension spec §7 for implementation details.**
+
   Key sections to know by number:
   - **§2** — Cross-cutting concerns (XCC-001 through XCC-062). Includes the
     discount pipeline (XCC-017), TVA-vs-cutoff temporal rule (XCC-018),
@@ -398,19 +404,28 @@ All deliverables complete. 262 tests passing (22 suites).
 - [x] `NotificationCampaignProcessor` — resolves all/grade/label/specific segments; filters by `consent_marketing = true`; per-item error isolation; SMS balance decremented in-memory, flushed to DB every 25 sends, halts campaign on exhaustion; tracks `{ sent, skipped_no_consent, failed, total }` (COM-051)
 - [x] 28 new tests: `notifications-send.service.spec.ts` (22 cases), `notification-campaign.processor.spec.ts` (6 cases)
 
-### Phases 10-15 — see extension spec §14 (PENDING)
+### Phase 10 — Restaurant Operations (IN PROGRESS)
 
-Order: 10 (RST) → 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+See `docs/phase-10-reference.md` for complete build reference.
+Implementation split into 4 parts:
+- [ ] Part A: Migration + entities + dining area/table type/table CRUD
+- [ ] Part B: Table session flow (open, add items, modify, remove, transfer, cancel)
+- [ ] Part C: KDS refactor + WebSocket events + OSS
+- [ ] Part D: Checkout/split + createTransaction integration + i18n + EventGateway
+
+### Phases 11-15 — see extension spec §14 (PENDING)
+
+Order: 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 
 These are NOT part of any current phase. They will be implemented as a
 single pass after core modules are complete.
 
-1. **Real-time dashboard** — WebSocket event gateway emitting events
-   (transaction:created, customer:created, etc.) from all services.
-   Dashboard subscribes and updates live. Backend: ~1 session. Frontend: teammate.
+1. **Real-time dashboard** — WebSocket EventGateway foundation added in Phase 10.
+   Remaining: emit events from all services (not just RST). Frontend: teammate.
 
-2. **i18n (Arabic, French, English)** — Backend: add users.language_preference
-   column, refactor error messages to translation keys. Frontend: react-i18next,
-   RTL layout for Arabic, translation files. Backend: ~1 session. Frontend: significant.
+2. **i18n (Arabic, French, English)** — Foundation added in Phase 10:
+   users.language_preference column, receipt-labels.ts, error key pattern.
+   Remaining: apply error keys to all existing endpoints. Frontend: react-i18next,
+   RTL layout, translation files.
