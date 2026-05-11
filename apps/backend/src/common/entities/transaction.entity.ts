@@ -113,6 +113,9 @@ export class Transaction {
   @Column({ type: 'timestamp', nullable: true })
   synced_at: Date;
 
+  @Column({ type: 'uuid', nullable: true })
+  table_session_id: string | null;
+
   @OneToMany(() => TransactionItem, (ti) => ti.transaction)
   items: TransactionItem[];
 

@@ -49,6 +49,9 @@ export class User {
   @Column({ type: 'boolean', default: false })
   dashboard_access: boolean;
 
+  @Column({ type: 'varchar', length: 5, default: 'fr' })
+  language_preference: string;
+
   @OneToMany(() => ClockEntry, (c) => c.user)
   clock_entries: ClockEntry[];
 

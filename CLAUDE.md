@@ -406,10 +406,46 @@ All deliverables complete. 262 tests passing (22 suites).
 
 ### Phase 10 — Restaurant Operations (IN PROGRESS)
 
-See `docs/phase-10-reference.md` for complete build reference.
+See `docs/PHASE_10_RST_REFERENCE.md` for complete build reference.
 Implementation split into 4 parts:
-- [ ] Part A: Migration + entities + dining area/table type/table CRUD
-- [ ] Part B: Table session flow (open, add items, modify, remove, transfer, cancel)
+
+**Part A — DONE** (migration 8 applied). 274 tests passing (23 suites).
+
+- [x] Migration `1714008000000-AddRestaurantOperations` — 5 tables: dining_areas, table_types,
+      tables, table_sessions, table_session_items; table_session_id on transactions;
+      language_preference on users; all §13.3 indexes; reversible down method
+- [x] 5 new entities: DiningArea, TableType, RestaurantTable, TableSession, TableSessionItem
+      (in `src/common/entities/`; all exported from index barrel)
+- [x] Transaction entity updated with nullable `table_session_id`
+- [x] User entity updated with `language_preference VARCHAR(5) DEFAULT 'fr'`
+- [x] `RestaurantModule` at `src/modules/restaurant/` — registered in AppModule
+- [x] Dining area CRUD (RST-001–004): list (with table_count via single GROUP BY JOIN),
+      create (409 on duplicate name), update, delete (422 if active tables exist)
+- [x] Table type CRUD (RST-010–013): list, create, update, delete
+- [x] Table CRUD (RST-020–023): list (with optional `with_session_status` via single LEFT JOIN
+      on table_sessions), create (409 on duplicate table_number), update, delete (422 if open session)
+- [x] 12 unit tests: happy paths + 409/422 guards + cross-tenant 404
+
+**Part B — DONE**. 299 tests passing (24 suites).
+
+- [x] `TableSessionService` + `TableSessionController` at `src/modules/restaurant/`
+- [x] Floor plan view (RST-030): `GET /api/terminal/tables/floor-plan` — single raw query with
+      LEFT JOIN on active session + SUM of non-cancelled items; NULLIF/TRIM for customer/server names
+- [x] Open table (RST-031): `POST /api/terminal/tables/:id/open` — 409 if active session exists;
+      permission guard: `can_open_table_session` OR owner/manager
+- [x] Add items (RST-032): `POST /api/terminal/table-sessions/:id/items` — batch-fetches products
+      and variants; locks `unit_price_ttc` at add-time; defaults item `customer_id` to session's
+- [x] Modify item (RST-033): `PATCH /api/terminal/table-session-items/:id` — field-specific guard:
+      quantity/notes blocked when `kds_status IN ('preparing','ready','served')`; customer_id ALWAYS
+      modifiable regardless of kds_status (TRAP 3)
+- [x] Remove item (RST-034): `DELETE /api/terminal/table-session-items/:id` — 422 if in kitchen
+      without `can_void`; with `can_void` → soft-delete (sets `kds_status='cancelled'`) + audit log
+- [x] Transfer items (RST-037): `POST /api/terminal/table-session-items/transfer` — both sessions
+      must be `status='open'` + same business; permission: `can_transfer_table_items` or owner/manager
+- [x] Cancel session (RST-038): `POST /api/terminal/table-sessions/:id/cancel` — two branches:
+      open→cancelled (bulk-cancels all items); awaiting_payment+force_close_partial→paid+partial_payment=true
+- [x] 25 unit tests: all happy paths + 409/422/403/404 guards + cross-tenant 404
+
 - [ ] Part C: KDS refactor + WebSocket events + OSS
 - [ ] Part D: Checkout/split + createTransaction integration + i18n + EventGateway
 

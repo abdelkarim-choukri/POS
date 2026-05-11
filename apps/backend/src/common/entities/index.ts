@@ -22,3 +22,8 @@ export { AuditLog } from './audit-log.entity';
 export { PointsExchangeRule } from './points-exchange-rule.entity';
 export { PointsExchangeRuleDetail } from './points-exchange-rule-detail.entity';
 export { PointsExchangeRedemption } from './points-exchange-redemption.entity';
+export { DiningArea } from './dining-area.entity';
+export { TableType } from './table-type.entity';
+export { RestaurantTable } from './table.entity';
+export { TableSession } from './table-session.entity';
+export { TableSessionItem } from './table-session-item.entity';

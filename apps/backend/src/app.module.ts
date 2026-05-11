@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { JobModule } from './modules/jobs/job.module';
 import { PromotionModule } from './modules/promotion/promotion.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
+import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -33,6 +34,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     CustomerModule,
     PromotionModule,
     CommunicationsModule,
+    RestaurantModule,
     TerminalModule,
     KdsModule,
     HealthModule,
