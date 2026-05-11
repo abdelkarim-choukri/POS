@@ -55,6 +55,11 @@ types there is part of backend work, since the backend defines the contract.
   traps. **Read this file FIRST for any Phase 10 work — it supersedes the
   extension spec §7 for implementation details.**
 
+- **`docs/reports-reference.md`** — Reports Module build reference. Contains
+  the universal response schema, all 26 report definitions with SQL sources,
+  date range utility, i18n labels, and business-type gating rules.
+  **Read this file FIRST for any reports work.**
+
   Key sections to know by number:
   - **§2** — Cross-cutting concerns (XCC-001 through XCC-062). Includes the
     discount pipeline (XCC-017), TVA-vs-cutoff temporal rule (XCC-018),
@@ -404,7 +409,7 @@ All deliverables complete. 262 tests passing (22 suites).
 - [x] `NotificationCampaignProcessor` — resolves all/grade/label/specific segments; filters by `consent_marketing = true`; per-item error isolation; SMS balance decremented in-memory, flushed to DB every 25 sends, halts campaign on exhaustion; tracks `{ sent, skipped_no_consent, failed, total }` (COM-051)
 - [x] 28 new tests: `notifications-send.service.spec.ts` (22 cases), `notification-campaign.processor.spec.ts` (6 cases)
 
-### Phase 10 — Restaurant Operations (IN PROGRESS)
+### Phase 10 — Restaurant Operations (DONE). 333 tests passing (28 suites).
 
 See `docs/PHASE_10_RST_REFERENCE.md` for complete build reference.
 Implementation split into 4 parts:
@@ -471,7 +476,46 @@ Implementation split into 4 parts:
       `oss.service.spec.ts` (1 test), `event.gateway.spec.ts` (1 test)
 - [x] `table-session.service.spec.ts` updated — EventGateway mock added; all 25 existing tests pass
 
-- [ ] Part D: Checkout/split + createTransaction integration + i18n + EventGateway
+**Part D — DONE**. 333 tests passing (28 suites).
+
+- [x] `CheckoutService` at `src/modules/restaurant/checkout.service.ts`
+- [x] Close table (RST-035): `POST /api/terminal/table-sessions/:id/close` — transitions `open→awaiting_payment`,
+      sets `expected_split_count=1`, evaluates promotions, emits `floor:table_closed`,
+      returns single `checkout_payload` with all non-cancelled items
+- [x] Split bill (RST-036): `POST /api/terminal/table-sessions/:id/split` — three split types:
+      `by_item` (groups items by `customer_id`), `even` (divides unit prices across N splits,
+      split 0 absorbs rounding remainder to guarantee sum = original, TRAP 2 compliant),
+      `custom` (validates no orphans, no duplicates per item_id);
+      returns `checkout_payloads[]` with N entries
+- [x] `table_session_id` added to `CreateTransactionDto`; wired into `createTransaction()`:
+      pre-check validates session status before QR; inside QR: `SELECT FOR UPDATE` on session,
+      count completed transactions (including current), conditionally `UPDATE status='paid'`
+      — all inside the QueryRunner before commit to prevent concurrent split race (TRAP 4)
+- [x] `dashboard:transaction_created` emitted post-commit for every transaction (table + direct)
+- [x] `floor:session_paid` emitted post-commit when session transitions to paid
+- [x] `EventGateway` injected into `TerminalService` (global via CommonModule, no module import needed)
+- [x] `src/common/i18n/receipt-labels.ts` — label maps for fr/ar/en (subtotal, tax, total, invoice, etc.)
+- [x] `receipt-builder.ts` updated: optional `language` param (default `'fr'`), `labels: ReceiptLabelSet`
+      added to `ReceiptData` output
+- [x] Error keys pattern applied to all new RST endpoints (e.g. `RST_SESSION_NOT_OPEN`,
+      `RST_ORPHAN_ITEM_IN_SPLIT`, `RST_DUPLICATE_ITEM_IN_SPLIT`)
+- [x] 24 new tests: `checkout.service.spec.ts` (20 cases across 5 describe blocks),
+      4 new cases added to `terminal.service.spec.ts` (table session auto-transition, 2-way split,
+      `dashboard:transaction_created`, `floor:session_paid`)
+
+**Deferred items (documented, not blocking):**
+- QR-code customer self-ordering — `table.qr_code` column exists, no endpoints (spec §14 out of scope)
+- `audit_logs` table — currently `console.log` stubs; replace with DB writes in a cross-cutting pass
+
+### Phase 10 — Restaurant Operations (DONE). 333 tests passing (28 suites).
+
+### Reports Module (IN PROGRESS)
+
+See `docs/reports-reference.md` for complete build reference.
+26 reports via single parametric endpoint, universal response schema.
+- [ ] Part A: Infrastructure + Sales reports (7 reports)
+- [ ] Part B: Payments + Customers + Operations reports (11 reports)
+- [ ] Part C: TVA/Accounting + existing report wrappers + closeout (8 reports)
 
 ### Phases 11-15 — see extension spec §14 (PENDING)
 
