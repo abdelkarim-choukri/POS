@@ -55,7 +55,7 @@ types there is part of backend work, since the backend defines the contract.
   traps. **Read this file FIRST for any Phase 10 work — it supersedes the
   extension spec §7 for implementation details.**
 
-- **`docs/reports-reference.md`** — Reports Module build reference. Contains
+- **`docs/REPORTS_MODULE_REFERENCE.md`** — Reports Module build reference. Contains
   the universal response schema, all 26 report definitions with SQL sources,
   date range utility, i18n labels, and business-type gating rules.
   **Read this file FIRST for any reports work.**
@@ -509,13 +509,34 @@ Implementation split into 4 parts:
 
 ### Phase 10 — Restaurant Operations (DONE). 333 tests passing (28 suites).
 
-### Reports Module (IN PROGRESS)
+### Reports Module (DONE). 378 tests passing.
 
-See `docs/reports-reference.md` for complete build reference.
+See `docs/REPORTS_MODULE_REFERENCE.md` for complete build reference.
 26 reports via single parametric endpoint, universal response schema.
-- [ ] Part A: Infrastructure + Sales reports (7 reports)
-- [ ] Part B: Payments + Customers + Operations reports (11 reports)
-- [ ] Part C: TVA/Accounting + existing report wrappers + closeout (8 reports)
+- [x] Part A: Infrastructure + Sales reports (7 reports) — 350 tests passing (29 suites)
+  - `src/common/utils/date-range.ts` — resolveDateRange (today/yesterday/last_7days/this_month/last_month/this_year/custom)
+  - `src/common/i18n/report-labels.ts` — fr/ar/en label sets for all report columns and KPIs
+  - `src/modules/reports/dto/report-query.dto.ts` — ReportQueryDto + UniversalReportResponse types
+  - `src/modules/reports/reports.module.ts` + `reports.controller.ts` — `GET /api/business/reports/:reportId`
+  - `src/modules/reports/reports.service.ts` — dispatcher: validates reportId, business-type gating, resolves date range
+  - `src/modules/reports/generators/sales.generator.ts` — all 7 sales reports (sales-summary, sales-by-hour, sales-by-day, sales-by-month, sales-by-category, sales-by-product, sales-by-table)
+  - `src/modules/reports/reports.service.spec.ts` — 17 tests: date-range resolution, business-type gating, schema shape, KPIs, i18n
+- [x] Part B: Payments + Customers + Operations reports (11 reports) — 363 tests passing (29 suites)
+  - `UniversalReportResponse` updated: `generated_at` + `meta` fields added; all Part A reports emit both
+  - Business-type gating fixed: `sales-by-table` + `table-turnover` → restaurant+hotel; `kitchen-performance` → restaurant only
+  - `salesByTable` avg_per_session fixed: subquery correctly sums split-bill transactions per session
+  - `src/modules/reports/generators/payments.generator.ts` — payment-summary, cash-report, card-report
+  - `src/modules/reports/generators/customers.generator.ts` — customer-summary, top-customers, customer-grades, loyalty-summary
+  - `src/modules/reports/generators/operations.generator.ts` — employee-performance, kitchen-performance, table-turnover, voids-cancellations
+  - 13 new tests: TRAP 5 empty-period, non-date-filtered cards (total_customers, outstanding_balance), business-type gating (kitchen/table-turnover), split-bill revenue_per_cover, voids by voided_by user, top-50 cap, restaurant-only cancelled-sessions table
+- [x] Part C: TVA/Accounting + existing report wrappers + closeout (8 reports) — 378 tests passing (29 suites)
+  - `report-query.dto.ts` — `page` + `limit` optional params (with @Max(500) guard)
+  - `src/common/i18n/report-labels.ts` — extended with all Part C labels (fr/ar/en)
+  - `src/modules/reports/generators/accounting.generator.ts` — tva-declaration, daily-close, invoice-register (paginated), tva-by-rate
+  - `src/modules/reports/generators/existing-wrappers.generator.ts` — promotion-report, coupon-report, discount-write-offs, points-exchange-report (all call existing service methods)
+  - `reports.service.ts` — all 26 report IDs wired in dispatcher, none returns REPORT_NOT_IMPLEMENTED
+  - `reports.module.ts` — AccountingGenerator + ExistingWrappersGenerator registered; PromotionModule imported
+  - 15 new tests in `reports.service.spec.ts` (Part C TVA & Accounting + Existing Wrappers suites)
 
 ### Phases 11-15 — see extension spec §14 (PENDING)
 

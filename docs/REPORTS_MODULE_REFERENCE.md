@@ -43,6 +43,7 @@ Every report returns this exact shape:
   "currency": "MAD",
   "language": "fr",
   "business_type": "restaurant",
+  "generated_at": "2026-05-11T14:32:00Z",
   "period": {
     "type": "today",
     "from": "2026-05-11",
@@ -66,7 +67,8 @@ Every report returns this exact shape:
         { "date": "2026-05-01", "orders": 42, "total_ttc": 1820.00, "total_tva": 91.00 }
       ]
     }
-  ]
+  ],
+  "meta": null
 }
 ```
 
@@ -78,6 +80,7 @@ Every report returns this exact shape:
 | `currency` | string | yes | Always `"MAD"` for Moroccan businesses |
 | `language` | string | yes | `"fr"`, `"ar"`, or `"en"` — from user's `language_preference` |
 | `business_type` | string | yes | The business's type — lets frontend show/hide type-specific columns |
+| `generated_at` | string | yes | ISO 8601 UTC timestamp of when the report was generated. Frontend can show "Report generated at 14:32" and use this for cache invalidation. |
 | `period` | object | yes | Echoes back the resolved date range |
 | `summary` | array | yes | KPI cards shown above tables (3-7 items) |
 | `summary[].label` | string | yes | Card heading |
@@ -90,6 +93,7 @@ Every report returns this exact shape:
 | `tables[].columns[].label` | string | yes | Display header (i18n-aware) |
 | `tables[].columns[].type` | string | yes | `"money"`, `"number"`, `"date"`, `"datetime"`, `"text"`, `"percentage"`, `"quantity"` |
 | `tables[].rows` | array | yes | Data rows keyed by `columns[].key` |
+| `meta` | object or null | yes | Pagination info for large-table reports (e.g. `invoice-register`). Shape: `{ "total_rows": 1200, "page": 1, "limit": 500 }`. Null for non-paginated reports. Frontend: if `meta` is non-null, show pagination controls. |
 
 ### Cell type formatting (frontend reference)
 
@@ -142,6 +146,8 @@ export function resolveDateRange(
 
 **CRITICAL (XCC-018):** This date range is used for OPERATIONAL reports (sales, payments, operations). TVA reports use calendar dates directly — they have their own date handling already built. Do NOT change the existing TVA declaration report's date logic.
 
+**NOTE on cutoff dates:** The `daily_settlement_cutoff_time` from [ADM-061] is a Phase 15 feature and does NOT exist yet. Currently "operational dates" are simply timezone-converted calendar dates (`AT TIME ZONE 'Africa/Casablanca'`). The TRAP 2 distinction between TVA-calendar and operational dates matters once the cutoff feature ships — the code should be structured so swapping in cutoff-adjusted dates later is trivial, but do NOT implement cutoff logic now.
+
 ---
 
 ## 4. THE SINGLE ENDPOINT
@@ -170,6 +176,17 @@ Scoped: business_id from JWT
 
 ## 5. ALL 26 REPORTS
 
+### Column naming convention for `transaction_items` queries
+
+When aggregating from `transaction_items`, always use:
+- `SUM(ti.item_ttc)` — the **post-discount** final TTC per line. Alias as `total_ttc` in results.
+- `SUM(ti.item_ht)` — post-discount HT. Alias as `total_ht`.
+- `SUM(ti.item_tva)` — post-discount TVA. Alias as `total_tva`.
+
+**NEVER use `ti.line_total`** — that is the legacy pre-discount column (`quantity × unit_price`) and will not reconcile with transaction-level totals.
+
+---
+
 ### 5.1 Sales (7 reports) — ALL business types
 
 #### `sales-summary` — Core
@@ -194,8 +211,15 @@ filter: business_id, status = 'completed', date range
 **Table 2: "Top Products"** (top 10)
 ```
 columns: product_name, category_name, quantity_sold, total_ttc
-source: transaction_items JOIN products JOIN categories
-       GROUP BY product_id ORDER BY total_ttc DESC LIMIT 10
+source: transaction_items ti
+        JOIN transactions t ON t.id = ti.transaction_id
+        JOIN products p ON p.id = ti.product_id
+        JOIN categories c ON c.id = p.category_id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND date range
+        GROUP BY ti.product_id, p.name, c.name
+        ORDER BY SUM(ti.item_ttc) DESC LIMIT 10
+  NOTE: Use SUM(ti.item_ttc) for total_ttc — NOT ti.line_total (legacy pre-discount).
+        SUM(ti.quantity) for quantity_sold.
 ```
 
 ---
@@ -255,8 +279,15 @@ Category performance.
 **Table: "Category Performance"**
 ```
 columns: category_name, items_sold, total_ttc, percentage_of_total
-source: transaction_items JOIN products JOIN categories
-        GROUP BY category_id ORDER BY total_ttc DESC
+source: transaction_items ti
+        JOIN transactions t ON t.id = ti.transaction_id
+        JOIN products p ON p.id = ti.product_id
+        JOIN categories c ON c.id = p.category_id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND date range
+        GROUP BY p.category_id, c.name
+        ORDER BY SUM(ti.item_ttc) DESC
+  NOTE: Use SUM(ti.item_ttc) for total_ttc, SUM(ti.quantity) for items_sold.
+        percentage_of_total = bankersRound(category_ttc / grand_total * 100).
 ```
 
 ---
@@ -270,14 +301,23 @@ Product-level detail.
 **Table: "Product Sales"**
 ```
 columns: product_name, category_name, quantity_sold, total_ttc, avg_unit_price
-source: transaction_items JOIN products JOIN categories
-        GROUP BY product_id ORDER BY total_ttc DESC
+source: transaction_items ti
+        JOIN transactions t ON t.id = ti.transaction_id
+        JOIN products p ON p.id = ti.product_id
+        JOIN categories c ON c.id = p.category_id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND date range
+        GROUP BY ti.product_id, p.name, c.name
+        ORDER BY SUM(ti.item_ttc) DESC
+  NOTE: Use SUM(ti.item_ttc) for total_ttc.
+        avg_unit_price = bankersRound(AVG(ti.unit_price)) — this is the pre-discount
+        menu price, which is the useful metric for product-level analysis. Do NOT use
+        item_ttc / quantity (that would be post-discount average).
 ```
 
 ---
 
-#### `sales-by-table` — High (Restaurant ONLY)
-Table revenue analysis. Return 404 for non-restaurant businesses.
+#### `sales-by-table` — High (Restaurant + Hotel ONLY)
+Table revenue analysis. Return 404 for non-restaurant/hotel businesses.
 
 **Summary cards:**
 - Total table revenue, Total sessions, Avg revenue per table, Avg session duration
@@ -285,10 +325,21 @@ Table revenue analysis. Return 404 for non-restaurant businesses.
 **Table: "Table Performance"**
 ```
 columns: table_number, area_name, sessions_count, total_ttc, avg_per_session, avg_duration_minutes
-source: transactions JOIN table_sessions JOIN tables JOIN dining_areas
-        WHERE table_session_id IS NOT NULL
-        GROUP BY table_id
+source: transactions t
+        JOIN table_sessions ts ON t.table_session_id = ts.id
+        JOIN tables tbl ON ts.table_id = tbl.id
+        JOIN dining_areas da ON tbl.area_id = da.id
+        WHERE t.business_id = $1 AND t.status = 'completed'
+          AND t.table_session_id IS NOT NULL AND date range
+        GROUP BY tbl.id, tbl.table_number, da.name
+  NOTE: total_ttc comes from SUM(t.total_ttc) on transactions, NOT from table_sessions
+        (which has no money columns). For split bills, multiple transactions share one
+        table_session_id — this query correctly sums all splits.
+        avg_duration_minutes: requires a subquery or CTE on table_sessions to get
+        AVG(EXTRACT(EPOCH FROM (ts.closed_at - ts.opened_at)) / 60) per table.
 ```
+
+**NOTE on Hotel:** Hotel businesses are assumed to have dining_areas/tables configured if they use table service. If none exist, query returns empty rows (fine per TRAP 5).
 
 ---
 
@@ -344,13 +395,21 @@ source: transactions WHERE payment_method IN ('card_cmi', 'card_payzone')
 Customer overview.
 
 **Summary cards:**
-- Total customers (active), New in period, Returning in period (customers with 2+ transactions), Total points issued
+- Total customers (active): `COUNT(*) FROM customers WHERE business_id = $1 AND is_active = true` (NOT date-filtered)
+- New in period: customers with `created_at` in date range
+- Returning in period: customers with ≥2 transactions in the date range (requires subquery)
+- Total points issued: `SUM(delta) FROM customer_points_history WHERE delta > 0` in date range
 
 **Table: "Customer Activity"**
 ```
 columns: date, new_customers, transactions_with_customer, points_earned
-source: customers for new, transactions for activity
-        GROUP BY DATE(created_at AT TIME ZONE 'Africa/Casablanca')
+source:
+  new_customers: COUNT(*) FROM customers WHERE DATE(created_at AT TIME ZONE 'Africa/Casablanca') = date
+  transactions_with_customer: COUNT(*) FROM transactions WHERE customer_id IS NOT NULL AND date match
+  points_earned: SUM(delta) FROM customer_points_history WHERE delta > 0 AND date match
+  GROUP BY DATE(... AT TIME ZONE 'Africa/Casablanca')
+  NOTE: "transactions_with_customer" is the count of transactions that had a customer attached
+        for that day — this is different from the "returning" summary card (which is a period aggregate).
 ```
 
 ---
@@ -390,12 +449,19 @@ source: customers LEFT JOIN customer_grades LEFT JOIN (transactions GROUP BY cus
 Points economy overview.
 
 **Summary cards:**
-- Total points issued (period), Total points redeemed (period), Net points issued, Total outstanding balance
+- Total points issued (period): `SUM(delta) FROM customer_points_history WHERE delta > 0` in date range
+- Total points redeemed (period): `SUM(ABS(delta)) FROM customer_points_history WHERE delta < 0 AND source IN ('sale', 'coupon_purchase')` in date range
+- Net points issued: issued − redeemed
+- Total outstanding balance: `SUM(points_balance) FROM customers WHERE business_id = $1 AND is_active = true` — **this is a live snapshot, NOT date-filtered** (it always shows the current total liability regardless of the selected period)
 
 **Table: "Points Activity by Day"**
 ```
 columns: date, points_earned, points_redeemed, points_adjusted, net_change
 source: customer_points_history GROUP BY DATE(created_at AT TIME ZONE 'Africa/Casablanca')
+  points_earned: SUM(delta) WHERE delta > 0 AND source = 'sale'
+  points_redeemed: SUM(ABS(delta)) WHERE delta < 0 AND source IN ('sale', 'coupon_purchase')
+  points_adjusted: SUM(delta) WHERE source = 'manual_adjustment'
+  net_change: SUM(delta) (all sources)
 ```
 
 ---
@@ -411,8 +477,20 @@ Staff sales performance.
 **Table: "Employee Sales"**
 ```
 columns: employee_name, transactions_count, total_ttc, avg_order_value, voids_count
-source: transactions JOIN users ON transactions.user_id = users.id
-        GROUP BY user_id ORDER BY total_ttc DESC
+source: transactions t
+        JOIN users u ON t.user_id = u.id
+        LEFT JOIN (
+          SELECT voided_by, COUNT(*) AS void_count
+          FROM voids
+          WHERE voided_at BETWEEN $2 AND $3
+          GROUP BY voided_by
+        ) v ON v.voided_by = u.id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND date range
+        GROUP BY u.id, u.name
+        ORDER BY SUM(t.total_ttc) DESC
+  NOTE: voids_count comes from the voids table via voided_by (the user who performed the void),
+        NOT from the transaction's user_id. A void may be performed by a different user (manager)
+        than the one who created the original transaction.
 ```
 
 ---
@@ -426,8 +504,15 @@ KDS metrics. Return 404 for non-restaurant.
 **Table: "Kitchen Items by Status"**
 ```
 columns: date, items_new, items_preparing, items_ready, items_served, items_cancelled
-source: table_session_items
-        GROUP BY DATE(added_at AT TIME ZONE 'Africa/Casablanca')
+source: table_session_items tsi
+        WHERE tsi.business_id = $1 AND date range
+        GROUP BY DATE(tsi.added_at AT TIME ZONE 'Africa/Casablanca')
+  NOTE: Filter by tsi.business_id (not via JOIN to transactions — table_session_items
+        is a pre-payment table and may not have a linked transaction yet).
+        Use conditional aggregation:
+          SUM(CASE WHEN kds_status = 'new' THEN quantity ELSE 0 END) AS items_new
+          SUM(CASE WHEN kds_status = 'cancelled' THEN quantity ELSE 0 END) AS items_cancelled
+          etc.
 ```
 
 ---
@@ -441,9 +526,21 @@ Table utilization. Return 404 for non-restaurant.
 **Table: "Table Utilization"**
 ```
 columns: table_number, area_name, sessions_count, avg_duration_minutes, avg_guest_count, total_ttc, revenue_per_cover
-source: table_sessions JOIN tables JOIN dining_areas
-        WHERE status = 'paid'
-        GROUP BY table_id
+source: table_sessions ts
+        JOIN tables tbl ON ts.table_id = tbl.id
+        JOIN dining_areas da ON tbl.area_id = da.id
+        LEFT JOIN (
+          SELECT table_session_id, SUM(total_ttc) AS session_ttc
+          FROM transactions
+          WHERE business_id = $1 AND status = 'completed'
+          GROUP BY table_session_id
+        ) txn ON txn.table_session_id = ts.id
+        WHERE ts.business_id = $1 AND ts.status = 'paid' AND date range
+        GROUP BY tbl.id, tbl.table_number, da.name
+  NOTE: total_ttc comes from SUM(txn.session_ttc) — table_sessions has NO money columns.
+        For split bills, the subquery already aggregates all transactions per session.
+        avg_duration_minutes = AVG(EXTRACT(EPOCH FROM (ts.closed_at - ts.opened_at)) / 60).
+        revenue_per_cover = bankersRound(total_ttc / NULLIF(SUM(ts.guest_count), 0)).
 ```
 
 ---
@@ -457,13 +554,26 @@ Track waste and losses.
 **Table 1: "Voided Transactions"**
 ```
 columns: date, transaction_number, employee_name, total_ttc, reason
-source: voids JOIN transactions JOIN users
+source: voids v
+        JOIN transactions t ON v.transaction_id = t.id
+        JOIN users u ON v.voided_by = u.id
+        WHERE t.business_id = $1 AND date range on v.voided_at
+  NOTE: employee_name is the user who voided (v.voided_by), not who created the transaction.
 ```
 
 **Table 2: "Cancelled Table Sessions"** (restaurant only, omit for other types)
 ```
-columns: date, table_number, employee_name, items_count, reason
-source: table_sessions WHERE status = 'cancelled' JOIN tables JOIN users
+columns: date, table_number, opened_by_name, items_count
+source: table_sessions ts
+        JOIN tables tbl ON ts.table_id = tbl.id
+        JOIN users u ON ts.opened_by_user_id = u.id
+        WHERE ts.business_id = $1 AND ts.status = 'cancelled' AND date range on ts.closed_at
+  NOTE: The cancel reason is logged to audit_logs (not stored on table_sessions).
+        opened_by_name is the server who opened the table, not necessarily who cancelled it.
+        To show the canceller, join audit_logs WHERE action = 'table_session_cancel'.
+        items_count = (SELECT COUNT(*) FROM table_session_items WHERE table_session_id = ts.id).
+        If audit_logs is not yet implemented (currently stub), omit the reason column for now
+        and add it when audit_logs are wired to DB.
 ```
 
 ---
@@ -495,19 +605,26 @@ End-of-day snapshot. The Z-report equivalent.
 **Table: "Day Summary"**
 ```
 columns: metric, value
-rows (fixed structure):
-  - Gross TTC
-  - Total discounts
-  - Net TTC (= total_ttc)
-  - Total HT
-  - Total TVA
-  - Cash payments
-  - Card payments (CMI + Payzone)
-  - Transaction count
-  - Void count
-  - Points earned
-  - Points redeemed
-  - Coupons redeemed
+rows (fixed structure, all from transactions WHERE business_id = $1 AND status = 'completed'
+      AND DATE(created_at AT TIME ZONE 'Africa/Casablanca') = target_day):
+
+  - Gross TTC:       SUM(t.total_ttc) + SUM(t.discount_total)
+                      (reconstructed pre-discount total using already-rounded pipeline outputs)
+  - Total discounts:  SUM(t.discount_total)
+  - Net TTC:          SUM(t.total_ttc)
+  - Total HT:         SUM(t.total_ht)
+  - Total TVA:        SUM(t.total_tva)
+  - Cash payments:    SUM(t.total_ttc) WHERE payment_method = 'cash'
+  - Card payments:    SUM(t.total_ttc) WHERE payment_method IN ('card_cmi', 'card_payzone')
+  - Transaction count: COUNT(*)
+  - Void count:       COUNT(*) FROM voids v JOIN transactions t2 ON v.transaction_id = t2.id
+                      WHERE t2.business_id = $1 AND DATE(v.voided_at AT TIME ZONE ...) = target_day
+  - Points earned:    SUM(t.points_earned)     (from transactions, not customer_points_history)
+  - Points redeemed:  SUM(t.points_redeemed)   (from transactions, not customer_points_history)
+  - Coupons redeemed: COUNT(*) FROM coupon_redemptions cr
+                      JOIN transactions t3 ON cr.transaction_id = t3.id
+                      WHERE t3.business_id = $1
+                        AND DATE(cr.redeemed_at AT TIME ZONE 'Africa/Casablanca') = target_day
 ```
 This is NOT a date-range report — it always runs for a single day. When `type=today`, show today. When `type=yesterday`, show yesterday. For `custom`, use `from` date only (ignore `to`).
 
@@ -522,11 +639,14 @@ Chronological invoice list for accounting.
 **Table: "Invoice Register"**
 ```
 columns: invoice_number, date, customer_name, payment_method, total_ht, total_tva, total_ttc, employee_name
-source: transactions WHERE status = 'completed'
-        ORDER BY created_at ASC
+source: transactions t
+        LEFT JOIN customers c ON t.customer_id = c.id
+        JOIN users u ON t.user_id = u.id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND date range
+        ORDER BY t.created_at ASC
 ```
 
-**NOTE:** This table can be large. Paginate server-side: max 500 rows. Add `page` and `limit` query params. Return `meta: { total_rows, page, limit }` in the response.
+**NOTE:** This table can be large. Paginate server-side: max 500 rows. Add `page` and `limit` query params. Return pagination info in the `meta` field of the universal schema: `"meta": { "total_rows": 1200, "page": 1, "limit": 500 }`. For all other reports, `meta` is `null`.
 
 ---
 
@@ -539,8 +659,20 @@ TVA analysis broken down by rate over time.
 **Table: "TVA by Rate and Day"**
 ```
 columns: date, tva_rate_20_ht, tva_rate_20_tva, tva_rate_10_ht, tva_rate_10_tva, tva_rate_7_ht, tva_rate_7_tva, tva_rate_0_ht
-source: transaction_items GROUP BY DATE(created_at), pivot by tva_rate
-        Uses calendar date per XCC-018
+source: transaction_items ti
+        JOIN transactions t ON t.id = ti.transaction_id
+        WHERE t.business_id = $1 AND t.status = 'completed' AND calendar date range
+        GROUP BY DATE(t.created_at AT TIME ZONE 'Africa/Casablanca')
+        PIVOT by ti.tva_rate using conditional aggregation:
+          SUM(CASE WHEN ti.tva_rate = 20 THEN ti.item_ht ELSE 0 END) AS tva_rate_20_ht
+          SUM(CASE WHEN ti.tva_rate = 20 THEN ti.item_tva ELSE 0 END) AS tva_rate_20_tva
+          etc.
+
+  CRITICAL: Uses calendar date per XCC-018 — same as tva-declaration.
+            Date comes from t.created_at (transactions table), NOT ti.created_at
+            (transaction_items uses plain TIMESTAMP without timezone).
+            This ensures tva-by-rate and tva-declaration agree on which day
+            each transaction falls in — a DGI audit requirement.
 ```
 
 ---
@@ -637,6 +769,8 @@ source: existing points exchange report query
 | `points-exchange-report` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 If a report is ❌ for a business type and is requested, return 404 with `{ "error": "REPORT_NOT_AVAILABLE", "message": "This report is not available for your business type" }`.
+
+**NOTE on Hotel + table reports:** Hotel businesses may or may not have dining areas and tables configured. If none exist, `sales-by-table` and `table-turnover` return empty rows with zero-value summary cards (per TRAP 5) — NOT a 404.
 
 ---
 
@@ -766,10 +900,10 @@ src/modules/reports/reports.service.spec.ts
 The 5 existing reports at `/api/business/reports/*` MUST continue to work with their current response shape. The universal endpoint wraps them — it doesn't replace them.
 
 ### TRAP 2: TVA date handling
-TVA reports use calendar dates per XCC-018. All other reports use operational dates (Africa/Casablanca timezone). These are different things — don't unify them.
+TVA reports (`tva-declaration`, `tva-by-rate`) use **calendar dates** per XCC-018: `DATE(t.created_at AT TIME ZONE 'Africa/Casablanca')`. All other reports also currently use timezone-converted calendar dates, but the distinction matters once `daily_settlement_cutoff_time` (ADM-061, Phase 15) is implemented — operational reports will then use cutoff-adjusted dates while TVA reports stay on calendar dates. Structure code so the date source is injectable per report.
 
 ### TRAP 3: Business type gating
-Restaurant-only reports (sales-by-table, kitchen-performance, table-turnover) must return 404 for non-restaurant businesses. Fetch `business.type` from the JWT or DB and gate.
+Restaurant-only reports (sales-by-table, kitchen-performance, table-turnover) must return 404 for non-restaurant businesses (and non-hotel where applicable). Fetch `business.type` from the JWT or DB and gate.
 
 ### TRAP 4: Money precision
 All money values are `NUMERIC(12,2)` with banker's rounding. Use `bankersRound()` from `money.ts` for any computed values (percentages, averages).
@@ -779,6 +913,12 @@ Reports for periods with no transactions should return the universal schema with
 
 ### TRAP 6: Daily-close is not a range report
 It's always a single day. Ignore `to` date. When `type=this_month`, show today's close. The owner uses date-range reports for trends and daily-close for end-of-day reconciliation.
+
+### TRAP 7: transaction_items column naming
+The money columns on `transaction_items` are: `item_ht`, `item_tva`, `item_ttc` (post-discount), `discount_amount`, and `unit_price` (pre-discount per unit). The legacy `line_total` column (`quantity × unit_price`, pre-discount) must NEVER be used for reports — it will not reconcile with transaction-level totals. Always use `item_ttc`.
+
+### TRAP 8: tva-by-rate must use transactions.created_at for dates
+`transaction_items.created_at` is a plain `TIMESTAMP` (no timezone), while `transactions.created_at` is also plain TIMESTAMP but the existing TVA declaration query uses `t.created_at AT TIME ZONE 'Africa/Casablanca'`. The `tva-by-rate` report MUST join to transactions and use `t.created_at` for its date grouping — never `ti.created_at` — to ensure it agrees with `tva-declaration` for the same period.
 
 ### RULE 1: Multi-tenancy
 Every query scopes by `business_id` from JWT. Cross-tenant = 404.
