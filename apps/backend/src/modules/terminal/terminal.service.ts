@@ -32,6 +32,7 @@ import { userHasPermission } from '../../common/utils/permissions';
 import { PromotionEvaluatorService, CartItem, ApplicablePromotion } from '../promotion/promotion-evaluator.service';
 import { EventGateway } from '../../common/gateways/event.gateway';
 import { TableSession } from '../../common/entities/table-session.entity';
+import { StockConsumptionService } from '../inventory/stock-consumption.service';
 
 @Injectable()
 export class TerminalService {
@@ -40,6 +41,7 @@ export class TerminalService {
     private discountPipeline: DiscountPipelineService,
     private evaluator: PromotionEvaluatorService,
     private eventGateway: EventGateway,
+    private stockConsumptionService: StockConsumptionService,
     @InjectDataSource() private dataSource: DataSource,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -572,6 +574,27 @@ export class TerminalService {
           sessionPaid = true;
           sessionTableId = sessionRow.table_id;
         }
+      }
+
+      // FIFO stock consumption (INV-050) — wrapped in try-catch so stock errors never block a sale
+      try {
+        const consumeItems = dto.items.map((i) => ({
+          product_id: i.product_id,
+          quantity: i.quantity,
+          variant_id: i.variant_id ?? null,
+        }));
+        await this.stockConsumptionService.consumeForTransaction(
+          queryRunner,
+          businessId,
+          locationId,
+          savedTxn.id,
+          consumeItems,
+          productMap,
+          'realtime',
+        );
+      } catch (fifoErr) {
+        // Per INV-050: stock errors NEVER block a sale
+        console.error(`[FIFO] Failed for txn ${savedTxn.id}: ${(fifoErr as Error).message}`);
       }
 
       await queryRunner.commitTransaction();

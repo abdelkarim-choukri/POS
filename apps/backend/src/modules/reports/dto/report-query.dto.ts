@@ -1,5 +1,5 @@
-import { IsIn, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class ReportQueryDto {
   @IsIn(['today', 'yesterday', 'last_7days', 'this_month', 'last_month', 'this_year', 'custom'])
@@ -25,6 +25,14 @@ export class ReportQueryDto {
   @Min(1)
   @Max(500)
   limit?: number;
+
+  // Inventory-specific optional filters (INV-090-093)
+  @IsOptional() @IsUUID() warehouse_id?: string;
+  @IsOptional() @IsUUID() product_id?: string;
+  @IsOptional() @IsUUID() category_id?: string;
+  @IsOptional() @IsUUID() vendor_id?: string;
+  @IsOptional() @IsIn(['receive', 'sale', 'adjustment', 'waste', 'expiry_disposal', 'transfer_in', 'transfer_out']) movement_type?: string;
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === true) @IsBoolean() low_stock_only?: boolean;
 }
 
 export interface ReportSummaryItem {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KdsModule } from '../kds/kds.module';
 import { PromotionModule } from '../promotion/promotion.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { TerminalController } from './terminal.controller';
 import { TerminalService } from './terminal.service';
 import { DiscountPipelineService } from '../../common/services/discount-pipeline.service';
@@ -25,6 +26,7 @@ import { TableSession } from '../../common/entities/table-session.entity';
   imports: [
     KdsModule,
     PromotionModule,
+    InventoryModule,
     TypeOrmModule.forFeature([
       Terminal, User, ClockEntry, Category, Product,
       Transaction, TransactionItem, Void, SyncQueue, Business,

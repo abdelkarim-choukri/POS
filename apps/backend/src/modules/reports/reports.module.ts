@@ -9,6 +9,7 @@ import { CustomersGenerator } from './generators/customers.generator';
 import { OperationsGenerator } from './generators/operations.generator';
 import { AccountingGenerator } from './generators/accounting.generator';
 import { ExistingWrappersGenerator } from './generators/existing-wrappers.generator';
+import { InventoryReportsGenerator } from './generators/inventory-reports.generator';
 import { PromotionModule } from '../promotion/promotion.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { PromotionModule } from '../promotion/promotion.module';
     OperationsGenerator,
     AccountingGenerator,
     ExistingWrappersGenerator,
+    InventoryReportsGenerator,
   ],
 })
 export class ReportsModule {}

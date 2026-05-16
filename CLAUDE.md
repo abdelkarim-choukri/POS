@@ -538,9 +538,77 @@ See `docs/REPORTS_MODULE_REFERENCE.md` for complete build reference.
   - `reports.module.ts` — AccountingGenerator + ExistingWrappersGenerator registered; PromotionModule imported
   - 15 new tests in `reports.service.spec.ts` (Part C TVA & Accounting + Existing Wrappers suites)
 
-### Phases 11-15 — see extension spec §14 (PENDING)
+### Phase 11A — Inventory Foundations (DONE). 421 tests passing (29 suites).
 
-Order: 11+12 (INV) → 13 (CHN) → 14 (REC) → 15 (ADM).
+See extension spec §12 (INV-*) for requirement IDs.
+
+- [x] Migration `1714009000000-AddInventoryFoundations` — 6 tables: unit_of_measures, warehouses,
+      vendors, vendor_check_details, brands, nutrition_info + §13.3 indexes
+- [x] 6 new entities: UnitOfMeasure, Warehouse, Vendor, VendorCheckDetail, Brand, NutritionInfo
+- [x] `InventoryService` — 23 endpoints across: UoM CRUD (INV-001-004), Warehouse CRUD (INV-010-014),
+      Vendor CRUD (INV-020-027, with VendorCheckDetail create/list), Brand CRUD (INV-030-033),
+      NutritionInfo CRUD (INV-035-036), Product enrichment: getInventoryProduct/update (INV-037-038)
+- [x] `InventoryController` — all endpoints under `/api/business/inventory/*`
+- [x] `InventoryModule` registered in AppModule
+- [x] 43 unit tests across all service methods
+
+### Phase 12A — Stock Engine (DONE). 497 tests passing (37 suites).
+
+See extension spec §12 (INV-040–INV-096) for requirement IDs.
+
+**Migration + Entities:**
+- [x] Migration `1714010000000-AddStockEngine` — 8 tables:
+      stock_batches, stock_movements, purchase_orders, purchase_order_items,
+      stock_templates, stock_template_items, expiration_alerts, stock_discrepancy_alerts;
+      businesses.expiration_alert_lead_days INT DEFAULT 7; FIFO index on stock_batches;
+      deferred FK: stock_batches.purchase_order_id added via ALTER TABLE after purchase_orders created
+- [x] 8 new entities: StockBatch, StockMovement, PurchaseOrder, PurchaseOrderItem,
+      StockTemplate, StockTemplateItem, ExpirationAlert, StockDiscrepancyAlert
+
+**Services + Controllers:**
+- [x] `StockBatchService` + `StockBatchController` — INV-040-044:
+      listBatches (paginated+filtered), receiveBatch (atomic QR: batch + receive movement),
+      adjustBatch (raw SQL UPDATE + adjustment movement), disposeBatch (422 guard + movement),
+      transferBatch (atomic QR: decrement source, new target batch, two movements)
+- [x] `StockTemplateService` + `StockTemplateController` — INV-060-065:
+      full template CRUD + generatePurchaseOrder (from template → draft PO with items)
+- [x] `PurchaseOrderService` + `PurchaseOrderController` — INV-070-077:
+      listPurchaseOrders (paginated+filtered), getPurchaseOrder, createPurchaseOrder (PO# generated:
+      PO-YYYY-NNNN), updatePurchaseOrder (draft only, replace-set items), sendPurchaseOrder (→sent),
+      confirmPurchaseOrder (sent/draft→confirmed), receivePurchaseOrder (create batches+movements,
+      auto-transition to partially_received/received), cancelPurchaseOrder (422 if items received)
+- [x] `AlertService` + `AlertController` — INV-081-082, INV-094-096:
+      listExpirationAlerts/resolveExpirationAlert (422 if already resolved),
+      listDiscrepancyAlerts/resolveDiscrepancyAlert (3 action types: manual_recount, accept_loss, adjust_batch)
+
+**FIFO + Background Jobs:**
+- [x] `StockConsumptionService` (SEPARATE service, NOT inline in TerminalService) — INV-050:
+      consumeForTransaction(qr, businessId, locationId, transactionId, items, productMap, sourceOrigin):
+      warehouse lookup via linked_location_id, skips gracefully if no warehouse, skips if !track_stock,
+      FIFO walk (expires_at ASC NULLS LAST, received_at ASC), discrepancy alert on shortfall;
+      helpers: findExpiringBatches, findNegativeBatches, findRecentOfflineSyncBatches (for processors)
+- [x] FIFO hook in `TerminalService.createTransaction()`: inside QR try block, inner try-catch wraps
+      the consumeForTransaction call — FIFO errors are SWALLOWED and NEVER block a sale (INV-050)
+- [x] `ExpirationScanProcessor` (BullMQ `@Processor('inventory-expiration-scan')`) — INV-080:
+      daily scan, creates expires_soon/expired alerts per batch, idempotent (skips existing unresolved)
+- [x] `ReconciliationProcessor` (BullMQ `@Processor('inventory-reconciliation')`) — INV-095:
+      daily scan, creates discrepancy alerts for negative batches (system_detected) and
+      offline_sync movements that caused negative stock (offline_sync); idempotent
+- [x] `StockSchedulerService` (`OnModuleInit`): schedules both queues via BullMQ repeat.pattern
+      (expiration: '0 1 * * *', reconciliation: '0 2 * * *')
+
+**Inventory Reports (wired into existing ReportsModule):**
+- [x] `InventoryReportsGenerator` — 4 new reports in `reports.service.ts` dispatcher:
+      stock-position (INV-090): current qty+value by product, low_stock_only filter;
+      stock-movements (INV-091): paginated movement history with movement_type/warehouse/product filters;
+      vendor-purchases (INV-092): spend per vendor from purchase_orders (cancelled excluded);
+      input-tva (INV-093): TVA grouped by rate from purchase_order_items (XCC-018: calendar dates)
+- [x] `report-query.dto.ts` extended with optional inventory params: warehouse_id, product_id,
+      category_id, vendor_id, movement_type, low_stock_only
+
+### Phases 13-15 — see extension spec §14 (PENDING)
+
+Order: 13 (CHN) → 14 (REC) → 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 

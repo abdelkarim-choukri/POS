@@ -11,6 +11,7 @@ import { CustomersGenerator } from './generators/customers.generator';
 import { OperationsGenerator } from './generators/operations.generator';
 import { AccountingGenerator } from './generators/accounting.generator';
 import { ExistingWrappersGenerator } from './generators/existing-wrappers.generator';
+import { InventoryReportsGenerator } from './generators/inventory-reports.generator';
 
 // restaurant only (kitchen-performance)
 const RESTAURANT_ONLY_REPORTS = new Set(['kitchen-performance']);
@@ -26,6 +27,8 @@ const ALL_REPORT_IDS = new Set([
   'employee-performance', 'kitchen-performance', 'table-turnover', 'voids-cancellations',
   'tva-declaration', 'daily-close', 'invoice-register', 'tva-by-rate',
   'promotion-report', 'coupon-report', 'discount-write-offs', 'points-exchange-report',
+  // Inventory reports (Phase 12A)
+  'stock-position', 'stock-movements', 'vendor-purchases', 'input-tva',
 ]);
 
 @Injectable()
@@ -38,6 +41,7 @@ export class ReportsService {
     private operationsGen: OperationsGenerator,
     private accountingGen: AccountingGenerator,
     private wrappersGen: ExistingWrappersGenerator,
+    private inventoryGen: InventoryReportsGenerator,
   ) {}
 
   async getReport(businessId: string, reportId: string, query: ReportQueryDto, lang: ReportLanguage) {
@@ -135,6 +139,30 @@ export class ReportsService {
         return this.wrappersGen.discountWriteOffs(businessId, lang, businessType, period, query.type);
       case 'points-exchange-report':
         return this.wrappersGen.pointsExchangeReport(businessId, lang, businessType, period, query.type);
+      // Inventory reports (Phase 12A)
+      case 'stock-position':
+        return this.inventoryGen.stockPosition(businessId, lang, businessType, period, query.type, {
+          warehouse_id: query.warehouse_id,
+          category_id: query.category_id,
+          low_stock_only: query.low_stock_only,
+        });
+      case 'stock-movements': {
+        const page = query.page ?? 1;
+        const limit = query.limit ?? 50;
+        return this.inventoryGen.stockMovements(businessId, lang, businessType, period, query.type, {
+          warehouse_id: query.warehouse_id,
+          product_id: query.product_id,
+          movement_type: query.movement_type,
+          page,
+          limit,
+        });
+      }
+      case 'vendor-purchases':
+        return this.inventoryGen.vendorPurchases(businessId, lang, businessType, period, query.type, {
+          vendor_id: query.vendor_id,
+        });
+      case 'input-tva':
+        return this.inventoryGen.inputTva(businessId, lang, businessType, period, query.type);
       default:
         throw new NotFoundException({ error: 'REPORT_NOT_IMPLEMENTED', message: `Report ${reportId} is not implemented yet` });
     }

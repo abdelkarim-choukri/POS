@@ -24,6 +24,7 @@ import { Coupon } from '../../common/entities/coupon.entity';
 import { TableSession } from '../../common/entities/table-session.entity';
 import { PaymentMethod } from '../../common/enums';
 import { bankersRound } from '../../common/utils/money';
+import { StockConsumptionService } from '../inventory/stock-consumption.service';
 
 const mockEventGateway = { emitToRoom: jest.fn() };
 
@@ -153,6 +154,7 @@ function makeTestModule(overrides: {
         { provide: KdsService, useValue: { notifyNewOrder: jest.fn() } },
         { provide: PromotionEvaluatorService, useValue: mockEvaluator },
         { provide: EventGateway, useValue: mockEventGateway },
+        { provide: StockConsumptionService, useValue: { consumeForTransaction: jest.fn().mockResolvedValue(undefined) } },
         { provide: DataSource, useValue: mockDataSource },
         { provide: getRepositoryToken(Terminal), useValue: makeMockRepo() },
         { provide: getRepositoryToken(User), useValue: makeMockRepo() },

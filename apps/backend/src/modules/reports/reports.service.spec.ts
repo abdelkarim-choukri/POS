@@ -9,6 +9,7 @@ import { CustomersGenerator } from './generators/customers.generator';
 import { OperationsGenerator } from './generators/operations.generator';
 import { AccountingGenerator } from './generators/accounting.generator';
 import { ExistingWrappersGenerator } from './generators/existing-wrappers.generator';
+import { InventoryReportsGenerator } from './generators/inventory-reports.generator';
 import { PromotionService } from '../promotion/promotion.service';
 import { CouponExtService } from '../promotion/coupon-ext.service';
 import { PointsExchangeService } from '../promotion/pex.service';
@@ -53,6 +54,7 @@ async function buildService(businessType = 'retail', dsQuery?: jest.Mock) {
       OperationsGenerator,
       AccountingGenerator,
       ExistingWrappersGenerator,
+      InventoryReportsGenerator,
       { provide: getRepositoryToken(Business), useValue: makeBusinessRepo(businessType) },
       { provide: DataSource, useValue: ds },
       { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -559,7 +561,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: promoMock },
@@ -588,7 +590,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -615,7 +617,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -640,7 +642,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -691,6 +693,70 @@ describe('ReportsService Part C — Existing Wrappers', () => {
         if (e?.response?.error === 'REPORT_NOT_IMPLEMENTED') threw500 = true;
       }
       expect(threw500).toBe(false);
+    }
+  });
+});
+
+// ─── Inventory Reports (INV-090-093) ───────────────────────────────────────
+
+describe('Inventory Reports', () => {
+  it('stock-position returns UniversalReportResponse with summary and tables', async () => {
+    const dsQuery = jest.fn()
+      .mockResolvedValue([{ product_id: 'p-1', product_name: 'Coffee', category_name: 'Beverages', total_quantity: '50', total_value: '250', oldest_expiry: null, reorder_point: '10', batch_count: '2' }]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'stock-position', { type: 'today' }, 'en');
+    expect(result.title).toBe('Stock Position');
+    expect(result.tables).toHaveLength(1);
+    expect(result.summary.some((s: any) => s.label === 'Total Products')).toBe(true);
+  });
+
+  it('stock-movements returns paginated movement history', async () => {
+    const dsQuery = jest.fn()
+      .mockResolvedValueOnce([{ cnt: '3' }]) // count query
+      .mockResolvedValueOnce([ // rows query
+        { created_at: new Date(), product_name: 'Coffee', batch_code: 'B-001', movement_type: 'sale', quantity: '5', source_origin: 'realtime', notes: null },
+      ]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'stock-movements', { type: 'today', page: 1, limit: 20 }, 'en');
+    expect(result.title).toBe('Stock Movement History');
+    expect(result.meta).toBeDefined();
+    expect((result.meta as any).total_rows).toBe(3);
+  });
+
+  it('vendor-purchases returns spend per vendor', async () => {
+    const dsQuery = jest.fn().mockResolvedValue([
+      { vendor_id: 'v-1', vendor_name: 'Supplier Co', po_count: '3', total_ht: '1000', total_tva: '200', total_ttc: '1200', received_count: '2' },
+    ]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'vendor-purchases', { type: 'this_month' }, 'fr');
+    expect(result.title).toBe('Rapport achats fournisseurs');
+    expect(result.tables[0].rows).toHaveLength(1);
+    expect(result.summary.some((s: any) => s.label === 'Total fournisseurs')).toBe(true);
+  });
+
+  it('input-tva returns TVA grouped by rate using calendar dates (XCC-018)', async () => {
+    const dsQuery = jest.fn()
+      .mockResolvedValueOnce([{ tva_rate: '20', total_ht: '5000', total_tva: '1000' }]) // by-rate rows
+      .mockResolvedValueOnce([{ cnt: '4' }]); // po count
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'input-tva', { type: 'this_month' }, 'en');
+    expect(result.title).toBe('Input TVA Reclaim');
+    expect(result.tables[0].rows[0].tva_rate).toBe(20);
+    expect(result.summary.some((s: any) => s.label === 'Total Input TVA')).toBe(true);
+  });
+
+  it('all 4 inventory report IDs are accepted without REPORT_NOT_IMPLEMENTED', async () => {
+    const inventoryIds = ['stock-position', 'stock-movements', 'vendor-purchases', 'input-tva'];
+    for (const id of inventoryIds) {
+      const dsQuery = jest.fn().mockResolvedValue([{ cnt: '0' }]);
+      const { service } = await buildService('retail', dsQuery);
+      let threw = false;
+      try {
+        await service.getReport(BIZ_ID, id, { type: 'today' }, 'fr');
+      } catch (e: any) {
+        if (e?.response?.error === 'REPORT_NOT_IMPLEMENTED') threw = true;
+      }
+      expect(threw).toBe(false);
     }
   });
 });
