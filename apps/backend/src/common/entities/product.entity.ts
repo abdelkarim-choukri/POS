@@ -6,6 +6,9 @@ import { Business } from './business.entity';
 import { Category } from './category.entity';
 import { ProductVariant } from './product-variant.entity';
 import { ProductModifierGroup } from './product-modifier-group.entity';
+import { Brand } from './brand.entity';
+import { Vendor } from './vendor.entity';
+import { UnitOfMeasure } from './unit-of-measure.entity';
 
 @Entity('products')
 export class Product {
@@ -58,6 +61,33 @@ export class Product {
 
   @Column({ type: 'boolean', default: false })
   tva_exempt: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  brand_id: string | null;
+
+  @ManyToOne(() => Brand, { nullable: true })
+  @JoinColumn({ name: 'brand_id' })
+  brand: Brand | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  default_vendor_id: string | null;
+
+  @ManyToOne(() => Vendor, { nullable: true })
+  @JoinColumn({ name: 'default_vendor_id' })
+  default_vendor: Vendor | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'unit' })
+  unit_of_measure: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  unit_of_measure_id: string | null;
+
+  @ManyToOne(() => UnitOfMeasure, { nullable: true })
+  @JoinColumn({ name: 'unit_of_measure_id' })
+  unit_of_measure_ref: UnitOfMeasure | null;
+
+  @Column({ type: 'boolean', default: false })
+  track_stock: boolean;
 
   @OneToMany(() => ProductVariant, (v) => v.product)
   variants: ProductVariant[];
