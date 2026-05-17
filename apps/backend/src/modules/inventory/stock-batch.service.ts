@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { StockBatch } from '../../common/entities/stock-batch.entity';
 import { StockMovement } from '../../common/entities/stock-movement.entity';
 import { Warehouse } from '../../common/entities/warehouse.entity';
@@ -112,6 +112,21 @@ export class StockBatchService {
   // ── INV-042: Adjust Batch ───────────────────────────────────────────────────
 
   async adjustBatch(batchId: string, businessId: string, userId: string, dto: AdjustBatchDto) {
+    // When stock_adjustment_approval is enabled, direct adjustments are blocked
+    const flagRows = await this.dataSource.query(
+      `SELECT btf.is_enabled
+       FROM business_type_features btf
+       JOIN businesses b ON b.business_type_id = btf.business_type_id
+       WHERE b.id = $1 AND btf.feature_key = 'stock_adjustment_approval'
+       LIMIT 1`,
+      [businessId],
+    );
+    if (flagRows?.[0]?.is_enabled === true) {
+      throw new UnprocessableEntityException({
+        error: 'ADJUSTMENT_APPROVAL_REQUIRED',
+        message: 'Stock adjustments require approval when stock_adjustment_approval is enabled. Use POST /api/business/stock-adjustments to create a proposal.',
+      });
+    }
     const batch = await this.batchRepo.findOne({ where: { id: batchId, business_id: businessId } });
     if (!batch) throw new NotFoundException('Batch not found');
 
@@ -243,5 +258,111 @@ export class StockBatchService {
     } finally {
       await qr.release();
     }
+  }
+
+  // ── Shared: apply a batch adjustment inside a caller's QueryRunner ──────────
+  // Used by StockAdjustmentService.postAdjustment (EXT-INV-015)
+
+  async applyBatchAdjustmentInQr(
+    qr: QueryRunner,
+    batchId: string,
+    businessId: string,
+    delta: number,
+    userId: string,
+    notes: string,
+    referenceType?: string,
+    referenceId?: string,
+  ): Promise<void> {
+    await qr.manager.query(
+      `UPDATE stock_batches SET quantity_remaining = quantity_remaining + $1, updated_at = now() WHERE id = $2 AND business_id = $3`,
+      [delta, batchId, businessId],
+    );
+    const movement = qr.manager.create(StockMovement, {
+      business_id: businessId,
+      batch_id: batchId,
+      movement_type: 'adjustment',
+      quantity: delta,
+      source_origin: 'realtime',
+      performed_by_user_id: userId,
+      notes,
+      reference_type: referenceType ?? null,
+      reference_id: referenceId ?? null,
+    });
+    await qr.manager.save(StockMovement, movement);
+  }
+
+  // ── Shared: execute a single-batch transfer inside a caller's QueryRunner ───
+  // Used by StockTransferService.postTransfer (EXT-INV-023)
+
+  async executeBatchTransferInQr(
+    qr: QueryRunner,
+    sourceBatchId: string,
+    businessId: string,
+    targetWarehouseId: string,
+    quantity: number,
+    userId: string,
+    notes?: string,
+    referenceType?: string,
+    referenceId?: string,
+  ): Promise<StockBatch> {
+    const sourceBatch = await qr.manager.findOne(StockBatch, { where: { id: sourceBatchId, business_id: businessId } });
+    if (!sourceBatch) throw new NotFoundException('Source batch not found');
+    if (quantity > Number(sourceBatch.quantity_remaining)) {
+      throw new UnprocessableEntityException(
+        `Transfer quantity ${quantity} exceeds available ${sourceBatch.quantity_remaining}`,
+      );
+    }
+
+    // Decrement source
+    await qr.manager.query(
+      `UPDATE stock_batches SET quantity_remaining = quantity_remaining - $1, updated_at = now() WHERE id = $2`,
+      [quantity, sourceBatchId],
+    );
+
+    // New batch at target warehouse
+    const newBatch = qr.manager.create(StockBatch, {
+      business_id: businessId,
+      warehouse_id: targetWarehouseId,
+      product_id: sourceBatch.product_id,
+      variant_id: sourceBatch.variant_id,
+      batch_code: sourceBatch.batch_code,
+      quantity_initial: quantity,
+      quantity_remaining: quantity,
+      unit_cost: sourceBatch.unit_cost,
+      unit_cost_tva_rate: sourceBatch.unit_cost_tva_rate,
+      unit_of_measure: sourceBatch.unit_of_measure,
+      expires_at: sourceBatch.expires_at,
+      vendor_id: sourceBatch.vendor_id,
+      purchase_order_id: null,
+    });
+    const savedNewBatch = await qr.manager.save(StockBatch, newBatch);
+
+    // Transfer-out movement on source
+    await qr.manager.save(StockMovement, qr.manager.create(StockMovement, {
+      business_id: businessId,
+      batch_id: sourceBatchId,
+      movement_type: 'transfer_out',
+      quantity,
+      source_origin: 'realtime',
+      performed_by_user_id: userId,
+      notes: notes ?? null,
+      reference_type: referenceType ?? null,
+      reference_id: referenceId ?? null,
+    }));
+
+    // Transfer-in movement on new batch
+    await qr.manager.save(StockMovement, qr.manager.create(StockMovement, {
+      business_id: businessId,
+      batch_id: savedNewBatch.id,
+      movement_type: 'transfer_in',
+      quantity,
+      source_origin: 'realtime',
+      performed_by_user_id: userId,
+      notes: notes ?? null,
+      reference_type: referenceType ?? null,
+      reference_id: referenceId ?? null,
+    }));
+
+    return savedNewBatch;
   }
 }
