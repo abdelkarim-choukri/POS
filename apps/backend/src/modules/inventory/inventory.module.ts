@@ -17,6 +17,8 @@ import { StockAdjustmentService } from './stock-adjustment.service';
 import { StockAdjustmentController } from './stock-adjustment.controller';
 import { StockTransferService } from './stock-transfer.service';
 import { StockTransferController } from './stock-transfer.controller';
+import { VendorPaymentService } from './vendor-payment.service';
+import { VendorPaymentController } from './vendor-payment.controller';
 import { ExpirationScanProcessor, EXPIRATION_SCAN_QUEUE } from './processors/expiration-scan.processor';
 import { ReconciliationProcessor, RECONCILIATION_QUEUE } from './processors/reconciliation.processor';
 import { UnitOfMeasure } from '../../common/entities/unit-of-measure.entity';
@@ -38,6 +40,7 @@ import { StockAdjustment } from '../../common/entities/stock-adjustment.entity';
 import { StockAdjustmentItem } from '../../common/entities/stock-adjustment-item.entity';
 import { StockTransfer } from '../../common/entities/stock-transfer.entity';
 import { StockTransferItem } from '../../common/entities/stock-transfer-item.entity';
+import { VendorPayment } from '../../common/entities/vendor-payment.entity';
 import { Business } from '../../common/entities/business.entity';
 
 @Module({
@@ -62,6 +65,7 @@ import { Business } from '../../common/entities/business.entity';
       StockAdjustmentItem,
       StockTransfer,
       StockTransferItem,
+      VendorPayment,
       Business,
     ]),
     BullModule.registerQueue(
@@ -77,6 +81,7 @@ import { Business } from '../../common/entities/business.entity';
     AlertController,
     StockAdjustmentController,
     StockTransferController,
+    VendorPaymentController,
   ],
   providers: [
     InventoryService,
@@ -88,6 +93,7 @@ import { Business } from '../../common/entities/business.entity';
     StockSchedulerService,
     StockAdjustmentService,
     StockTransferService,
+    VendorPaymentService,
     ExpirationScanProcessor,
     ReconciliationProcessor,
   ],
