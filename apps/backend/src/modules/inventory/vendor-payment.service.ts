@@ -134,7 +134,7 @@ export class VendorPaymentService {
          LEFT JOIN (
            SELECT purchase_order_id, SUM(amount_paid) AS amount_paid
            FROM vendor_payments
-           WHERE status IN ('pending', 'confirmed')
+           WHERE business_id = $1 AND status IN ('pending', 'confirmed')
            GROUP BY purchase_order_id
          ) vp_sum ON vp_sum.purchase_order_id = po.id
          WHERE po.business_id = $1 AND po.vendor_id = $2
@@ -163,7 +163,8 @@ export class VendorPaymentService {
       `SELECT COALESCE(SUM(
          po.total_ttc - COALESCE((
            SELECT SUM(vp2.amount_paid) FROM vendor_payments vp2
-           WHERE vp2.purchase_order_id = po.id AND vp2.status IN ('pending','confirmed')
+           WHERE vp2.purchase_order_id = po.id AND vp2.business_id = $1
+             AND vp2.status IN ('pending','confirmed')
          ), 0)
        ), 0) AS total_outstanding
        FROM purchase_orders po
@@ -173,7 +174,7 @@ export class VendorPaymentService {
     );
 
     const [avgStats] = await this.dataSource.query(
-      `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (vp.created_at - po.order_date::timestamptz)) / 86400))::int AS avg_days_to_pay
+      `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (vp.payment_date::timestamptz - po.order_date::timestamptz)) / 86400))::int AS avg_days_to_pay
        FROM vendor_payments vp
        JOIN purchase_orders po ON po.id = vp.purchase_order_id
        WHERE vp.business_id = $1 AND vp.vendor_id = $2
