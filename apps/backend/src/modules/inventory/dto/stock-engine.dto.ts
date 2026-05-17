@@ -175,3 +175,29 @@ export class ResolveDiscrepancyAlertDto {
   @IsOptional() @IsNumber() adjustment_quantity?: number;
   @IsOptional() @IsString() notes?: string;
 }
+
+// ── EXT-INV-030–036: Vendor Payments ─────────────────────────────────────────
+
+export class ListVendorPaymentsQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit?: number;
+  @IsOptional() @IsUUID() vendor_id?: string;
+  @IsOptional() @IsUUID() purchase_order_id?: string;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() from_date?: string;
+  @IsOptional() @IsString() to_date?: string;
+}
+
+export class CreateVendorPaymentDto {
+  @IsUUID() @IsNotEmpty() vendor_id: string;
+  @IsOptional() @IsUUID() purchase_order_id?: string;
+  @IsNumber() @Min(0.01) amount_paid: number;
+  @IsString() @IsNotEmpty() payment_date: string;
+  @IsIn(['bank_transfer', 'cheque', 'cash', 'other']) payment_method: string;
+  @IsOptional() @IsString() reference_number?: string;
+  @IsOptional() @IsString() notes?: string;
+}
+
+export class VoidVendorPaymentDto {
+  @IsString() @IsNotEmpty() reason: string;
+}
