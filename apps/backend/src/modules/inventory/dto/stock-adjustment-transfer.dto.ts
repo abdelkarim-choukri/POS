@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsNumber, IsUUID, IsInt, IsIn,
-  IsNotEmpty, ValidateNested, MinLength, Min, ArrayMinSize,
+  IsNotEmpty, ValidateNested, MinLength, Min, Max, ArrayMinSize, IsNotIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -10,7 +10,7 @@ export class StockAdjustmentItemDto {
   @IsUUID() product_id: string;
   @IsOptional() @IsUUID() variant_id?: string;
   @IsUUID() batch_id: string;
-  @IsNumber() proposed_delta: number;
+  @IsNumber() @IsNotIn([0]) proposed_delta: number;
   @IsOptional() @IsString() notes?: string;
 }
 
@@ -30,7 +30,7 @@ export class RejectAdjustmentDto {
 
 export class ListAdjustmentsQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
   @IsOptional() @IsIn(['draft', 'pending_approval', 'approved', 'posted', 'rejected']) status?: string;
   @IsOptional() @IsUUID() warehouse_id?: string;
   @IsOptional() @IsString() from_date?: string;
@@ -59,7 +59,7 @@ export class CreateTransferDto {
 
 export class ListTransfersQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
   @IsOptional() @IsIn(['draft', 'posted', 'cancelled']) status?: string;
   @IsOptional() @IsUUID() warehouse_id?: string;
   @IsOptional() @IsString() from_date?: string;
