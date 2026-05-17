@@ -301,7 +301,7 @@ export class StockBatchService {
     targetWarehouseId: string,
     quantity: number,
     userId: string,
-    notes?: string,
+    notes?: string | null,
     referenceType?: string,
     referenceId?: string,
   ): Promise<StockBatch> {

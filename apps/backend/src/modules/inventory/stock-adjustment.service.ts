@@ -86,8 +86,8 @@ export class StockAdjustmentService {
         const batch = await qr.manager.findOne(StockBatch, {
           where: { id: itemDto.batch_id, business_id: businessId, warehouse_id: dto.warehouse_id },
         });
-        if (!batch) throw new UnprocessableEntityException(
-          `Batch ${itemDto.batch_id} not found in warehouse ${dto.warehouse_id}`,
+        if (!batch) throw new NotFoundException(
+          `Batch ${itemDto.batch_id} not found`,
         );
 
         items.push(qr.manager.create(StockAdjustmentItem, {

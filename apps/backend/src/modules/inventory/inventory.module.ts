@@ -13,6 +13,10 @@ import { AlertService } from './alert.service';
 import { AlertController } from './alert.controller';
 import { StockConsumptionService } from './stock-consumption.service';
 import { StockSchedulerService } from './stock-scheduler.service';
+import { StockAdjustmentService } from './stock-adjustment.service';
+import { StockAdjustmentController } from './stock-adjustment.controller';
+import { StockTransferService } from './stock-transfer.service';
+import { StockTransferController } from './stock-transfer.controller';
 import { ExpirationScanProcessor, EXPIRATION_SCAN_QUEUE } from './processors/expiration-scan.processor';
 import { ReconciliationProcessor, RECONCILIATION_QUEUE } from './processors/reconciliation.processor';
 import { UnitOfMeasure } from '../../common/entities/unit-of-measure.entity';
@@ -30,6 +34,10 @@ import { StockTemplate } from '../../common/entities/stock-template.entity';
 import { StockTemplateItem } from '../../common/entities/stock-template-item.entity';
 import { ExpirationAlert } from '../../common/entities/expiration-alert.entity';
 import { StockDiscrepancyAlert } from '../../common/entities/stock-discrepancy-alert.entity';
+import { StockAdjustment } from '../../common/entities/stock-adjustment.entity';
+import { StockAdjustmentItem } from '../../common/entities/stock-adjustment-item.entity';
+import { StockTransfer } from '../../common/entities/stock-transfer.entity';
+import { StockTransferItem } from '../../common/entities/stock-transfer-item.entity';
 import { Business } from '../../common/entities/business.entity';
 
 @Module({
@@ -50,6 +58,10 @@ import { Business } from '../../common/entities/business.entity';
       StockTemplateItem,
       ExpirationAlert,
       StockDiscrepancyAlert,
+      StockAdjustment,
+      StockAdjustmentItem,
+      StockTransfer,
+      StockTransferItem,
       Business,
     ]),
     BullModule.registerQueue(
@@ -63,6 +75,8 @@ import { Business } from '../../common/entities/business.entity';
     StockTemplateController,
     PurchaseOrderController,
     AlertController,
+    StockAdjustmentController,
+    StockTransferController,
   ],
   providers: [
     InventoryService,
@@ -72,6 +86,8 @@ import { Business } from '../../common/entities/business.entity';
     AlertService,
     StockConsumptionService,
     StockSchedulerService,
+    StockAdjustmentService,
+    StockTransferService,
     ExpirationScanProcessor,
     ReconciliationProcessor,
   ],

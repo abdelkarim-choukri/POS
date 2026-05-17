@@ -168,7 +168,7 @@ export class StockTransferService {
           transfer.target_warehouse_id,
           Number(item.quantity),
           userId,
-          transfer.notes ?? undefined,
+          transfer.notes,
           'stock_transfer',
           transfer.id,
         );
