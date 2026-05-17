@@ -45,3 +45,4 @@ export { StockAdjustment } from './stock-adjustment.entity';
 export { StockAdjustmentItem } from './stock-adjustment-item.entity';
 export { StockTransfer } from './stock-transfer.entity';
 export { StockTransferItem } from './stock-transfer-item.entity';
+export { VendorPayment } from './vendor-payment.entity';
