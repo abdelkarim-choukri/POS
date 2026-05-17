@@ -41,3 +41,7 @@ export { StockTemplate } from './stock-template.entity';
 export { StockTemplateItem } from './stock-template-item.entity';
 export { ExpirationAlert } from './expiration-alert.entity';
 export { StockDiscrepancyAlert } from './stock-discrepancy-alert.entity';
+export { StockAdjustment } from './stock-adjustment.entity';
+export { StockAdjustmentItem } from './stock-adjustment-item.entity';
+export { StockTransfer } from './stock-transfer.entity';
+export { StockTransferItem } from './stock-transfer-item.entity';
