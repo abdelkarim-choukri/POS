@@ -153,6 +153,28 @@ describe('PurchaseOrderService', () => {
     });
   });
 
+  describe('getPurchaseOrder — enrichment', () => {
+    it('includes amount_paid and balance_due from vendor_payments', async () => {
+      const po = makePo();
+      poRepo.findOne.mockResolvedValue(po);
+      dataSource.query = jest.fn().mockResolvedValue([{ amount_paid: '2000' }]);
+
+      const result = await service.getPurchaseOrder(PO_ID, BIZ);
+      expect((result as any).amount_paid).toBe(2000);
+      expect((result as any).balance_due).toBe(Number(po.total_ttc) - 2000);
+    });
+
+    it('defaults amount_paid to 0 when query fails', async () => {
+      const po = makePo();
+      poRepo.findOne.mockResolvedValue(po);
+      dataSource.query = jest.fn().mockRejectedValue(new Error('table not found'));
+
+      const result = await service.getPurchaseOrder(PO_ID, BIZ);
+      expect((result as any).amount_paid).toBe(0);
+      expect((result as any).balance_due).toBe(Number(po.total_ttc));
+    });
+  });
+
   // ── INV-072: Create PO ────────────────────────────────────────────────────
 
   describe('createPurchaseOrder', () => {

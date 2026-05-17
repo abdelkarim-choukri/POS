@@ -86,7 +86,18 @@ export class PurchaseOrderService {
       relations: ['items', 'items.product'],
     });
     if (!po) throw new NotFoundException('Purchase order not found');
-    return po;
+    try {
+      const [agg] = await this.dataSource.query(
+        `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
+         FROM vendor_payments
+         WHERE purchase_order_id = $1 AND status IN ('pending', 'confirmed')`,
+        [id],
+      );
+      const amountPaid = Number(agg?.amount_paid ?? 0);
+      return { ...po, amount_paid: amountPaid, balance_due: Number(po.total_ttc) - amountPaid };
+    } catch {
+      return { ...po, amount_paid: 0, balance_due: Number(po.total_ttc) };
+    }
   }
 
   // ── INV-072: Create PO ──────────────────────────────────────────────────────
