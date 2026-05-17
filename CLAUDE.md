@@ -255,16 +255,18 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 
 ## Implementation status
 
-**Current state: 527 tests passing, 39 suites, zero regressions.**
+**Current state: 545 tests passing, 40 suites, zero regressions.**
 
-Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B.
-Next: 12C (Vendor Payments).
+Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C.
+Next: 12D (Vendor Bill Aging).
 
 Key architectural facts for future phases:
 - `StockConsumptionService` is injected into `TerminalService` (FIFO, try-catch wrapped)
 - `InventoryModule` exports `StockConsumptionService` + all batch/PO services
 - `StockBatchService` exposes `applyBatchAdjustmentInQr` and `executeBatchTransferInQr` (used by 12B services)
 - `StockAdjustmentService` and `StockTransferService` live in `InventoryModule` (added Phase 12B)
+- `VendorPaymentService` lives in `InventoryModule`; handles vendor payments + PO balance-due enrichment
+- `getPurchaseOrder` now returns `{ ...po, amount_paid, balance_due }` (try/catch guarded)
 - Background jobs: `inventory-expiration-scan` (01:00) and `inventory-reconciliation` (02:00)
 
 Full phase-by-phase build log: @docs/IMPLEMENTATION_LOG.md

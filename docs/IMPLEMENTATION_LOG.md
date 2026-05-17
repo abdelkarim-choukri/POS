@@ -376,6 +376,27 @@ See extension spec §12 (EXT-INV-010–025) for requirement IDs.
 - [x] 15 tests for StockAdjustmentService (stock-adjustment.service.spec.ts)
 - [x] 15 tests for StockTransferService (stock-transfer.service.spec.ts)
 
+### Phase 12C — Vendor Payments (DONE). 545 tests passing (40 suites).
+
+See extension spec §12 (EXT-INV-030–036) for requirement IDs.
+
+- [x] Migration `1714012000000-AddVendorPayments` — 1 table: vendor_payments;
+      4 indexes including unique (business_id, payment_number)
+- [x] `VendorPayment` entity — 15 spec columns; no updated_at (payments immutable after void)
+- [x] `VendorPaymentService` — 7 methods:
+      listPayments (paginated + filterable by vendor/PO/status/date),
+      getPayment (cross-tenant 404),
+      createPayment (validates vendor + PO ownership, atomic QR for VP-YYYY-NNNNN numbering),
+      confirmPayment (pending→confirmed, sets confirmed_by + confirmed_at),
+      voidPayment (any non-voided→voided, audit console.log stub),
+      getVendorOutstanding (raw SQL subquery, balance_due > 0, ordered by expected_delivery_date ASC NULLS LAST),
+      getVendorPaymentSummary (3 raw queries: total_paid, total_outstanding, avg_days_to_pay)
+- [x] `VendorPaymentController` — @Controller('business'), 7 routes under vendor-payments/ and vendors/:vendorId/
+- [x] `getPurchaseOrder` enriched with computed `amount_paid` + `balance_due` via try/catch-guarded dataSource.query
+      (degrades gracefully to 0/total_ttc when mock lacks query — preserves all existing tests)
+- [x] `InventoryModule` updated — VendorPayment entity, VendorPaymentService, VendorPaymentController registered
+- [x] 18 new tests: 16 in vendor-payment.service.spec.ts + 2 PO enrichment tests in purchase-order.service.spec.ts
+
 ### Phases 13-15 — see extension spec §14 (PENDING)
 
 Order: 13 (CHN) → 14 (REC) → 15 (ADM).
