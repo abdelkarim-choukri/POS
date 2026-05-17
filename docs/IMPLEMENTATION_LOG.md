@@ -351,6 +351,31 @@ See extension spec §12 (INV-040–INV-096) for requirement IDs.
 - [x] `report-query.dto.ts` extended with optional inventory params: warehouse_id, product_id,
       category_id, vendor_id, movement_type, low_stock_only
 
+### Phase 12B — Transfer Documents & Adjustment Approvals (DONE). 527 tests passing (39 suites).
+
+See extension spec §12 (EXT-INV-010–025) for requirement IDs.
+
+- [x] Migration `1714011000000-AddStockTransfersAndAdjustments` — 4 tables:
+      stock_adjustments, stock_adjustment_items, stock_transfers, stock_transfer_items;
+      `stock_adjustment_approval` feature flag inserted (disabled) for all business types
+- [x] 4 new entities: StockAdjustment, StockAdjustmentItem, StockTransfer, StockTransferItem
+- [x] `StockBatchService` extended: `applyBatchAdjustmentInQr` and `executeBatchTransferInQr`
+      (shared atomic batch-manipulation logic used by both new services)
+- [x] `adjustBatch()` gated by `stock_adjustment_approval` feature flag (EXT-INV-015)
+- [x] `StockAdjustmentService` + `StockAdjustmentController` — 7 operations (EXT-INV-010–016):
+      listAdjustments, getAdjustment, createAdjustment (draft + items with quantity snapshot),
+      submitAdjustment (draft→pending_approval), approveAdjustment (pending_approval→approved),
+      postAdjustment (approved→posted, applies deltas atomically with SELECT FOR UPDATE),
+      rejectAdjustment (pending_approval→rejected with reason)
+- [x] `StockTransferService` + `StockTransferController` — 6 operations (EXT-INV-020–025):
+      listTransfers, getTransfer, createTransfer (draft + item batch validation per source WH),
+      postTransfer (draft→posted with SELECT FOR UPDATE, immutable after),
+      cancelTransfer (draft→cancelled), deleteTransfer (hard-delete draft only)
+- [x] `InventoryModule` updated: 4 new entities in TypeOrmModule.forFeature, 2 new services,
+      2 new controllers registered
+- [x] 15 tests for StockAdjustmentService (stock-adjustment.service.spec.ts)
+- [x] 15 tests for StockTransferService (stock-transfer.service.spec.ts)
+
 ### Phases 13-15 — see extension spec §14 (PENDING)
 
 Order: 13 (CHN) → 14 (REC) → 15 (ADM).
