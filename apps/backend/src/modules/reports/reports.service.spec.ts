@@ -760,3 +760,60 @@ describe('Inventory Reports', () => {
     }
   });
 });
+
+// ─── Phase 12D Reports ───────────────────────────────────────────────────────
+
+describe('Phase 12D Reports', () => {
+  it('cogs returns title, summary with total_cogs, tables with by_product', async () => {
+    const dsQuery = jest.fn()
+      .mockResolvedValueOnce([
+        { product_id: 'p-1', product_name: 'Coffee', category_id: 'c-1', category_name: 'Beverages', total_cost: '300.00', units_sold: '60' },
+      ])
+      .mockResolvedValueOnce([
+        { product_id: 'p-1', revenue: '600.00' },
+      ]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'cogs', { type: 'this_month' }, 'en');
+    expect(result.title).toBe('Cost of Goods Sold');
+    expect(result.summary.some((s: any) => s.label === 'Total COGS')).toBe(true);
+    expect(result.tables.some((t: any) => t.title === 'By Product')).toBe(true);
+  });
+
+  it('vendor-balance returns title, summary with total_outstanding, per-vendor rows', async () => {
+    const dsQuery = jest.fn().mockResolvedValue([
+      { vendor_id: 'v-1', vendor_name: 'Supplier A', total_purchases: '5000', total_paid: '3000', balance_due: '2000' },
+    ]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'vendor-balance', { type: 'today' }, 'fr');
+    expect(result.title).toBe('Solde fournisseurs');
+    expect(result.summary.some((s: any) => s.label === 'Total impayé')).toBe(true);
+    expect(result.tables[0].rows).toHaveLength(1);
+  });
+
+  it('bill-aging returns 4 aging buckets in summary, per-vendor rows', async () => {
+    const dsQuery = jest.fn().mockResolvedValue([
+      { vendor_id: 'v-1', vendor_name: 'Supplier A', po_id: 'po-1', po_number: 'PO-2026-0001',
+        order_date: '2026-04-01', balance_due: '1200', days_overdue: '46', aging_bucket: '31-60' },
+    ]);
+    const { service } = await buildService('retail', dsQuery);
+    const result = await service.getReport(BIZ_ID, 'bill-aging', { type: 'today' }, 'en');
+    expect(result.title).toBe('Bill Aging');
+    expect(result.summary.some((s: any) => s.label === '31-60 days')).toBe(true);
+    expect(result.tables[0].rows).toHaveLength(1);
+  });
+
+  it('all 3 Phase 12D report IDs are accepted without REPORT_NOT_IMPLEMENTED', async () => {
+    const phase12dIds = ['cogs', 'vendor-balance', 'bill-aging'];
+    for (const id of phase12dIds) {
+      const dsQuery = jest.fn().mockResolvedValue([]);
+      const { service } = await buildService('retail', dsQuery);
+      let threw = false;
+      try {
+        await service.getReport(BIZ_ID, id, { type: 'today' }, 'fr');
+      } catch (e: any) {
+        if (e?.response?.error === 'REPORT_NOT_IMPLEMENTED') threw = true;
+      }
+      expect(threw).toBe(false);
+    }
+  });
+});

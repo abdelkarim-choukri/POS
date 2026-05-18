@@ -29,6 +29,8 @@ const ALL_REPORT_IDS = new Set([
   'promotion-report', 'coupon-report', 'discount-write-offs', 'points-exchange-report',
   // Inventory reports (Phase 12A)
   'stock-position', 'stock-movements', 'vendor-purchases', 'input-tva',
+  // Phase 12D reports
+  'cogs', 'vendor-balance', 'bill-aging',
 ]);
 
 @Injectable()
@@ -163,6 +165,20 @@ export class ReportsService {
         });
       case 'input-tva':
         return this.inventoryGen.inputTva(businessId, lang, businessType, period, query.type);
+      // Phase 12D reports
+      case 'cogs':
+        return this.inventoryGen.cogs(businessId, lang, businessType, period, query.type, {
+          warehouse_id: query.warehouse_id,
+          category_id: query.category_id,
+        });
+      case 'vendor-balance':
+        return this.inventoryGen.vendorBalance(businessId, lang, businessType, period, query.type, {
+          as_of_date: query.as_of_date,
+        });
+      case 'bill-aging':
+        return this.inventoryGen.billAging(businessId, lang, businessType, period, query.type, {
+          as_of_date: query.as_of_date,
+        });
       default:
         throw new NotFoundException({ error: 'REPORT_NOT_IMPLEMENTED', message: `Report ${reportId} is not implemented yet` });
     }
