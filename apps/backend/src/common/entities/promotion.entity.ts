@@ -142,6 +142,9 @@ export class Promotion {
   @Column({ type: 'uuid', nullable: true })
   created_by_user_id: string | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  synced_from_parent_id: string | null;
+
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by_user_id' })
   created_by: User;

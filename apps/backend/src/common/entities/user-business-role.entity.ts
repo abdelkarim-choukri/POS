@@ -14,6 +14,6 @@ export class UserBusinessRole {
   @Column({ type: 'uuid', nullable: true })
   granted_by_user_id: string | null;
 
-  @CreateDateColumn({ name: 'granted_at' })
+  @CreateDateColumn()
   granted_at: Date;
 }

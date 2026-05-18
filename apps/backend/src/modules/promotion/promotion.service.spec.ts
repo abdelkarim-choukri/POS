@@ -60,6 +60,7 @@ function makePromo(overrides: Partial<Promotion> = {}): Promotion {
     status: 'draft',
     remark: null,
     created_by_user_id: USER_ID,
+    synced_from_parent_id: null,
     created_at: new Date('2026-01-01'),
     updated_at: new Date('2026-01-01'),
     redemptions: [],

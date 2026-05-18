@@ -53,6 +53,7 @@ function basePromo(overrides: Partial<Promotion> = {}): Promotion {
     status: 'active',
     remark: null,
     created_by_user_id: null,
+    synced_from_parent_id: null,
     created_at: new Date(),
     updated_at: new Date(),
     redemptions: [],

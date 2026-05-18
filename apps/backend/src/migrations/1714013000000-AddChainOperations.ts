@@ -14,6 +14,8 @@ export class AddChainOperations1714013000000 implements MigrationInterface {
       )
     `);
     await qr.query(`CREATE INDEX idx_ubr_business_id ON user_business_roles(business_id)`);
+    await qr.query(`ALTER TABLE user_business_roles ADD CONSTRAINT fk_ubr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`);
+    await qr.query(`ALTER TABLE user_business_roles ADD CONSTRAINT fk_ubr_business FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE`);
 
     await qr.query(`
       CREATE TABLE chain_sync_configs (
@@ -29,6 +31,7 @@ export class AddChainOperations1714013000000 implements MigrationInterface {
         updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await qr.query(`ALTER TABLE chain_sync_configs ADD CONSTRAINT fk_sync_config_parent FOREIGN KEY (parent_business_id) REFERENCES businesses(id) ON DELETE CASCADE`);
 
     // ── businesses ────────────────────────────────────────────────────────
     await qr.query(`ALTER TABLE businesses ADD COLUMN parent_business_id UUID NULL`);
