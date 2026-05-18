@@ -255,10 +255,10 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 
 ## Implementation status
 
-**Current state: 549 tests passing, 40 suites, zero regressions.**
+**Current state: 575 tests passing, 42 suites, zero regressions.**
 
-Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D.
-Next: 13 (CHN — Chain Management).
+Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D, 13.
+Next: 14 (REC — Recommendations).
 
 Key architectural facts for future phases:
 - `StockConsumptionService` is injected into `TerminalService` (FIFO, try-catch wrapped)
@@ -270,6 +270,13 @@ Key architectural facts for future phases:
 - Background jobs: `inventory-expiration-scan` (01:00) and `inventory-reconciliation` (02:00)
 - `InventoryReportsGenerator` has 7 report methods: stockPosition, stockMovements, vendorPurchases, inputTva (12A), cogs, vendorBalance, billAging (12D)
 - Phase 12D reports (`cogs`, `vendor-balance`, `bill-aging`) accept optional `as_of_date` (YYYY-MM-DD) param via `ReportQueryDto`
+- `ChainModule` at `src/modules/chain/`: 3 controllers (super/auth/business), `ChainService` (16 methods), `ChainSyncProcessor` (BullMQ `chain-sync` queue)
+- Chain hierarchy: `businesses.chain_role` ∈ {standalone, parent, child}; max 2 levels; `parent_business_id` self-FK with ON DELETE SET NULL
+- `user_business_roles` table: composite PK (user_id, business_id); per-business role overrides base user role for chain users
+- `chain_sync_configs` table: per-parent sync settings; sync sets `tva_rate=NULL` on child products (CHN-MOD-006)
+- CHN-011 re-issues JWT with new `business_id` claim; no token revocation list (known gap)
+- CHN-052 fulfills child PO: FIFO multi-batch decrement at parent + child batch creation + PO→received
+- `validateSubStores` (PROM-040): per-child TVA mismatch report before promotion rollout
 
 Full phase-by-phase build log: @docs/IMPLEMENTATION_LOG.md
 Pending phases: @docs/spec/POS_Implementation_Plan.md

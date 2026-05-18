@@ -406,9 +406,32 @@ See extension spec §12 (EXT-INV-030–036) for requirement IDs.
 - [x] 3 new IDs registered in `ALL_REPORT_IDS` and dispatcher: 'cogs', 'vendor-balance', 'bill-aging'
 - [x] 4 new tests in `reports.service.spec.ts` (1 per report + smoke test for all 3 new IDs)
 
-### Phases 13-15 — see extension spec §14 (PENDING)
+### Phase 13 — Chain & Franchise (DONE). 575 tests passing (42 suites).
 
-Order: 13 (CHN) → 14 (REC) → 15 (ADM).
+See extension spec §9 (CHN-001–052) for requirement IDs.
+
+- [x] Migration `1714013000000-AddChainOperations`: `user_business_roles` (composite PK + FK constraints), `chain_sync_configs` (FK to businesses);
+      `businesses.{parent_business_id, chain_role}`; `users.accessible_business_ids`;
+      `synced_from_parent_id` on categories, products, product_variants, modifier_groups, modifiers, promotions;
+      partial unique indexes for ON CONFLICT upserts (products, categories, product_variants)
+- [x] 2 new entities: `UserBusinessRole`, `ChainSyncConfig`; 7 existing entities updated; `Promotion` entity gets `synced_from_parent_id`
+- [x] `ChainService` — 17 methods covering all CHN endpoints:
+      getChainTree, promoteToParent, linkChild, unlinkChild (CHN-001–004);
+      getAccessibleBusinesses, switchBusiness (re-issues JWT, super_admin bypass), grantBusinessAccess (CHN-010–012);
+      getSyncConfig, setSyncConfig, triggerSync (BullMQ enqueue), getSyncJobStatus, getUnmappedProducts, pullProduct (CHN-020–024);
+      rolloutPromotion with validateSubStores (PROM-040 TVA mismatch check, CHN-030);
+      getChainDashboard, getChainTransactions (CHN-040–041);
+      getParentVendorInfo, getIncomingPoRequests, fulfillChildPo (CHN-050–052)
+- [x] `ChainSyncProcessor` (BullMQ `chain-sync` queue): upserts categories/products to children; sets `tva_rate=NULL` per CHN-MOD-006; per-child error isolation
+- [x] `ChainSuperController` — 4 routes under /api/super/businesses/* (super_admin only: CHN-001–004)
+- [x] `ChainAuthController` — 2 routes under /api/auth/* (CHN-010–011)
+- [x] `ChainController` — 13 routes under /api/business/* (CHN-012, CHN-020–052, PROM-040)
+- [x] `chain.service.spec.ts` — 22 unit tests; `chain-sync.processor.spec.ts` — 4 processor tests
+- Known gaps (deferred): token revocation list for CHN-011; modifier sync in pullProduct; internal TVA invoice for CHN-052
+
+### Phases 14-15 — see extension spec §14 (PENDING)
+
+Order: 14 (REC) → 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 
