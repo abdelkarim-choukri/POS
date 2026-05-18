@@ -364,17 +364,7 @@ export class InventoryReportsGenerator {
     const revByProduct = new Map<string, number>();
     for (const r of revRows) revByProduct.set(r.product_id, Number(r.revenue));
 
-    interface CogsProductRow {
-      product_name: string;
-      category_name: string;
-      units_sold: number;
-      total_cost: number;
-      revenue: number;
-      gross_profit: number;
-      margin_pct: number | null;
-    }
-
-    const byProduct: CogsProductRow[] = costRows.map((r: any) => {
+    const byProduct = costRows.map((r: any) => {
       const cost = Number(r.total_cost);
       const revenue = revByProduct.get(r.product_id) ?? 0;
       const gross_profit = revenue - cost;
@@ -405,8 +395,8 @@ export class InventoryReportsGenerator {
       gross_profit: Math.round((c.revenue - c.total_cost) * 100) / 100,
     }));
 
-    const totalCogs = byProduct.reduce((s: number, r: CogsProductRow) => s + r.total_cost, 0);
-    const totalRevenue = byProduct.reduce((s: number, r: CogsProductRow) => s + r.revenue, 0);
+    const totalCogs = byProduct.reduce((s: number, r: any) => s + r.total_cost, 0);
+    const totalRevenue = byProduct.reduce((s: number, r: any) => s + r.revenue, 0);
     const totalGrossProfit = totalRevenue - totalCogs;
     const overallMargin = totalRevenue > 0
       ? Math.round((totalGrossProfit / totalRevenue) * 10000) / 100
@@ -420,10 +410,10 @@ export class InventoryReportsGenerator {
       generated_at: new Date().toISOString(),
       period: { type, from: period.fromStr, to: period.toStr },
       summary: [
-        { label: lang === 'en' ? 'Total COGS' : 'Total CMV', value: Math.round(totalCogs * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? 'Total Revenue' : "Chiffre d'affaires", value: Math.round(totalRevenue * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? 'Gross Profit' : 'Marge brute', value: Math.round(totalGrossProfit * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? 'Margin %' : 'Taux de marge', value: overallMargin ?? 0, type: 'percentage' as const },
+        { label: lang === 'en' ? 'Total COGS' : 'Total CMV', value: Math.round(totalCogs * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? 'Total Revenue' : "Chiffre d'affaires", value: Math.round(totalRevenue * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? 'Gross Profit' : 'Marge brute', value: Math.round(totalGrossProfit * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? 'Margin %' : 'Taux de marge', value: overallMargin ?? 0, type: 'percentage' },
       ],
       tables: [
         {
@@ -505,9 +495,9 @@ export class InventoryReportsGenerator {
       generated_at: new Date().toISOString(),
       period: { type, from: period.fromStr, to: period.toStr },
       summary: [
-        { label: lang === 'en' ? 'Vendors with Balance' : 'Fournisseurs créditeurs', value: rows.length, type: 'number' as const },
-        { label: lang === 'en' ? 'Total Purchases' : 'Total achats', value: Math.round(totalPurchases * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? 'Total Outstanding' : 'Total impayé', value: Math.round(totalOutstanding * 100) / 100, type: 'money' as const },
+        { label: lang === 'en' ? 'Vendors with Balance' : 'Fournisseurs créditeurs', value: rows.length, type: 'number' },
+        { label: lang === 'en' ? 'Total Purchases' : 'Total achats', value: Math.round(totalPurchases * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? 'Total Outstanding' : 'Total impayé', value: Math.round(totalOutstanding * 100) / 100, type: 'money' },
       ],
       tables: [
         {
@@ -568,6 +558,7 @@ export class InventoryReportsGenerator {
          GROUP BY purchase_order_id
        ) vp_sum ON vp_sum.purchase_order_id = po.id
        WHERE po.business_id = $1
+         AND v.business_id = $1
          AND po.status NOT IN ('cancelled', 'draft')
          AND po.order_date::date <= $2::date
          AND (po.total_ttc - COALESCE(vp_sum.amount_paid, 0)) > 0
@@ -590,11 +581,11 @@ export class InventoryReportsGenerator {
       generated_at: new Date().toISOString(),
       period: { type, from: period.fromStr, to: period.toStr },
       summary: [
-        { label: lang === 'en' ? 'Total Outstanding' : 'Total impayé', value: Math.round(totalOverdue * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? '0-30 days' : '0-30 jours', value: Math.round(buckets['0-30'] * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? '31-60 days' : '31-60 jours', value: Math.round(buckets['31-60'] * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? '61-90 days' : '61-90 jours', value: Math.round(buckets['61-90'] * 100) / 100, type: 'money' as const },
-        { label: lang === 'en' ? '90+ days' : '>90 jours', value: Math.round(buckets['90+'] * 100) / 100, type: 'money' as const },
+        { label: lang === 'en' ? 'Total Outstanding' : 'Total impayé', value: Math.round(totalOverdue * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? '0-30 days' : '0-30 jours', value: Math.round(buckets['0-30'] * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? '31-60 days' : '31-60 jours', value: Math.round(buckets['31-60'] * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? '61-90 days' : '61-90 jours', value: Math.round(buckets['61-90'] * 100) / 100, type: 'money' },
+        { label: lang === 'en' ? '90+ days' : '>90 jours', value: Math.round(buckets['90+'] * 100) / 100, type: 'money' },
       ],
       tables: [
         {
