@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class LinkParentDto {
@@ -26,7 +26,7 @@ export class PullProductDto {
 
 export class RolloutPromotionDto {
   @IsArray() @IsUUID(undefined, { each: true }) child_business_ids: string[];
-  @IsBoolean() skip_validation: boolean;
+  @IsOptional() @IsBoolean() skip_validation?: boolean;
 }
 
 export class ValidateSubStoresDto {
@@ -43,8 +43,8 @@ export class GrantBusinessAccessDto {
 }
 
 export class ChainDashboardQueryDto {
-  @IsString() from_date: string;
-  @IsString() to_date: string;
+  @IsNotEmpty() @IsDateString() from_date: string;
+  @IsNotEmpty() @IsDateString() to_date: string;
 }
 
 export class ChainTransactionsQueryDto {

@@ -4,12 +4,11 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'crypto';
 import { Business } from '../../common/entities/business.entity';
 import { User } from '../../common/entities/user.entity';
 import { UserBusinessRole } from '../../common/entities/user-business-role.entity';
 import { ChainSyncConfig } from '../../common/entities/chain-sync-config.entity';
-import { Category } from '../../common/entities/category.entity';
-import { Product } from '../../common/entities/product.entity';
 import { SyncConfigDto, ChainTransactionsQueryDto } from './dto/chain.dto';
 
 export const CHAIN_SYNC_QUEUE = 'chain-sync';
@@ -21,8 +20,6 @@ export class ChainService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(UserBusinessRole) private ubrRepo: Repository<UserBusinessRole>,
     @InjectRepository(ChainSyncConfig) private syncConfigRepo: Repository<ChainSyncConfig>,
-    @InjectRepository(Category) private categoryRepo: Repository<Category>,
-    @InjectRepository(Product) private productRepo: Repository<Product>,
     private dataSource: DataSource,
     private jwtService: JwtService,
     @InjectQueue(CHAIN_SYNC_QUEUE) private syncQueue: Queue,
@@ -92,14 +89,15 @@ export class ChainService {
   // ── CHN-011 ───────────────────────────────────────────────────────────────
   async switchBusiness(userId: string, targetBusinessId: string, callerRole?: string) {
     if (callerRole !== 'super_admin' && callerRole !== 'owner') {
-      const [access] = await this.dataSource.query(
-        `SELECT COUNT(*)::int AS cnt FROM user_business_roles
-         WHERE user_id = $1 AND business_id = $2
-         UNION ALL
-         SELECT COUNT(*)::int FROM users WHERE id = $1 AND business_id = $2`,
+      const [{ has_access }] = await this.dataSource.query(
+        `SELECT (
+           EXISTS(SELECT 1 FROM user_business_roles WHERE user_id = $1 AND business_id = $2)
+           OR
+           EXISTS(SELECT 1 FROM users WHERE id = $1 AND business_id = $2)
+         )::boolean AS has_access`,
         [userId, targetBusinessId],
       );
-      if (Number(access.cnt) === 0) throw new ForbiddenException('You do not have access to this business');
+      if (!has_access) throw new ForbiddenException('You do not have access to this business');
     }
 
     const [roleRow] = await this.dataSource.query(
@@ -156,8 +154,7 @@ export class ChainService {
 
   // ── CHN-021 ───────────────────────────────────────────────────────────────
   async triggerSync(parentBusinessId: string, dto: { child_business_ids: string[]; sync_what: string[] }) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const jobId = require('crypto').randomUUID();
+    const jobId = randomUUID();
     await this.dataSource.query(
       `INSERT INTO background_jobs (id, business_id, job_type, status, created_at)
        VALUES ($1, $2, 'chain_sync', 'pending', NOW())`,
@@ -257,7 +254,8 @@ export class ChainService {
         await qr.query(
           `INSERT INTO product_variants (id, product_id, name, price_override, sku, is_active, synced_from_parent_id)
            VALUES (gen_random_uuid(), $1, $2, $3, $4, true, $5)
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT (product_id, synced_from_parent_id) DO UPDATE
+             SET name = EXCLUDED.name, price_override = EXCLUDED.price_override, sku = EXCLUDED.sku`,
           [childProd.id, v.name, v.price_override, v.sku, v.id],
         );
       }
@@ -288,7 +286,7 @@ export class ChainService {
     const results: Array<{ child_business_id: string; promotion_id: string; tva_warnings: any[] }> = [];
 
     for (const childId of childBusinessIds) {
-      const tva_warnings = skipValidation ? [] : await this._getTvaMismatchWarnings(childId);
+      const tva_warnings = (skipValidation ?? false) ? [] : await this._getTvaMismatchWarnings(childId);
 
       const [newPromo] = await this.dataSource.query(
         `INSERT INTO promotions (id, business_id, name, type, discount_value, discount_type,

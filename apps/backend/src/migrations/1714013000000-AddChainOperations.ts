@@ -55,9 +55,11 @@ export class AddChainOperations1714013000000 implements MigrationInterface {
     // ── partial unique indexes for ON CONFLICT upserts ────────────────────
     await qr.query(`CREATE UNIQUE INDEX idx_products_biz_synced ON products(business_id, synced_from_parent_id) WHERE synced_from_parent_id IS NOT NULL`);
     await qr.query(`CREATE UNIQUE INDEX idx_categories_biz_synced ON categories(business_id, synced_from_parent_id) WHERE synced_from_parent_id IS NOT NULL`);
+    await qr.query(`CREATE UNIQUE INDEX idx_variants_prod_synced ON product_variants(product_id, synced_from_parent_id) WHERE synced_from_parent_id IS NOT NULL`);
   }
 
   async down(qr: QueryRunner): Promise<void> {
+    await qr.query(`DROP INDEX IF EXISTS idx_variants_prod_synced`);
     await qr.query(`DROP INDEX IF EXISTS idx_products_biz_synced`);
     await qr.query(`DROP INDEX IF EXISTS idx_categories_biz_synced`);
     await qr.query(`ALTER TABLE promotions DROP COLUMN IF EXISTS synced_from_parent_id`);

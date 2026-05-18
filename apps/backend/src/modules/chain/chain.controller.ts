@@ -76,7 +76,7 @@ export class ChainController {
   @Post('promotions/:id/rollout-to-children')
   @Roles('owner')
   rollout(@Param('id') id: string, @Request() req: any, @Body() dto: RolloutPromotionDto) {
-    return this.chainService.rolloutPromotion(req.user.business_id, id, dto.child_business_ids, dto.skip_validation);
+    return this.chainService.rolloutPromotion(req.user.business_id, id, dto.child_business_ids, dto.skip_validation ?? false);
   }
 
   // CHN-040

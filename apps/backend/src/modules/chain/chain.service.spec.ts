@@ -11,6 +11,7 @@ import { UserBusinessRole } from '../../common/entities/user-business-role.entit
 import { ChainSyncConfig } from '../../common/entities/chain-sync-config.entity';
 import { Category } from '../../common/entities/category.entity';
 import { Product } from '../../common/entities/product.entity';
+// Category and Product imports kept for test provider setup only
 
 const BIZ = 'biz-parent';
 const CHILD_BIZ = 'biz-child';
@@ -167,14 +168,14 @@ describe('ChainService', () => {
   describe('switchBusiness', () => {
     it('returns new JWT for accessible business', async () => {
       dataSource.query
-        .mockResolvedValueOnce([{ cnt: '1' }])
-        .mockResolvedValueOnce([{ role: 'manager' }]);
-      const result = await service.switchBusiness(USER_ID, CHILD_BIZ);
+        .mockResolvedValueOnce([{ has_access: true }])    // access check
+        .mockResolvedValueOnce([{ role: 'manager' }]);    // role lookup
+      const result = await service.switchBusiness(USER_ID, CHILD_BIZ, 'employee');
       expect(result.access_token).toBe('mock-token');
     });
 
     it('throws 403 if user has no access to target business', async () => {
-      dataSource.query.mockResolvedValueOnce([{ cnt: '0' }]);
+      dataSource.query.mockResolvedValueOnce([{ has_access: false }]);
       await expect(service.switchBusiness(USER_ID, 'other-biz', 'employee')).rejects.toThrow(ForbiddenException);
     });
   });
