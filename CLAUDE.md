@@ -255,10 +255,10 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 
 ## Implementation status
 
-**Current state: 545 tests passing, 40 suites, zero regressions.**
+**Current state: 549 tests passing, 40 suites, zero regressions.**
 
-Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C.
-Next: 12D (Vendor Bill Aging).
+Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D.
+Next: 13 (CHN — Chain Management).
 
 Key architectural facts for future phases:
 - `StockConsumptionService` is injected into `TerminalService` (FIFO, try-catch wrapped)
@@ -268,6 +268,8 @@ Key architectural facts for future phases:
 - `VendorPaymentService` lives in `InventoryModule`; handles vendor payments + PO balance-due enrichment
 - `getPurchaseOrder` now returns `{ ...po, amount_paid, balance_due }` (try/catch guarded)
 - Background jobs: `inventory-expiration-scan` (01:00) and `inventory-reconciliation` (02:00)
+- `InventoryReportsGenerator` has 7 report methods: stockPosition, stockMovements, vendorPurchases, inputTva (12A), cogs, vendorBalance, billAging (12D)
+- Phase 12D reports (`cogs`, `vendor-balance`, `bill-aging`) accept optional `as_of_date` (YYYY-MM-DD) param via `ReportQueryDto`
 
 Full phase-by-phase build log: @docs/IMPLEMENTATION_LOG.md
 Pending phases: @docs/spec/POS_Implementation_Plan.md

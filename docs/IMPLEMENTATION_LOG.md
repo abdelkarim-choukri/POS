@@ -397,6 +397,15 @@ See extension spec §12 (EXT-INV-030–036) for requirement IDs.
 - [x] `InventoryModule` updated — VendorPayment entity, VendorPaymentService, VendorPaymentController registered
 - [x] 18 new tests: 16 in vendor-payment.service.spec.ts + 2 PO enrichment tests in purchase-order.service.spec.ts
 
+### Phase 12D — COGS, Vendor Balance & Bill Aging Reports (DONE). 549 tests passing (40 suites).
+
+- [x] `as_of_date` optional param added to `ReportQueryDto` (YYYY-MM-DD format; used by vendor-balance and bill-aging)
+- [x] `InventoryReportsGenerator.cogs()` — 2-query approach: stock_movements JOIN batches for cost, transaction_items for revenue; merged in TypeScript; By Product + By Category tables; summary: total COGS, revenue, gross profit, margin %
+- [x] `InventoryReportsGenerator.vendorBalance()` — single raw SQL with aggregated LEFT JOINs to purchase_orders and vendor_payments; supports as_of_date; HAVING balance_due > 0 filters fully-paid vendors
+- [x] `InventoryReportsGenerator.billAging()` — single raw SQL; GREATEST(0,...) for days_overdue; 4 aging buckets (0-30, 31-60, 61-90, 90+) via SQL CASE WHEN; COALESCE(payment_terms_days, 30) default; bucket totals aggregated in TypeScript
+- [x] 3 new IDs registered in `ALL_REPORT_IDS` and dispatcher: 'cogs', 'vendor-balance', 'bill-aging'
+- [x] 4 new tests in `reports.service.spec.ts` (1 per report + smoke test for all 3 new IDs)
+
 ### Phases 13-15 — see extension spec §14 (PENDING)
 
 Order: 13 (CHN) → 14 (REC) → 15 (ADM).
