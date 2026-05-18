@@ -48,3 +48,5 @@ export { StockTransferItem } from './stock-transfer-item.entity';
 export { VendorPayment } from './vendor-payment.entity';
 export { UserBusinessRole } from './user-business-role.entity';
 export { ChainSyncConfig } from './chain-sync-config.entity';
+export { RecommendationTemplate } from './recommendation-template.entity';
+export { RecommendationTemplateItem } from './recommendation-template-item.entity';

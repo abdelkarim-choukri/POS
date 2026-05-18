@@ -62,6 +62,18 @@ export class Product {
   @Column({ type: 'boolean', default: false })
   tva_exempt: boolean;
 
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  whole_price_1: number | null;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  whole_price_2: number | null;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  whole_price_3: number | null;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  whole_price_4: number | null;
+
   @Column({ type: 'uuid', nullable: true })
   brand_id: string | null;
 
