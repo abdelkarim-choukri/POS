@@ -6,7 +6,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ChainService } from './chain.service';
 import {
   SyncConfigDto, TriggerSyncDto, PullProductDto,
-  RolloutPromotionDto, GrantBusinessAccessDto,
+  RolloutPromotionDto, ValidateSubStoresDto, GrantBusinessAccessDto,
   ChainDashboardQueryDto, ChainTransactionsQueryDto, FulfillChildPoDto,
 } from './dto/chain.dto';
 
@@ -22,7 +22,14 @@ export class ChainController {
     return this.chainService.grantBusinessAccess(userId, req.user.business_id, dto.business_ids, dto.role_per_business, req.user.sub);
   }
 
-  // CHN-020
+  // CHN-020 get
+  @Get('chain/sync-config')
+  @Roles('owner', 'manager')
+  getSyncConfig(@Request() req: any) {
+    return this.chainService.getSyncConfig(req.user.business_id);
+  }
+
+  // CHN-020 set
   @Put('chain/sync-config')
   @Roles('owner')
   setSyncConfig(@Request() req: any, @Body() dto: SyncConfigDto) {
@@ -56,6 +63,13 @@ export class ChainController {
   @Roles('owner', 'manager')
   pullProduct(@Request() req: any, @Body() dto: PullProductDto) {
     return this.chainService.pullProduct(req.user.business_id, dto.parent_product_id);
+  }
+
+  // PROM-040
+  @Post('promotions/:id/validate-sub-stores')
+  @Roles('owner')
+  validateSubStores(@Param('id') id: string, @Request() req: any, @Body() dto: ValidateSubStoresDto) {
+    return this.chainService.validateSubStores(req.user.business_id, id, dto.child_business_ids);
   }
 
   // CHN-030

@@ -15,6 +15,6 @@ export class ChainAuthController {
 
   @Post('switch-business')
   switchBusiness(@Request() req: any, @Body() dto: SwitchBusinessDto) {
-    return this.chainService.switchBusiness(req.user.sub, dto.business_id);
+    return this.chainService.switchBusiness(req.user.sub, dto.business_id, req.user.role);
   }
 }

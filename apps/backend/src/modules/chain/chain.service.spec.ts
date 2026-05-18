@@ -1,9 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException, UnprocessableEntityException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
-import { ChainService } from './chain.service';
+import { ChainService, CHAIN_SYNC_QUEUE } from './chain.service';
 import { Business } from '../../common/entities/business.entity';
 import { User } from '../../common/entities/user.entity';
 import { UserBusinessRole } from '../../common/entities/user-business-role.entity';
@@ -60,6 +61,7 @@ describe('ChainService', () => {
         { provide: getRepositoryToken(Product), useValue: { findBy: jest.fn().mockResolvedValue([]) } },
         { provide: DataSource, useValue: dataSource },
         { provide: JwtService, useValue: jwtService },
+        { provide: getQueueToken(CHAIN_SYNC_QUEUE), useValue: { add: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -173,7 +175,7 @@ describe('ChainService', () => {
 
     it('throws 403 if user has no access to target business', async () => {
       dataSource.query.mockResolvedValueOnce([{ cnt: '0' }]);
-      await expect(service.switchBusiness(USER_ID, 'other-biz')).rejects.toThrow(ForbiddenException);
+      await expect(service.switchBusiness(USER_ID, 'other-biz', 'employee')).rejects.toThrow(ForbiddenException);
     });
   });
 

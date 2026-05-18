@@ -29,6 +29,10 @@ export class RolloutPromotionDto {
   @IsBoolean() skip_validation: boolean;
 }
 
+export class ValidateSubStoresDto {
+  @IsArray() @IsUUID(undefined, { each: true }) child_business_ids: string[];
+}
+
 export class SwitchBusinessDto {
   @IsUUID() @IsNotEmpty() business_id: string;
 }

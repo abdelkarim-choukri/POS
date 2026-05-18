@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, UnprocessableEntityException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Repository, DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Business } from '../../common/entities/business.entity';
@@ -23,6 +25,7 @@ export class ChainService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     private dataSource: DataSource,
     private jwtService: JwtService,
+    @InjectQueue(CHAIN_SYNC_QUEUE) private syncQueue: Queue,
   ) {}
 
   // ── CHN-001 ───────────────────────────────────────────────────────────────
@@ -87,15 +90,17 @@ export class ChainService {
   }
 
   // ── CHN-011 ───────────────────────────────────────────────────────────────
-  async switchBusiness(userId: string, targetBusinessId: string) {
-    const [access] = await this.dataSource.query(
-      `SELECT COUNT(*)::int AS cnt FROM user_business_roles
-       WHERE user_id = $1 AND business_id = $2
-       UNION ALL
-       SELECT COUNT(*)::int FROM users WHERE id = $1 AND business_id = $2`,
-      [userId, targetBusinessId],
-    );
-    if (Number(access.cnt) === 0) throw new ForbiddenException('You do not have access to this business');
+  async switchBusiness(userId: string, targetBusinessId: string, callerRole?: string) {
+    if (callerRole !== 'super_admin' && callerRole !== 'owner') {
+      const [access] = await this.dataSource.query(
+        `SELECT COUNT(*)::int AS cnt FROM user_business_roles
+         WHERE user_id = $1 AND business_id = $2
+         UNION ALL
+         SELECT COUNT(*)::int FROM users WHERE id = $1 AND business_id = $2`,
+        [userId, targetBusinessId],
+      );
+      if (Number(access.cnt) === 0) throw new ForbiddenException('You do not have access to this business');
+    }
 
     const [roleRow] = await this.dataSource.query(
       `SELECT COALESCE(ubr.role, u.role::text) AS role
@@ -145,6 +150,10 @@ export class ChainService {
     return this.syncConfigRepo.findOne({ where: { parent_business_id: parentBusinessId } });
   }
 
+  async getSyncConfig(parentBusinessId: string) {
+    return this.syncConfigRepo.findOne({ where: { parent_business_id: parentBusinessId } });
+  }
+
   // ── CHN-021 ───────────────────────────────────────────────────────────────
   async triggerSync(parentBusinessId: string, dto: { child_business_ids: string[]; sync_what: string[] }) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -154,7 +163,12 @@ export class ChainService {
        VALUES ($1, $2, 'chain_sync', 'pending', NOW())`,
       [jobId, parentBusinessId],
     );
-    console.log(`[CHAIN] Sync job ${jobId} queued for parent ${parentBusinessId}`);
+    await this.syncQueue.add('sync', {
+      parentBusinessId,
+      childBusinessIds: dto.child_business_ids,
+      syncWhat: dto.sync_what,
+      jobId,
+    });
     return { job_id: jobId };
   }
 
@@ -293,6 +307,31 @@ export class ChainService {
     return results;
   }
 
+  // ── PROM-040 ──────────────────────────────────────────────────────────────
+  async validateSubStores(parentBusinessId: string, promotionId: string, childBusinessIds: string[]) {
+    const [promo] = await this.dataSource.query(
+      `SELECT * FROM promotions WHERE id = $1 AND business_id = $2`,
+      [promotionId, parentBusinessId],
+    );
+    if (!promo) throw new NotFoundException('Promotion not found');
+
+    const results = [];
+    for (const childId of childBusinessIds) {
+      const tva_warnings = await this._getTvaMismatchWarnings(childId);
+      const [childBiz] = await this.dataSource.query(
+        `SELECT id FROM businesses WHERE id = $1 AND parent_business_id = $2`,
+        [childId, parentBusinessId],
+      );
+      results.push({
+        child_business_id: childId,
+        is_linked_child: !!childBiz,
+        tva_warnings,
+        can_rollout: !!childBiz && tva_warnings.length === 0,
+      });
+    }
+    return results;
+  }
+
   private async _getTvaMismatchWarnings(childBusinessId: string) {
     return this.dataSource.query(
       `SELECT p.id, p.name, p.synced_from_parent_id
@@ -396,7 +435,7 @@ export class ChainService {
        FROM purchase_orders po
        JOIN businesses b ON b.id = po.business_id
        WHERE po.id = $1 AND b.parent_business_id = $2
-         AND po.status IN ('confirmed', 'sent')`,
+         AND po.status IN ('confirmed', 'sent', 'partially_received')`,
       [poId, parentBusinessId],
     );
     if (!po) throw new NotFoundException('Purchase order not found or not accessible');
@@ -411,26 +450,31 @@ export class ChainService {
     await qr.startTransaction();
     try {
       for (const item of poItems) {
-        const [sourceBatch] = await qr.query(
-          `SELECT id, quantity_remaining FROM stock_batches
-           WHERE business_id = $1 AND warehouse_id = $2 AND product_id = $3
-             AND is_active = true AND quantity_remaining > 0
-           ORDER BY expires_at ASC NULLS LAST, received_at ASC
-           LIMIT 1 FOR UPDATE`,
-          [parentBusinessId, sourceWarehouseId, item.product_id],
-        );
-
         const qty = item.quantity_ordered;
-        if (sourceBatch) {
+
+        let remaining = qty;
+        while (remaining > 0) {
+          const [sourceBatch] = await qr.query(
+            `SELECT id, quantity_remaining FROM stock_batches
+             WHERE business_id = $1 AND warehouse_id = $2 AND product_id = $3
+               AND is_active = true AND quantity_remaining > 0
+             ORDER BY expires_at ASC NULLS LAST, received_at ASC
+             LIMIT 1 FOR UPDATE`,
+            [parentBusinessId, sourceWarehouseId, item.product_id],
+          );
+          if (!sourceBatch) break; // no more stock available
+
+          const deduct = Math.min(remaining, sourceBatch.quantity_remaining);
           await qr.query(
             `UPDATE stock_batches SET quantity_remaining = quantity_remaining - $1 WHERE id = $2`,
-            [Math.min(qty, sourceBatch.quantity_remaining), sourceBatch.id],
+            [deduct, sourceBatch.id],
           );
           await qr.query(
             `INSERT INTO stock_movements (id, business_id, batch_id, movement_type, quantity, reference_type, reference_id, source_origin)
              VALUES (gen_random_uuid(), $1, $2, 'transfer_out', $3, 'chain_po', $4, 'chain_fulfillment')`,
-            [parentBusinessId, sourceBatch.id, qty, poId],
+            [parentBusinessId, sourceBatch.id, deduct, poId],
           );
+          remaining -= deduct;
         }
 
         const [childBatch] = await qr.query(
