@@ -33,6 +33,10 @@ export class ReportQueryDto {
   @IsOptional() @IsUUID() vendor_id?: string;
   @IsOptional() @IsIn(['receive', 'sale', 'adjustment', 'waste', 'expiry_disposal', 'transfer_in', 'transfer_out']) movement_type?: string;
   @IsOptional() @Transform(({ value }) => value === 'true' || value === true) @IsBoolean() low_stock_only?: boolean;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'as_of_date must be YYYY-MM-DD' })
+  as_of_date?: string;
 }
 
 export interface ReportSummaryItem {
