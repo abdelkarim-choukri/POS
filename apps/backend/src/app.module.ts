@@ -17,6 +17,7 @@ import { CommunicationsModule } from './modules/communications/communications.mo
 import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { ChainModule } from './modules/chain/chain.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -39,6 +40,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     RestaurantModule,
     ReportsModule,
     InventoryModule,
+    ChainModule,
     TerminalModule,
     KdsModule,
     HealthModule,
