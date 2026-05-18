@@ -29,6 +29,9 @@ export class Category {
   @Column({ type: 'numeric', precision: 5, scale: 2, default: 20.00 })
   default_tva_rate: number;
 
+  @Column({ type: 'uuid', nullable: true })
+  synced_from_parent_id: string | null;
+
   @OneToMany(() => Product, (p) => p.category)
   products: Product[];
 

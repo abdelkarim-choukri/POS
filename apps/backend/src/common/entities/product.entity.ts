@@ -89,6 +89,9 @@ export class Product {
   @Column({ type: 'boolean', default: false })
   track_stock: boolean;
 
+  @Column({ type: 'uuid', nullable: true })
+  synced_from_parent_id: string | null;
+
   @OneToMany(() => ProductVariant, (v) => v.product)
   variants: ProductVariant[];
 

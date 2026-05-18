@@ -30,6 +30,9 @@ export class ModifierGroup {
   @Column({ type: 'int', default: 0 })
   sort_order: number;
 
+  @Column({ type: 'uuid', nullable: true })
+  synced_from_parent_id: string | null;
+
   @OneToMany(() => Modifier, (m) => m.modifier_group)
   modifiers: Modifier[];
 

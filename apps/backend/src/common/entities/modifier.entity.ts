@@ -24,6 +24,9 @@ export class Modifier {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
+  @Column({ type: 'uuid', nullable: true })
+  synced_from_parent_id: string | null;
+
   @CreateDateColumn()
   created_at: Date;
 

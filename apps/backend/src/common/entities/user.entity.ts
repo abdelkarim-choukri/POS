@@ -52,6 +52,9 @@ export class User {
   @Column({ type: 'varchar', length: 5, default: 'fr' })
   language_preference: string;
 
+  @Column({ type: 'uuid', array: true, default: '{}' })
+  accessible_business_ids: string[];
+
   @OneToMany(() => ClockEntry, (c) => c.user)
   clock_entries: ClockEntry[];
 

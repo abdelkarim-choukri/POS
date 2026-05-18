@@ -80,6 +80,12 @@ export class Business {
   @Column({ type: 'varchar', length: 20, default: 'best_only' })
   promotion_stacking_mode: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  parent_business_id: string | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'standalone' })
+  chain_role: string;
+
   @OneToMany(() => Location, (l) => l.business)
   locations: Location[];
 
