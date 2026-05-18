@@ -88,7 +88,7 @@ export class ChainService {
 
   // ── CHN-011 ───────────────────────────────────────────────────────────────
   async switchBusiness(userId: string, targetBusinessId: string, callerRole?: string) {
-    if (callerRole !== 'super_admin' && callerRole !== 'owner') {
+    if (callerRole !== 'super_admin') {
       const [{ has_access }] = await this.dataSource.query(
         `SELECT (
            EXISTS(SELECT 1 FROM user_business_roles WHERE user_id = $1 AND business_id = $2)
@@ -122,6 +122,15 @@ export class ChainService {
   ) {
     const user = await this.userRepo.findOne({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException('User not found');
+
+    if (businessIds.length > 0) {
+      const [{ cnt }] = await this.dataSource.query(
+        `SELECT COUNT(*)::int AS cnt FROM businesses
+         WHERE id = ANY($1::uuid[]) AND (parent_business_id = $2 OR id = $2)`,
+        [businessIds, grantingBusinessId],
+      );
+      if (cnt !== businessIds.length) throw new UnprocessableEntityException('One or more businesses are not children of this chain');
+    }
 
     await this.ubrRepo.upsert(
       businessIds.map((bizId) => ({
@@ -407,9 +416,9 @@ export class ChainService {
     return {
       parent_business_id: parent.id,
       parent_name: parent.name,
-      ice: (parent as any).ice_number,
-      if_number: (parent as any).if_number,
-      address: (parent as any).address,
+      ice: parent.ice_number,
+      if_number: parent.if_number,
+      address: parent.address,
     };
   }
 
@@ -449,8 +458,8 @@ export class ChainService {
     try {
       for (const item of poItems) {
         const qty = item.quantity_ordered;
-
         let remaining = qty;
+
         while (remaining > 0) {
           const [sourceBatch] = await qr.query(
             `SELECT id, quantity_remaining FROM stock_batches
@@ -460,7 +469,7 @@ export class ChainService {
              LIMIT 1 FOR UPDATE`,
             [parentBusinessId, sourceWarehouseId, item.product_id],
           );
-          if (!sourceBatch) break; // no more stock available
+          if (!sourceBatch) break;
 
           const deduct = Math.min(remaining, sourceBatch.quantity_remaining);
           await qr.query(
@@ -475,22 +484,24 @@ export class ChainService {
           remaining -= deduct;
         }
 
-        const [childBatch] = await qr.query(
-          `INSERT INTO stock_batches (id, business_id, warehouse_id, product_id, batch_code, quantity_initial,
-                                      quantity_remaining, unit_cost, received_at, is_active, purchase_order_id)
-           SELECT gen_random_uuid(), $1,
-                  (SELECT id FROM warehouses WHERE business_id = $1 ORDER BY created_at ASC LIMIT 1),
-                  $2, $3, $4, $4, $5, NOW(), true, $6
-           RETURNING id`,
-          [po.child_biz_id, item.product_id, `CHAIN-${poId.slice(0, 8)}`, qty, item.unit_cost_ht, poId],
-        );
-
-        if (childBatch) {
-          await qr.query(
-            `INSERT INTO stock_movements (id, business_id, batch_id, movement_type, quantity, reference_type, reference_id, source_origin)
-             VALUES (gen_random_uuid(), $1, $2, 'receive', $3, 'chain_po', $4, 'chain_fulfillment')`,
-            [po.child_biz_id, childBatch.id, qty, poId],
+        const actualQty = qty - remaining;
+        if (actualQty > 0) {
+          const [childBatch] = await qr.query(
+            `INSERT INTO stock_batches (id, business_id, warehouse_id, product_id, batch_code, quantity_initial,
+                                        quantity_remaining, unit_cost, received_at, is_active, purchase_order_id)
+             SELECT gen_random_uuid(), $1,
+                    (SELECT id FROM warehouses WHERE business_id = $1 ORDER BY created_at ASC LIMIT 1),
+                    $2, $3, $4, $4, $5, NOW(), true, $6
+             RETURNING id`,
+            [po.child_biz_id, item.product_id, `CHAIN-${poId.slice(0, 8)}`, actualQty, item.unit_cost_ht, poId],
           );
+          if (childBatch) {
+            await qr.query(
+              `INSERT INTO stock_movements (id, business_id, batch_id, movement_type, quantity, reference_type, reference_id, source_origin)
+               VALUES (gen_random_uuid(), $1, $2, 'receive', $3, 'chain_po', $4, 'chain_fulfillment')`,
+              [po.child_biz_id, childBatch.id, actualQty, poId],
+            );
+          }
         }
       }
 

@@ -187,11 +187,21 @@ describe('ChainService', () => {
       userRepo.findOne.mockResolvedValue(user);
       userRepo.save.mockResolvedValue(user);
       ubrRepo.upsert.mockResolvedValue(undefined);
+      dataSource.query.mockResolvedValueOnce([{ cnt: 1 }]); // child-ownership check
       await service.grantBusinessAccess('user-2', BIZ, [CHILD_BIZ], { [CHILD_BIZ]: 'manager' });
       expect(ubrRepo.upsert).toHaveBeenCalled();
       expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({
         accessible_business_ids: expect.arrayContaining([CHILD_BIZ]),
       }));
+    });
+
+    it('throws 422 if a business is not a child of the granting chain', async () => {
+      const user = { id: 'user-2', accessible_business_ids: [] } as any;
+      userRepo.findOne.mockResolvedValue(user);
+      dataSource.query.mockResolvedValueOnce([{ cnt: 0 }]); // fails ownership check
+      await expect(
+        service.grantBusinessAccess('user-2', BIZ, [CHILD_BIZ], { [CHILD_BIZ]: 'manager' }),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
   });
 
@@ -206,6 +216,22 @@ describe('ChainService', () => {
         child_business_ids: [CHILD_BIZ],
       });
       expect(syncConfigRepo.upsert).toHaveBeenCalled();
+    });
+  });
+
+  // ── CHN-022: Sync job status ──────────────────────────────────────────────
+  describe('getSyncJobStatus', () => {
+    it('throws 404 for job not found or cross-tenant', async () => {
+      dataSource.query.mockResolvedValue([]);
+      await expect(service.getSyncJobStatus('job-1', 'other-biz')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── CHN-023: Unmapped products ────────────────────────────────────────────
+  describe('getUnmappedProducts', () => {
+    it('throws 422 if business has no parent', async () => {
+      bizRepo.findOne.mockResolvedValue(makeBiz({ chain_role: 'standalone', parent_business_id: null }));
+      await expect(service.getUnmappedProducts(BIZ)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 

@@ -57,6 +57,11 @@ export class ChainSyncProcessor extends WorkerHost {
       }
     }
 
+    const unhandled = syncWhat.filter((w: string) => !['categories', 'products'].includes(w));
+    if (unhandled.length > 0) {
+      console.warn(`[CHAIN] ChainSyncProcessor: sync_what values not yet implemented: ${unhandled.join(', ')}`);
+    }
+
     await this.ds.query(
       `UPDATE background_jobs SET status = $1, result_json = $2 WHERE id = $3`,
       [errors.length ? 'completed_with_errors' : 'completed',
