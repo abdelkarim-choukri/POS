@@ -324,6 +324,8 @@ export class TableSessionService {
         });
       }
       // Soft delete: kitchen needs to see what was cancelled (TRAP 7)
+      item.kds_status = 'cancelled';
+      await this.itemRepo.save(item);
       await this.auditLogRepo.save(this.auditLogRepo.create({
         business_id: businessId,
         user_id: user.id,
@@ -332,8 +334,6 @@ export class TableSessionService {
         entity_id: itemId,
         details_json: { kds_status_was: item.kds_status, session_id: item.table_session_id },
       }));
-      item.kds_status = 'cancelled';
-      await this.itemRepo.save(item);
 
       // Emit event — fetch table_number best-effort
       const session = await this.sessionRepo.findOne({ where: { id: item.table_session_id } });
