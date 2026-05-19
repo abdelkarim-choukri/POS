@@ -429,9 +429,28 @@ See extension spec §9 (CHN-001–052) for requirement IDs.
 - [x] `chain.service.spec.ts` — 22 unit tests; `chain-sync.processor.spec.ts` — 4 processor tests
 - Known gaps (deferred): token revocation list for CHN-011; modifier sync in pullProduct; internal TVA invoice for CHN-052
 
-### Phases 14-15 — see extension spec §14 (PENDING)
+### Phase 14 — Recommendations (DONE). 596 tests passing (43 suites).
 
-Order: 14 (REC) → 15 (ADM).
+See extension spec §10 (REC-001–020) for requirement IDs.
+
+- [x] Migration `1714014000000-AddRecommendations` — `recommendation_templates`, `recommendation_template_items` tables; `whole_price_1`–`4` on products (REC-MOD-001); 4 indexes; reversible `down`
+- [x] 2 new entities: `RecommendationTemplate`, `RecommendationTemplateItem`; `Product` entity updated with 4 price-tier columns
+- [x] `RecommendationService` — 7 methods:
+      listTemplates with `for_terminal_now` filter (time window + DOW SQL, REC-001);
+      createTemplate/updateTemplate/deleteTemplate (REC-002–004);
+      setTemplateItems — replace-set, 422 for non-manual types (REC-005);
+      resolveTemplate — manual/seasonal returns configured items, top_seller runs 7-day sales COUNT SQL,
+      high_margin runs margin ORDER BY SQL, time_of_day checks window then configured items,
+      customer_grade_targeted checks customer grade then configured items (REC-010);
+      getFeaturedItems — flattened JOIN across all active templates (REC-020)
+- [x] `RecommendationController` — 6 routes under `/api/business/recommendation-templates/…` (REC-001–005, REC-020)
+- [x] `RecommendationTerminalController` — 1 route `GET /api/terminal/recommendation-templates/:id/items` (REC-010)
+- [x] `RecommendationModule` registered in AppModule
+- [x] 18 unit tests in `recommendation.service.spec.ts`
+
+### Phases 15 — see extension spec §15 (PENDING)
+
+Order: 15 (ADM).
 
 ## Planned cross-cutting features (post Phase 15)
 

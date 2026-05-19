@@ -255,10 +255,10 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 
 ## Implementation status
 
-**Current state: 575 tests passing, 42 suites, zero regressions.**
+**Current state: 596 tests passing, 43 suites, zero regressions.**
 
-Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D, 13.
-Next: 14 (REC — Recommendations).
+Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D, 13, 14.
+Next: 15 (ADM — Platform Admin).
 
 Key architectural facts for future phases:
 - `StockConsumptionService` is injected into `TerminalService` (FIFO, try-catch wrapped)
@@ -277,6 +277,9 @@ Key architectural facts for future phases:
 - CHN-011 re-issues JWT with new `business_id` claim; no token revocation list (known gap)
 - CHN-052 fulfills child PO: FIFO multi-batch decrement at parent + child batch creation + PO→received
 - `validateSubStores` (PROM-040): per-child TVA mismatch report before promotion rollout
+- `RecommendationModule` at `src/modules/recommendation/`: `RecommendationController` (6 business routes) + `RecommendationTerminalController` (1 terminal route) + `RecommendationService` (7 methods: listTemplates, createTemplate, updateTemplate, deleteTemplate, setTemplateItems, resolveTemplate, getFeaturedItems)
+- Template types: `manual`/`seasonal` return configured items; `top_seller` runs 7-day sales COUNT SQL; `high_margin` runs margin ORDER BY SQL; `time_of_day` checks time window + DOW then returns configured items; `customer_grade_targeted` checks customer grade then returns configured items
+- `whole_price_1`–`4` NUMERIC(12,2) NULL added to `products` (REC-MOD-001); tier selected via `recommendation_templates.whole_price_tier`; tier applied in `resolveManualItems` private helper
 
 Full phase-by-phase build log: @docs/IMPLEMENTATION_LOG.md
 Pending phases: @docs/spec/POS_Implementation_Plan.md
