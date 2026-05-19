@@ -35,13 +35,13 @@ export class CheckoutService {
   ) {
     const isPrivileged = user.role === UserRole.OWNER || user.role === UserRole.MANAGER;
     if (!isPrivileged && !userHasPermission(user, 'can_close_table_session')) {
-      throw new ForbiddenException('Missing permission: can_close_table_session');
+      throw new ForbiddenException({ error: 'RST_PERM_CLOSE', message: 'Missing permission: can_close_table_session' });
     }
 
     const session = await this.sessionRepo.findOne({
       where: { id: sessionId, business_id: businessId },
     });
-    if (!session) throw new NotFoundException('Table session not found');
+    if (!session) throw new NotFoundException({ error: 'RST_SESSION_NOT_FOUND', message: 'Table session not found' });
 
     if (session.status !== 'open') {
       throw new UnprocessableEntityException({
@@ -100,13 +100,13 @@ export class CheckoutService {
   ) {
     const isPrivileged = user.role === UserRole.OWNER || user.role === UserRole.MANAGER;
     if (!isPrivileged && !userHasPermission(user, 'can_close_table_session')) {
-      throw new ForbiddenException('Missing permission: can_close_table_session');
+      throw new ForbiddenException({ error: 'RST_PERM_CLOSE', message: 'Missing permission: can_close_table_session' });
     }
 
     const session = await this.sessionRepo.findOne({
       where: { id: sessionId, business_id: businessId },
     });
-    if (!session) throw new NotFoundException('Table session not found');
+    if (!session) throw new NotFoundException({ error: 'RST_SESSION_NOT_FOUND', message: 'Table session not found' });
 
     if (session.status !== 'open') {
       throw new UnprocessableEntityException({

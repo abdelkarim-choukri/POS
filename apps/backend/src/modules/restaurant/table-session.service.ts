@@ -362,7 +362,7 @@ export class TableSessionService {
   ) {
     const isPrivileged = user.role === UserRole.OWNER || user.role === UserRole.MANAGER;
     if (!isPrivileged && !userHasPermission(user, 'can_transfer_table_items')) {
-      throw new ForbiddenException('Missing permission: can_transfer_table_items');
+      throw new ForbiddenException({ error: 'RST_PERM_TRANSFER', message: 'Missing permission: can_transfer_table_items' });
     }
 
     const items = await this.itemRepo.find({
@@ -424,7 +424,7 @@ export class TableSessionService {
     const session = await this.sessionRepo.findOne({
       where: { id: sessionId, business_id: businessId },
     });
-    if (!session) throw new NotFoundException('Table session not found');
+    if (!session) throw new NotFoundException({ error: 'RST_SESSION_NOT_FOUND', message: 'Table session not found' });
 
     if (session.status === 'open') {
       await this.itemRepo
@@ -459,7 +459,7 @@ export class TableSessionService {
     if (session.status === 'awaiting_payment' && dto.force_close_partial) {
       const isPrivileged = user.role === UserRole.OWNER || user.role === UserRole.MANAGER;
       if (!isPrivileged && !userHasPermission(user, 'can_close_table_session_partial')) {
-        throw new ForbiddenException('Missing permission: can_close_table_session_partial');
+        throw new ForbiddenException({ error: 'RST_PERM_CLOSE_PARTIAL', message: 'Missing permission: can_close_table_session_partial' });
       }
 
       session.status = 'paid';

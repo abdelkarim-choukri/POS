@@ -188,7 +188,7 @@ describe('CheckoutService.closeTable', () => {
 
     await expect(
       service.closeTable(BIZ_B, SESSION_ID, TERM_ID, managerUser),
-    ).rejects.toThrow(NotFoundException);
+    ).rejects.toMatchObject({ response: { error: 'RST_SESSION_NOT_FOUND' } });
   });
 
   it('throws 422 when session is not open', async () => {

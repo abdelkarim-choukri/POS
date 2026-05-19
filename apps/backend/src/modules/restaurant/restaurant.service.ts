@@ -72,7 +72,7 @@ export class RestaurantService {
       where: { business_id: businessId, name: dto.name },
     });
     if (existing) {
-      throw new ConflictException('Dining area name already exists for this business');
+      throw new ConflictException({ error: 'RST_AREA_NAME_CONFLICT', message: 'Dining area name already exists for this business' });
     }
 
     const area = this.areaRepo.create({
@@ -89,14 +89,14 @@ export class RestaurantService {
 
   async updateDiningArea(businessId: string, id: string, dto: UpdateDiningAreaDto) {
     const area = await this.areaRepo.findOne({ where: { id, business_id: businessId } });
-    if (!area) throw new NotFoundException('Dining area not found');
+    if (!area) throw new NotFoundException({ error: 'RST_AREA_NOT_FOUND', message: 'Dining area not found' });
 
     if (dto.name && dto.name !== area.name) {
       const conflict = await this.areaRepo.findOne({
         where: { business_id: businessId, name: dto.name },
       });
       if (conflict) {
-        throw new ConflictException('Dining area name already exists for this business');
+        throw new ConflictException({ error: 'RST_AREA_NAME_CONFLICT', message: 'Dining area name already exists for this business' });
       }
     }
 
@@ -108,15 +108,16 @@ export class RestaurantService {
 
   async deleteDiningArea(businessId: string, id: string) {
     const area = await this.areaRepo.findOne({ where: { id, business_id: businessId } });
-    if (!area) throw new NotFoundException('Dining area not found');
+    if (!area) throw new NotFoundException({ error: 'RST_AREA_NOT_FOUND', message: 'Dining area not found' });
 
     const activeCount = await this.tableRepo.count({
       where: { area_id: id, business_id: businessId, is_active: true },
     });
     if (activeCount > 0) {
-      throw new UnprocessableEntityException(
-        'Cannot delete dining area with active tables assigned to it',
-      );
+      throw new UnprocessableEntityException({
+        error: 'RST_AREA_HAS_TABLES',
+        message: 'Cannot delete dining area with active tables assigned to it',
+      });
     }
 
     await this.areaRepo.remove(area);
@@ -147,7 +148,7 @@ export class RestaurantService {
 
   async updateTableType(businessId: string, id: string, dto: UpdateTableTypeDto) {
     const tt = await this.tableTypeRepo.findOne({ where: { id, business_id: businessId } });
-    if (!tt) throw new NotFoundException('Table type not found');
+    if (!tt) throw new NotFoundException({ error: 'RST_TABLE_TYPE_NOT_FOUND', message: 'Table type not found' });
     Object.assign(tt, dto);
     return this.tableTypeRepo.save(tt);
   }
@@ -156,7 +157,7 @@ export class RestaurantService {
 
   async deleteTableType(businessId: string, id: string) {
     const tt = await this.tableTypeRepo.findOne({ where: { id, business_id: businessId } });
-    if (!tt) throw new NotFoundException('Table type not found');
+    if (!tt) throw new NotFoundException({ error: 'RST_TABLE_TYPE_NOT_FOUND', message: 'Table type not found' });
     await this.tableTypeRepo.remove(tt);
     return { deleted: true };
   }
@@ -228,7 +229,7 @@ export class RestaurantService {
       where: { business_id: businessId, table_number: dto.table_number },
     });
     if (existing) {
-      throw new ConflictException('Table number already exists for this business');
+      throw new ConflictException({ error: 'RST_TABLE_NUMBER_CONFLICT', message: 'Table number already exists for this business' });
     }
 
     const table = this.tableRepo.create({
@@ -248,14 +249,14 @@ export class RestaurantService {
 
   async updateTable(businessId: string, id: string, dto: UpdateTableDto) {
     const table = await this.tableRepo.findOne({ where: { id, business_id: businessId } });
-    if (!table) throw new NotFoundException('Table not found');
+    if (!table) throw new NotFoundException({ error: 'RST_TABLE_NOT_FOUND', message: 'Table not found' });
 
     if (dto.table_number && dto.table_number !== table.table_number) {
       const conflict = await this.tableRepo.findOne({
         where: { business_id: businessId, table_number: dto.table_number },
       });
       if (conflict) {
-        throw new ConflictException('Table number already exists for this business');
+        throw new ConflictException({ error: 'RST_TABLE_NUMBER_CONFLICT', message: 'Table number already exists for this business' });
       }
     }
 
@@ -267,15 +268,16 @@ export class RestaurantService {
 
   async deleteTable(businessId: string, id: string) {
     const table = await this.tableRepo.findOne({ where: { id, business_id: businessId } });
-    if (!table) throw new NotFoundException('Table not found');
+    if (!table) throw new NotFoundException({ error: 'RST_TABLE_NOT_FOUND', message: 'Table not found' });
 
     const openSession = await this.sessionRepo.findOne({
       where: { table_id: id, business_id: businessId, status: 'open' },
     });
     if (openSession) {
-      throw new UnprocessableEntityException(
-        'Cannot delete table with an open session',
-      );
+      throw new UnprocessableEntityException({
+        error: 'RST_TABLE_HAS_SESSION',
+        message: 'Cannot delete table with an open session',
+      });
     }
 
     await this.tableRepo.remove(table);
