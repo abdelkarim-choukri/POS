@@ -18,6 +18,7 @@ import { RestaurantModule } from './modules/restaurant/restaurant.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ChainModule } from './modules/chain/chain.module';
+import { RecommendationModule } from './modules/recommendation/recommendation.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -41,6 +42,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     ReportsModule,
     InventoryModule,
     ChainModule,
+    RecommendationModule,
     TerminalModule,
     KdsModule,
     HealthModule,
