@@ -9,6 +9,7 @@ import { TableSessionItem } from '../../common/entities/table-session-item.entit
 import { RestaurantTable } from '../../common/entities/table.entity';
 import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import { EventGateway } from '../../common/gateways/event.gateway';
 import { userHasPermission } from '../../common/utils/permissions';
 import { UserRole } from '../../common/enums';
@@ -27,6 +28,7 @@ export class TableSessionService {
     @InjectRepository(TableSessionItem) private itemRepo: Repository<TableSessionItem>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(ProductVariant) private variantRepo: Repository<ProductVariant>,
+    @InjectRepository(AuditLog) private auditLogRepo: Repository<AuditLog>,
     private eventGateway: EventGateway,
   ) {}
 
@@ -322,9 +324,14 @@ export class TableSessionService {
         });
       }
       // Soft delete: kitchen needs to see what was cancelled (TRAP 7)
-      console.log(
-        `[AUDIT] Item ${itemId} voided by user ${user.id} (business ${businessId}) — kds_status was '${item.kds_status}'`,
-      );
+      await this.auditLogRepo.save(this.auditLogRepo.create({
+        business_id: businessId,
+        user_id: user.id,
+        action: 'void',
+        entity_type: 'table_session_item',
+        entity_id: itemId,
+        details_json: { kds_status_was: item.kds_status, session_id: item.table_session_id },
+      }));
       item.kds_status = 'cancelled';
       await this.itemRepo.save(item);
 
@@ -431,9 +438,14 @@ export class TableSessionService {
       session.closed_at = new Date();
       await this.sessionRepo.save(session);
 
-      console.log(
-        `[AUDIT] Session ${sessionId} cancelled by user ${user.id} — reason: ${dto.reason}`,
-      );
+      await this.auditLogRepo.save(this.auditLogRepo.create({
+        business_id: businessId,
+        user_id: user.id,
+        action: 'cancel',
+        entity_type: 'table_session',
+        entity_id: sessionId,
+        details_json: { reason: dto.reason, status_was: 'open' },
+      }));
 
       this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:table_closed', {
         table_id: session.table_id,
@@ -455,9 +467,14 @@ export class TableSessionService {
       session.closed_at = new Date();
       await this.sessionRepo.save(session);
 
-      console.log(
-        `[AUDIT] Session ${sessionId} force-closed (partial payment) by user ${user.id} — session shortfall. Reason: ${dto.reason}`,
-      );
+      await this.auditLogRepo.save(this.auditLogRepo.create({
+        business_id: businessId,
+        user_id: user.id,
+        action: 'force_close',
+        entity_type: 'table_session',
+        entity_id: sessionId,
+        details_json: { reason: dto.reason, partial_payment: true },
+      }));
 
       this.eventGateway.emitToRoom(`floor:${businessId}`, 'floor:table_closed', {
         table_id: session.table_id,

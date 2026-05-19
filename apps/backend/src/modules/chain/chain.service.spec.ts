@@ -9,6 +9,7 @@ import { Business } from '../../common/entities/business.entity';
 import { User } from '../../common/entities/user.entity';
 import { UserBusinessRole } from '../../common/entities/user-business-role.entity';
 import { ChainSyncConfig } from '../../common/entities/chain-sync-config.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import { Category } from '../../common/entities/category.entity';
 import { Product } from '../../common/entities/product.entity';
 // Category and Product imports kept for test provider setup only
@@ -31,6 +32,7 @@ describe('ChainService', () => {
   let userRepo: jest.Mocked<any>;
   let ubrRepo: jest.Mocked<any>;
   let syncConfigRepo: jest.Mocked<any>;
+  let auditLogRepo: jest.Mocked<any>;
   let dataSource: jest.Mocked<any>;
   let jwtService: jest.Mocked<any>;
 
@@ -48,6 +50,7 @@ describe('ChainService', () => {
     userRepo = { findOne: jest.fn(), save: jest.fn() };
     ubrRepo = { find: jest.fn(), save: jest.fn(), delete: jest.fn(), upsert: jest.fn() };
     syncConfigRepo = { findOne: jest.fn(), save: jest.fn(), upsert: jest.fn() };
+    auditLogRepo = { create: jest.fn((dto) => ({ ...dto })), save: jest.fn().mockResolvedValue(undefined) };
     dataSource = { query: jest.fn(), createQueryRunner: jest.fn().mockReturnValue(mockQr) };
     jwtService = { sign: jest.fn().mockReturnValue('mock-token') };
 
@@ -58,6 +61,7 @@ describe('ChainService', () => {
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(UserBusinessRole), useValue: ubrRepo },
         { provide: getRepositoryToken(ChainSyncConfig), useValue: syncConfigRepo },
+        { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
         { provide: getRepositoryToken(Category), useValue: { findBy: jest.fn().mockResolvedValue([]) } },
         { provide: getRepositoryToken(Product), useValue: { findBy: jest.fn().mockResolvedValue([]) } },
         { provide: DataSource, useValue: dataSource },
@@ -309,8 +313,27 @@ describe('ChainService', () => {
     it('throws 404 if PO not found', async () => {
       dataSource.query.mockResolvedValue([]);
       await expect(
-        service.fulfillChildPo(BIZ, 'no-po', 'wh-1'),
+        service.fulfillChildPo(BIZ, 'no-po', 'wh-1', USER_ID),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('writes audit log on successful fulfillment', async () => {
+      const po = {
+        id: 'po-1',
+        child_biz_id: CHILD_BIZ,
+        status: 'confirmed',
+      };
+      // First query: PO lookup; second: PO items; subsequent: FIFO batches, movements, updates
+      dataSource.query
+        .mockResolvedValueOnce([po])        // PO lookup
+        .mockResolvedValueOnce([])          // PO items (empty — nothing to FIFO)
+        .mockResolvedValue(undefined);      // any remaining queries (UPDATE status)
+      mockQr.query.mockResolvedValue([]);   // QR queries (batch SELECT FOR UPDATE, etc.)
+
+      await service.fulfillChildPo(BIZ, 'po-1', 'wh-1', USER_ID);
+
+      expect(auditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'fulfill' }));
+      expect(auditLogRepo.save).toHaveBeenCalled();
     });
   });
 });

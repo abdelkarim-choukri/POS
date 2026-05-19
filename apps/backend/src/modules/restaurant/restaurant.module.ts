@@ -17,6 +17,7 @@ import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
 import { Transaction } from '../../common/entities/transaction.entity';
 import { Business } from '../../common/entities/business.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { Business } from '../../common/entities/business.entity';
       ProductVariant,
       Transaction,
       Business,
+      AuditLog,
     ]),
   ],
   controllers: [RestaurantController, TableSessionController, OssController],

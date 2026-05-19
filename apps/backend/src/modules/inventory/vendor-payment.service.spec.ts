@@ -6,6 +6,7 @@ import { VendorPaymentService } from './vendor-payment.service';
 import { VendorPayment } from '../../common/entities/vendor-payment.entity';
 import { Vendor } from '../../common/entities/vendor.entity';
 import { PurchaseOrder } from '../../common/entities/purchase-order.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 
 const BIZ = 'biz-1';
 const OTHER_BIZ = 'biz-2';
@@ -48,6 +49,7 @@ describe('VendorPaymentService', () => {
   let vpRepo: jest.Mocked<any>;
   let vendorRepo: jest.Mocked<any>;
   let poRepo: jest.Mocked<any>;
+  let auditLogRepo: jest.Mocked<any>;
   let dataSource: jest.Mocked<any>;
 
   const mockQr = {
@@ -68,6 +70,7 @@ describe('VendorPaymentService', () => {
     };
     vendorRepo = { findOne: jest.fn() };
     poRepo = { findOne: jest.fn() };
+    auditLogRepo = { create: jest.fn((dto) => ({ ...dto })), save: jest.fn().mockResolvedValue(undefined) };
     dataSource = {
       createQueryRunner: jest.fn().mockReturnValue(mockQr),
       query: jest.fn(),
@@ -79,6 +82,7 @@ describe('VendorPaymentService', () => {
         { provide: getRepositoryToken(VendorPayment), useValue: vpRepo },
         { provide: getRepositoryToken(Vendor), useValue: vendorRepo },
         { provide: getRepositoryToken(PurchaseOrder), useValue: poRepo },
+        { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -197,24 +201,26 @@ describe('VendorPaymentService', () => {
   });
 
   describe('voidPayment', () => {
-    it('sets status to voided', async () => {
+    it('sets status to voided and writes audit log', async () => {
       vpRepo.findOne
         .mockResolvedValueOnce(makeVp({ status: 'pending' }))
         .mockResolvedValueOnce(makeVp({ status: 'voided' }));
       vpRepo.update.mockResolvedValue(undefined);
-      const result = await service.voidPayment(VP_ID, BIZ, { reason: 'duplicate' });
+      const result = await service.voidPayment(VP_ID, BIZ, { reason: 'duplicate' }, USER_ID);
       expect(vpRepo.update).toHaveBeenCalledWith(VP_ID, { status: 'voided' });
       expect(result?.status).toBe('voided');
+      expect(auditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'void' }));
+      expect(auditLogRepo.save).toHaveBeenCalled();
     });
 
     it('throws 422 if already voided', async () => {
       vpRepo.findOne.mockResolvedValue(makeVp({ status: 'voided' }));
-      await expect(service.voidPayment(VP_ID, BIZ, { reason: 'x' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.voidPayment(VP_ID, BIZ, { reason: 'x' }, USER_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('throws 404 for cross-tenant access', async () => {
       vpRepo.findOne.mockResolvedValue(null);
-      await expect(service.voidPayment(VP_ID, OTHER_BIZ, { reason: 'x' })).rejects.toThrow(NotFoundException);
+      await expect(service.voidPayment(VP_ID, OTHER_BIZ, { reason: 'x' }, USER_ID)).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -10,6 +10,7 @@ import { TableSessionItem } from '../../common/entities/table-session-item.entit
 import { RestaurantTable } from '../../common/entities/table.entity';
 import { Product } from '../../common/entities/product.entity';
 import { ProductVariant } from '../../common/entities/product-variant.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import { EventGateway } from '../../common/gateways/event.gateway';
 import { UserRole } from '../../common/enums';
 
@@ -128,6 +129,7 @@ describe('TableSessionService', () => {
   let itemRepo: jest.Mocked<any>;
   let productRepo: jest.Mocked<any>;
   let variantRepo: jest.Mocked<any>;
+  let auditLogRepo: jest.Mocked<any>;
 
   beforeEach(async () => {
     const makeRepo = () => ({
@@ -151,6 +153,7 @@ describe('TableSessionService', () => {
     itemRepo = makeRepo();
     productRepo = makeRepo();
     variantRepo = makeRepo();
+    auditLogRepo = { create: jest.fn((dto) => ({ ...dto })), save: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -160,6 +163,7 @@ describe('TableSessionService', () => {
         { provide: getRepositoryToken(TableSessionItem), useValue: itemRepo },
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: getRepositoryToken(ProductVariant), useValue: variantRepo },
+        { provide: getRepositoryToken(AuditLog), useValue: auditLogRepo },
         { provide: EventGateway, useValue: mockEventGateway },
       ],
     }).compile();
@@ -340,10 +344,14 @@ describe('TableSessionService', () => {
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
-    it('soft-deletes (sets kds_status=cancelled) when user has can_void', async () => {
+    it('soft-deletes (sets kds_status=cancelled) when user has can_void and writes audit log', async () => {
       const item = makeItem({ kds_status: 'preparing' });
       itemRepo.findOne.mockResolvedValue(item);
+      // auditLogRepo.save is called first, then itemRepo.save
       itemRepo.save.mockResolvedValue({ ...item, kds_status: 'cancelled' });
+      // sessionRepo/tableRepo for the event emission best-effort
+      sessionRepo.findOne.mockResolvedValue(makeSession());
+      tableRepo.findOne.mockResolvedValue(makeTable());
 
       const result = await service.removeItem(BIZ_A, ITEM_ID, employeeWithVoid);
 
@@ -352,6 +360,8 @@ describe('TableSessionService', () => {
       );
       expect(result.cancelled).toBe(true);
       expect(result.deleted).toBe(false);
+      expect(auditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'void' }));
+      expect(auditLogRepo.save).toHaveBeenCalled();
     });
 
     it('hard-deletes item when kds_status is new', async () => {
@@ -438,7 +448,7 @@ describe('TableSessionService', () => {
       return qb;
     }
 
-    it('cancels open session and bulk-cancels all its items', async () => {
+    it('cancels open session, bulk-cancels all its items, and writes audit log', async () => {
       sessionRepo.findOne.mockResolvedValue(makeSession({ status: 'open' }));
       const qb = mockItemUpdateQb();
       sessionRepo.save.mockResolvedValue(makeSession({ status: 'cancelled' }));
@@ -452,9 +462,11 @@ describe('TableSessionService', () => {
       expect(qb.execute).toHaveBeenCalled();
       expect(result.status).toBe('cancelled');
       expect(result.partial_payment).toBe(false);
+      expect(auditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'cancel' }));
+      expect(auditLogRepo.save).toHaveBeenCalled();
     });
 
-    it('force-closes awaiting_payment session with partial_payment=true when permitted', async () => {
+    it('force-closes awaiting_payment session with partial_payment=true when permitted and writes audit log', async () => {
       sessionRepo.findOne.mockResolvedValue(makeSession({ status: 'awaiting_payment' }));
       sessionRepo.save.mockResolvedValue(
         makeSession({ status: 'paid', partial_payment: true }),
@@ -468,6 +480,8 @@ describe('TableSessionService', () => {
 
       expect(result.status).toBe('paid');
       expect(result.partial_payment).toBe(true);
+      expect(auditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'force_close' }));
+      expect(auditLogRepo.save).toHaveBeenCalled();
     });
 
     it('throws 403 when employee lacks can_close_table_session_partial for force close', async () => {

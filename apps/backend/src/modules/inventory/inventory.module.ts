@@ -42,6 +42,7 @@ import { StockTransfer } from '../../common/entities/stock-transfer.entity';
 import { StockTransferItem } from '../../common/entities/stock-transfer-item.entity';
 import { VendorPayment } from '../../common/entities/vendor-payment.entity';
 import { Business } from '../../common/entities/business.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { Business } from '../../common/entities/business.entity';
       StockTransferItem,
       VendorPayment,
       Business,
+      AuditLog,
     ]),
     BullModule.registerQueue(
       { name: EXPIRATION_SCAN_QUEUE },

@@ -112,6 +112,6 @@ export class ChainController {
   @Roles('owner', 'manager')
   @HttpCode(200)
   fulfillPo(@Param('id') id: string, @Request() req: any, @Body() dto: FulfillChildPoDto) {
-    return this.chainService.fulfillChildPo(req.user.business_id, id, dto.source_warehouse_id);
+    return this.chainService.fulfillChildPo(req.user.business_id, id, dto.source_warehouse_id, req.user.sub);
   }
 }

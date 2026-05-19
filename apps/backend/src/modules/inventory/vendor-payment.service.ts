@@ -6,6 +6,7 @@ import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { VendorPayment } from '../../common/entities/vendor-payment.entity';
 import { Vendor } from '../../common/entities/vendor.entity';
 import { PurchaseOrder } from '../../common/entities/purchase-order.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import {
   ListVendorPaymentsQueryDto,
   CreateVendorPaymentDto,
@@ -18,6 +19,7 @@ export class VendorPaymentService {
     @InjectRepository(VendorPayment) private vpRepo: Repository<VendorPayment>,
     @InjectRepository(Vendor) private vendorRepo: Repository<Vendor>,
     @InjectRepository(PurchaseOrder) private poRepo: Repository<PurchaseOrder>,
+    @InjectRepository(AuditLog) private auditLogRepo: Repository<AuditLog>,
     private dataSource: DataSource,
   ) {}
 
@@ -110,12 +112,19 @@ export class VendorPaymentService {
     return this.vpRepo.findOne({ where: { id, business_id: businessId } });
   }
 
-  async voidPayment(id: string, businessId: string, dto: VoidVendorPaymentDto) {
+  async voidPayment(id: string, businessId: string, dto: VoidVendorPaymentDto, performedBy: string) {
     const vp = await this.vpRepo.findOne({ where: { id, business_id: businessId } });
     if (!vp) throw new NotFoundException('Vendor payment not found');
     if (vp.status === 'voided') throw new UnprocessableEntityException('Payment is already voided');
-    console.log(`[AUDIT] VP ${vp.payment_number} voided. Reason: ${dto.reason}`);
     await this.vpRepo.update(id, { status: 'voided' });
+    await this.auditLogRepo.save(this.auditLogRepo.create({
+      business_id: businessId,
+      user_id: performedBy,
+      action: 'void',
+      entity_type: 'vendor_payment',
+      entity_id: id,
+      details_json: { payment_number: vp.payment_number, reason: dto.reason },
+    }));
     return this.vpRepo.findOne({ where: { id, business_id: businessId } });
   }
 

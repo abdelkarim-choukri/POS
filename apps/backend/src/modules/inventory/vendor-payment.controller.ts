@@ -59,10 +59,11 @@ export class VendorPaymentController {
   @HttpCode(HttpStatus.OK)
   void(
     @CurrentUser('business_id') businessId: string,
+    @CurrentUser('sub') userId: string,
     @Param('id') id: string,
     @Body() dto: VoidVendorPaymentDto,
   ) {
-    return this.vendorPaymentService.voidPayment(id, businessId, dto);
+    return this.vendorPaymentService.voidPayment(id, businessId, dto, userId);
   }
 
   @Get('vendors/:vendorId/outstanding')

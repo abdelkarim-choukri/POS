@@ -10,11 +10,12 @@ import { Business } from '../../common/entities/business.entity';
 import { User } from '../../common/entities/user.entity';
 import { UserBusinessRole } from '../../common/entities/user-business-role.entity';
 import { ChainSyncConfig } from '../../common/entities/chain-sync-config.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Business, User, UserBusinessRole, ChainSyncConfig]),
+    TypeOrmModule.forFeature([Business, User, UserBusinessRole, ChainSyncConfig, AuditLog]),
     BullModule.registerQueue({ name: CHAIN_SYNC_QUEUE }),
     AuthModule,
   ],

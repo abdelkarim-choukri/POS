@@ -9,6 +9,7 @@ import { Business } from '../../common/entities/business.entity';
 import { User } from '../../common/entities/user.entity';
 import { UserBusinessRole } from '../../common/entities/user-business-role.entity';
 import { ChainSyncConfig } from '../../common/entities/chain-sync-config.entity';
+import { AuditLog } from '../../common/entities/audit-log.entity';
 import { SyncConfigDto, ChainTransactionsQueryDto } from './dto/chain.dto';
 
 export const CHAIN_SYNC_QUEUE = 'chain-sync';
@@ -20,6 +21,7 @@ export class ChainService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(UserBusinessRole) private ubrRepo: Repository<UserBusinessRole>,
     @InjectRepository(ChainSyncConfig) private syncConfigRepo: Repository<ChainSyncConfig>,
+    @InjectRepository(AuditLog) private auditLogRepo: Repository<AuditLog>,
     private dataSource: DataSource,
     private jwtService: JwtService,
     @InjectQueue(CHAIN_SYNC_QUEUE) private syncQueue: Queue,
@@ -436,7 +438,7 @@ export class ChainService {
   }
 
   // ── CHN-052 ───────────────────────────────────────────────────────────────
-  async fulfillChildPo(parentBusinessId: string, poId: string, sourceWarehouseId: string) {
+  async fulfillChildPo(parentBusinessId: string, poId: string, sourceWarehouseId: string, performedBy: string) {
     const [po] = await this.dataSource.query(
       `SELECT po.*, b.id AS child_biz_id
        FROM purchase_orders po
@@ -511,7 +513,14 @@ export class ChainService {
       );
 
       await qr.commitTransaction();
-      console.log(`[AUDIT] Chain PO ${poId} fulfilled by parent ${parentBusinessId} from warehouse ${sourceWarehouseId}`);
+      await this.auditLogRepo.save(this.auditLogRepo.create({
+        business_id: parentBusinessId,
+        user_id: performedBy,
+        action: 'fulfill',
+        entity_type: 'purchase_order',
+        entity_id: poId,
+        details_json: { source_warehouse_id: sourceWarehouseId },
+      }));
       return { fulfilled: true, po_id: poId };
     } catch (err) {
       await qr.rollbackTransaction();
