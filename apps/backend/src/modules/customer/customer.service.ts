@@ -94,7 +94,7 @@ export class CustomerService {
       where: { id, business_id: businessId },
       relations: ['grade', 'label_assignments', 'label_assignments.label', 'attribute_values', 'attribute_values.attribute'],
     });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     // Lifetime stats
     const stats = await this.transactionRepo
@@ -123,7 +123,7 @@ export class CustomerService {
       const existing = await this.customerRepo.findOne({
         where: { business_id: businessId, phone: dto.phone },
       });
-      if (existing) throw new ConflictException('Phone number already registered for this business');
+      if (existing) throw new ConflictException({ error: 'CUST_PHONE_CONFLICT', message: 'Phone number already registered for this business' });
     }
 
     // Atomic customer_counter increment → customer_code
@@ -169,14 +169,14 @@ export class CustomerService {
 
   async update(businessId: string, id: string, dto: UpdateCustomerDto) {
     const customer = await this.customerRepo.findOne({ where: { id, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     // Phone uniqueness check on change
     if (dto.phone && dto.phone !== customer.phone) {
       const existing = await this.customerRepo.findOne({
         where: { business_id: businessId, phone: dto.phone },
       });
-      if (existing) throw new ConflictException('Phone number already registered for this business');
+      if (existing) throw new ConflictException({ error: 'CUST_PHONE_CONFLICT', message: 'Phone number already registered for this business' });
     }
 
     Object.assign(customer, dto);
@@ -185,7 +185,7 @@ export class CustomerService {
 
   async softDelete(businessId: string, id: string) {
     const customer = await this.customerRepo.findOne({ where: { id, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
     customer.is_active = false;
     await this.customerRepo.save(customer);
     return { success: true };
@@ -207,7 +207,7 @@ export class CustomerService {
 
   async updateGrade(businessId: string, id: string, dto: UpdateGradeDto) {
     const grade = await this.gradeRepo.findOne({ where: { id, business_id: businessId } });
-    if (!grade) throw new NotFoundException('Grade not found');
+    if (!grade) throw new NotFoundException({ error: 'CUST_GRADE_NOT_FOUND', message: 'Grade not found' });
     Object.assign(grade, dto);
     return this.gradeRepo.save(grade);
   }
@@ -216,7 +216,7 @@ export class CustomerService {
     // Wrap in transaction: soft-delete + demotion must be atomic
     await this.dataSource.transaction(async (em) => {
       const grade = await em.findOne(CustomerGrade, { where: { id, business_id: businessId } });
-      if (!grade) throw new NotFoundException('Grade not found');
+      if (!grade) throw new NotFoundException({ error: 'CUST_GRADE_NOT_FOUND', message: 'Grade not found' });
 
       // Find the lowest remaining active grade (excluding the one being deleted)
       const fallback = await em.findOne(CustomerGrade, {
@@ -256,14 +256,14 @@ export class CustomerService {
 
   async updateLabel(businessId: string, id: string, dto: UpdateLabelDto) {
     const label = await this.labelRepo.findOne({ where: { id, business_id: businessId, is_active: true } });
-    if (!label) throw new NotFoundException('Label not found');
+    if (!label) throw new NotFoundException({ error: 'CUST_LABEL_NOT_FOUND', message: 'Label not found' });
     Object.assign(label, dto);
     return this.labelRepo.save(label);
   }
 
   async deleteLabel(businessId: string, id: string) {
     const label = await this.labelRepo.findOne({ where: { id, business_id: businessId, is_active: true } });
-    if (!label) throw new NotFoundException('Label not found');
+    if (!label) throw new NotFoundException({ error: 'CUST_LABEL_NOT_FOUND', message: 'Label not found' });
     // Cascade: remove all assignments, then soft-delete the label
     await this.claRepo.delete({ label_id: id });
     label.is_active = false;
@@ -273,7 +273,7 @@ export class CustomerService {
 
   async assignLabels(businessId: string, customerId: string, dto: AssignLabelsDto) {
     const customer = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     await this.dataSource.transaction(async (em) => {
       await em.delete(CustomerLabelAssignment, { customer_id: customerId });
@@ -307,14 +307,15 @@ export class CustomerService {
 
   async updateAttribute(businessId: string, id: string, dto: UpdateAttributeDto) {
     const attr = await this.attrRepo.findOne({ where: { id, business_id: businessId } });
-    if (!attr) throw new NotFoundException('Attribute not found');
+    if (!attr) throw new NotFoundException({ error: 'CUST_ATTR_NOT_FOUND', message: 'Attribute not found' });
 
     if (dto.data_type && dto.data_type !== attr.data_type) {
       const valueCount = await this.cavRepo.count({ where: { attribute_id: id } });
       if (valueCount > 0) {
-        throw new UnprocessableEntityException(
-          'Cannot change data_type once customers have values for this attribute. Create a new attribute instead.',
-        );
+        throw new UnprocessableEntityException({
+          error: 'CUST_ATTR_TYPE_IMMUTABLE',
+          message: 'data_type cannot be changed once set',
+        });
       }
     }
 
@@ -324,7 +325,7 @@ export class CustomerService {
 
   async deleteAttribute(businessId: string, id: string) {
     const attr = await this.attrRepo.findOne({ where: { id, business_id: businessId } });
-    if (!attr) throw new NotFoundException('Attribute not found');
+    if (!attr) throw new NotFoundException({ error: 'CUST_ATTR_NOT_FOUND', message: 'Attribute not found' });
     await this.cavRepo.delete({ attribute_id: id });
     await this.attrRepo.remove(attr);
     return { success: true };
@@ -332,7 +333,7 @@ export class CustomerService {
 
   async getCustomerAttributes(businessId: string, customerId: string) {
     const customer = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     const values = await this.cavRepo.find({
       where: { customer_id: customerId },
@@ -343,7 +344,7 @@ export class CustomerService {
 
   async setCustomerAttributes(businessId: string, customerId: string, dto: SetAttributeValuesDto) {
     const customer = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     const attributes = await this.attrRepo.find({ where: { business_id: businessId } });
     const attrMap = new Map(attributes.map((a) => [a.key, a]));
@@ -368,7 +369,7 @@ export class CustomerService {
     }
 
     if (Object.keys(errors).length > 0) {
-      throw new BadRequestException({ message: 'Attribute validation failed', errors });
+      throw new BadRequestException({ error: 'CUST_ATTR_VALIDATION_FAILED', message: 'Attribute validation failed', errors });
     }
 
     // Upsert values
@@ -417,7 +418,7 @@ export class CustomerService {
     const { page, limit, from_date, to_date, source } = query;
 
     const customer = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     const qb = this.pointsHistoryRepo.createQueryBuilder('ph')
       .where('ph.customer_id = :customerId AND ph.business_id = :businessId', { customerId, businessId })
@@ -448,8 +449,8 @@ export class CustomerService {
     if (!resultRows || resultRows.length === 0) {
       // Either customer not found or balance would go negative — distinguish:
       const exists = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-      if (!exists) throw new NotFoundException('Customer not found');
-      throw new UnprocessableEntityException('Adjustment would make points balance negative');
+      if (!exists) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
+      throw new UnprocessableEntityException({ error: 'CUST_POINTS_INSUFFICIENT', message: 'Adjustment would make points balance negative' });
     }
 
     const newBalance: number = resultRows[0].points_balance;

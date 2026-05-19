@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { Customer } from '../../common/entities/customer.entity';
 import { CustomerGrade } from '../../common/entities/customer-grade.entity';
@@ -124,7 +124,9 @@ describe('CustomerService', () => {
     it('throws 409 ConflictException when phone already exists for this business', async () => {
       customerRepo.findOne.mockResolvedValueOnce({ id: 'existing-uuid' }); // phone exists
 
-      await expect(service.create('biz-1', dto)).rejects.toThrow(ConflictException);
+      await expect(service.create('biz-1', dto)).rejects.toMatchObject({
+        response: { error: 'CUST_PHONE_CONFLICT' },
+      });
     });
 
     it('assigns labels if label_ids provided', async () => {
@@ -229,7 +231,9 @@ describe('CustomerService', () => {
 
     it('throws NotFoundException for unknown customer', async () => {
       customerRepo.findOne.mockResolvedValueOnce(null);
-      await expect(service.softDelete('biz-1', 'bad-id')).rejects.toThrow(NotFoundException);
+      await expect(service.softDelete('biz-1', 'bad-id')).rejects.toMatchObject({
+        response: { error: 'CUST_NOT_FOUND' },
+      });
     });
   });
 

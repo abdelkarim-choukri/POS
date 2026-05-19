@@ -254,7 +254,7 @@ export class CustomerController {
     @Body() dto: PointsAdjustmentDto,
   ) {
     if (user.role === 'employee' && !userHasPermission(user, 'can_adjust_points')) {
-      throw new ForbiddenException('Insufficient permissions to adjust points');
+      throw new ForbiddenException({ error: 'CUST_PERMISSION_DENIED', message: 'Insufficient permissions to adjust points' });
     }
     return this.service.adjustPoints(user.business_id, id, dto, user.id);
   }
