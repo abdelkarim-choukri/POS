@@ -86,6 +86,12 @@ export class Business {
   @Column({ type: 'varchar', length: 20, default: 'standalone' })
   chain_role: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  trade_category_id: string | null;
+
+  @Column({ type: 'time', default: '02:00' })
+  daily_settlement_cutoff_time: string;
+
   @OneToMany(() => Location, (l) => l.business)
   locations: Location[];
 
