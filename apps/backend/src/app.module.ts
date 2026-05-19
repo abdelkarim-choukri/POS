@@ -19,6 +19,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ChainModule } from './modules/chain/chain.module';
 import { RecommendationModule } from './modules/recommendation/recommendation.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -43,6 +44,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     InventoryModule,
     ChainModule,
     RecommendationModule,
+    PlatformAdminModule,
     TerminalModule,
     KdsModule,
     HealthModule,
