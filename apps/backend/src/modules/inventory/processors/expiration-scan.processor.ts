@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { Business } from '../../../common/entities/business.entity';
 import { ExpirationAlert } from '../../../common/entities/expiration-alert.entity';
 import { StockConsumptionService } from '../stock-consumption.service';
+import { EventGateway } from '../../../common/gateways/event.gateway';
 
 export const EXPIRATION_SCAN_QUEUE = 'inventory-expiration-scan';
 
@@ -17,6 +18,7 @@ export class ExpirationScanProcessor extends WorkerHost {
     @InjectRepository(Business) private businessRepo: Repository<Business>,
     @InjectRepository(ExpirationAlert) private alertRepo: Repository<ExpirationAlert>,
     private readonly stockConsumptionService: StockConsumptionService,
+    private readonly eventGateway: EventGateway,
   ) {
     super();
   }
@@ -54,8 +56,15 @@ export class ExpirationScanProcessor extends WorkerHost {
         product_id: batch.product_id,
         severity,
       });
-      await this.alertRepo.save(alert);
+      const saved = await this.alertRepo.save(alert);
       this.logger.log(`[INV-080] Alert created: batch ${batch.id} severity=${severity}`);
+      this.eventGateway.emitToRoom(`dashboard:${business.id}`, 'inventory:expiration_alert', {
+        alert_id: saved.id,
+        batch_id: batch.id,
+        product_id: batch.product_id,
+        warehouse_id: batch.warehouse_id,
+        severity,
+      });
     }
   }
 }

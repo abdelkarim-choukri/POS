@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { Business } from '../../../common/entities/business.entity';
 import { StockDiscrepancyAlert } from '../../../common/entities/stock-discrepancy-alert.entity';
 import { StockConsumptionService } from '../stock-consumption.service';
+import { EventGateway } from '../../../common/gateways/event.gateway';
 
 export const RECONCILIATION_QUEUE = 'inventory-reconciliation';
 
@@ -17,6 +18,7 @@ export class ReconciliationProcessor extends WorkerHost {
     @InjectRepository(Business) private businessRepo: Repository<Business>,
     @InjectRepository(StockDiscrepancyAlert) private discrepancyRepo: Repository<StockDiscrepancyAlert>,
     private readonly stockConsumptionService: StockConsumptionService,
+    private readonly eventGateway: EventGateway,
   ) {
     super();
   }
@@ -82,7 +84,15 @@ export class ReconciliationProcessor extends WorkerHost {
     if (existing) return;
 
     const alert = this.discrepancyRepo.create(data);
-    await this.discrepancyRepo.save(alert);
+    const saved = await this.discrepancyRepo.save(alert);
     this.logger.log(`[INV-095] Discrepancy alert created: batch ${data.batch_id} source=${data.source}`);
+    this.eventGateway.emitToRoom(`dashboard:${data.business_id}`, 'inventory:discrepancy_alert', {
+      alert_id: saved.id,
+      batch_id: data.batch_id,
+      product_id: data.product_id,
+      warehouse_id: data.warehouse_id,
+      source: data.source,
+      discrepancy_quantity: data.discrepancy_quantity,
+    });
   }
 }

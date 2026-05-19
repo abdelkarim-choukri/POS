@@ -4,6 +4,7 @@ import { ExpirationScanProcessor, EXPIRATION_SCAN_QUEUE } from './expiration-sca
 import { Business } from '../../../common/entities/business.entity';
 import { ExpirationAlert } from '../../../common/entities/expiration-alert.entity';
 import { StockConsumptionService } from '../stock-consumption.service';
+import { EventGateway } from '../../../common/gateways/event.gateway';
 
 const BIZ_ID = 'biz-1';
 
@@ -29,11 +30,13 @@ describe('ExpirationScanProcessor', () => {
   let businessRepo: jest.Mocked<any>;
   let alertRepo: jest.Mocked<any>;
   let stockConsumptionService: jest.Mocked<any>;
+  let eventGateway: jest.Mocked<Pick<EventGateway, 'emitToRoom'>>;
 
   beforeEach(async () => {
     businessRepo = { find: jest.fn() };
     alertRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     stockConsumptionService = { findExpiringBatches: jest.fn() };
+    eventGateway = { emitToRoom: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -41,6 +44,7 @@ describe('ExpirationScanProcessor', () => {
         { provide: getRepositoryToken(Business), useValue: businessRepo },
         { provide: getRepositoryToken(ExpirationAlert), useValue: alertRepo },
         { provide: StockConsumptionService, useValue: stockConsumptionService },
+        { provide: EventGateway, useValue: eventGateway },
       ],
     }).compile();
 
@@ -98,5 +102,33 @@ describe('ExpirationScanProcessor', () => {
     businessRepo.find.mockResolvedValue([]);
     await processor.process({} as any);
     expect(stockConsumptionService.findExpiringBatches).not.toHaveBeenCalled();
+  });
+
+  it('emits inventory:expiration_alert when a new alert is created', async () => {
+    businessRepo.find.mockResolvedValue([makeBusiness()]);
+    stockConsumptionService.findExpiringBatches.mockResolvedValue([
+      makeBatch({ expires_at: new Date(Date.now() - 1000) }),
+    ]);
+    alertRepo.findOne.mockResolvedValue(null);
+    alertRepo.create.mockReturnValue({ severity: 'expired' });
+    alertRepo.save.mockResolvedValue({ id: 'alert-1', severity: 'expired' });
+
+    await processor.process({} as any);
+
+    expect(eventGateway.emitToRoom).toHaveBeenCalledWith(
+      'dashboard:biz-1',
+      'inventory:expiration_alert',
+      expect.objectContaining({ batch_id: 'batch-1', severity: 'expired' }),
+    );
+  });
+
+  it('does not emit when alert already exists (idempotent)', async () => {
+    businessRepo.find.mockResolvedValue([makeBusiness()]);
+    stockConsumptionService.findExpiringBatches.mockResolvedValue([makeBatch()]);
+    alertRepo.findOne.mockResolvedValue({ id: 'existing-alert' });
+
+    await processor.process({} as any);
+
+    expect(eventGateway.emitToRoom).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { ReconciliationProcessor, RECONCILIATION_QUEUE } from './reconciliation.
 import { Business } from '../../../common/entities/business.entity';
 import { StockDiscrepancyAlert } from '../../../common/entities/stock-discrepancy-alert.entity';
 import { StockConsumptionService } from '../stock-consumption.service';
+import { EventGateway } from '../../../common/gateways/event.gateway';
 
 const BIZ_ID = 'biz-1';
 
@@ -27,6 +28,7 @@ describe('ReconciliationProcessor', () => {
   let businessRepo: jest.Mocked<any>;
   let discrepancyRepo: jest.Mocked<any>;
   let stockConsumptionService: jest.Mocked<any>;
+  let eventGateway: jest.Mocked<Pick<EventGateway, 'emitToRoom'>>;
 
   beforeEach(async () => {
     businessRepo = { find: jest.fn() };
@@ -35,6 +37,7 @@ describe('ReconciliationProcessor', () => {
       findNegativeBatches: jest.fn(),
       findRecentOfflineSyncBatches: jest.fn(),
     };
+    eventGateway = { emitToRoom: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -42,6 +45,7 @@ describe('ReconciliationProcessor', () => {
         { provide: getRepositoryToken(Business), useValue: businessRepo },
         { provide: getRepositoryToken(StockDiscrepancyAlert), useValue: discrepancyRepo },
         { provide: StockConsumptionService, useValue: stockConsumptionService },
+        { provide: EventGateway, useValue: eventGateway },
       ],
     }).compile();
 
@@ -103,5 +107,33 @@ describe('ReconciliationProcessor', () => {
     businessRepo.find.mockResolvedValue([]);
     await processor.process({} as any);
     expect(stockConsumptionService.findNegativeBatches).not.toHaveBeenCalled();
+  });
+
+  it('emits inventory:discrepancy_alert when a new discrepancy alert is created', async () => {
+    businessRepo.find.mockResolvedValue([makeBusiness()]);
+    stockConsumptionService.findNegativeBatches.mockResolvedValue([makeNegativeBatch()]);
+    stockConsumptionService.findRecentOfflineSyncBatches.mockResolvedValue([]);
+    discrepancyRepo.findOne.mockResolvedValue(null);
+    discrepancyRepo.create.mockReturnValue({ source: 'system_detected' });
+    discrepancyRepo.save.mockResolvedValue({ id: 'disc-alert-1' });
+
+    await processor.process({} as any);
+
+    expect(eventGateway.emitToRoom).toHaveBeenCalledWith(
+      'dashboard:biz-1',
+      'inventory:discrepancy_alert',
+      expect.objectContaining({ batch_id: 'batch-1', source: 'system_detected' }),
+    );
+  });
+
+  it('does not emit when discrepancy alert already exists (idempotent)', async () => {
+    businessRepo.find.mockResolvedValue([makeBusiness()]);
+    stockConsumptionService.findNegativeBatches.mockResolvedValue([makeNegativeBatch()]);
+    stockConsumptionService.findRecentOfflineSyncBatches.mockResolvedValue([]);
+    discrepancyRepo.findOne.mockResolvedValue({ id: 'existing' });
+
+    await processor.process({} as any);
+
+    expect(eventGateway.emitToRoom).not.toHaveBeenCalled();
   });
 });
