@@ -56,19 +56,19 @@ export class VendorPaymentService {
 
   async getPayment(id: string, businessId: string) {
     const vp = await this.vpRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vp) throw new NotFoundException('Vendor payment not found');
+    if (!vp) throw new NotFoundException({ error: 'INV_VENDOR_PAYMENT_NOT_FOUND', message: 'Vendor payment not found' });
     return vp;
   }
 
   async createPayment(businessId: string, userId: string, dto: CreateVendorPaymentDto) {
     const vendor = await this.vendorRepo.findOne({ where: { id: dto.vendor_id, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
 
     if (dto.purchase_order_id) {
       const po = await this.poRepo.findOne({
         where: { id: dto.purchase_order_id, business_id: businessId, vendor_id: dto.vendor_id },
       });
-      if (!po) throw new NotFoundException('Purchase order not found or does not belong to this vendor');
+      if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found or does not belong to this vendor' });
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -102,7 +102,7 @@ export class VendorPaymentService {
 
   async confirmPayment(id: string, businessId: string, userId: string) {
     const vp = await this.vpRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vp) throw new NotFoundException('Vendor payment not found');
+    if (!vp) throw new NotFoundException({ error: 'INV_VENDOR_PAYMENT_NOT_FOUND', message: 'Vendor payment not found' });
     if (vp.status !== 'pending') throw new UnprocessableEntityException('Only pending payments can be confirmed');
     await this.vpRepo.update(id, {
       status: 'confirmed',
@@ -114,8 +114,8 @@ export class VendorPaymentService {
 
   async voidPayment(id: string, businessId: string, dto: VoidVendorPaymentDto, performedBy: string) {
     const vp = await this.vpRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vp) throw new NotFoundException('Vendor payment not found');
-    if (vp.status === 'voided') throw new UnprocessableEntityException('Payment is already voided');
+    if (!vp) throw new NotFoundException({ error: 'INV_VENDOR_PAYMENT_NOT_FOUND', message: 'Vendor payment not found' });
+    if (vp.status === 'voided') throw new UnprocessableEntityException({ error: 'INV_VENDOR_PAYMENT_VOIDED', message: 'Payment is already voided' });
     await this.vpRepo.update(id, { status: 'voided' });
     await this.auditLogRepo.save(this.auditLogRepo.create({
       business_id: businessId,
@@ -130,7 +130,7 @@ export class VendorPaymentService {
 
   async getVendorOutstanding(vendorId: string, businessId: string) {
     const vendor = await this.vendorRepo.findOne({ where: { id: vendorId, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
 
     return this.dataSource.query(
       `SELECT * FROM (
@@ -157,7 +157,7 @@ export class VendorPaymentService {
 
   async getVendorPaymentSummary(vendorId: string, businessId: string) {
     const vendor = await this.vendorRepo.findOne({ where: { id: vendorId, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
 
     const [paymentStats] = await this.dataSource.query(
       `SELECT

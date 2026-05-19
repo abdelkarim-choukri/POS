@@ -85,7 +85,7 @@ export class PurchaseOrderService {
       where: { id, business_id: businessId },
       relations: ['items', 'items.product'],
     });
-    if (!po) throw new NotFoundException('Purchase order not found');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
     try {
       const [agg] = await this.dataSource.query(
         `SELECT COALESCE(SUM(amount_paid), 0) AS amount_paid
@@ -159,8 +159,8 @@ export class PurchaseOrderService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!po) throw new NotFoundException('Purchase order not found');
-    if (po.status !== 'draft') throw new UnprocessableEntityException('Only draft purchase orders can be updated');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
+    if (po.status !== 'draft') throw new UnprocessableEntityException({ error: 'INV_PO_NOT_DRAFT', message: 'Only draft purchase orders can be updated' });
 
     if (dto.vendor_id !== undefined) po.vendor_id = dto.vendor_id ?? null;
     if (dto.warehouse_id !== undefined) po.warehouse_id = dto.warehouse_id;
@@ -213,8 +213,8 @@ export class PurchaseOrderService {
 
   async sendPurchaseOrder(id: string, businessId: string, userId: string) {
     const po = await this.poRepo.findOne({ where: { id, business_id: businessId } });
-    if (!po) throw new NotFoundException('Purchase order not found');
-    if (po.status !== 'draft') throw new UnprocessableEntityException('Only draft purchase orders can be sent');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
+    if (po.status !== 'draft') throw new UnprocessableEntityException({ error: 'INV_PO_NOT_DRAFT', message: 'Only draft purchase orders can be sent' });
     po.status = 'sent';
     po.approved_by_user_id = userId;
     await this.poRepo.save(po);
@@ -226,9 +226,9 @@ export class PurchaseOrderService {
 
   async confirmPurchaseOrder(id: string, businessId: string) {
     const po = await this.poRepo.findOne({ where: { id, business_id: businessId } });
-    if (!po) throw new NotFoundException('Purchase order not found');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
     if (!['sent', 'draft'].includes(po.status)) {
-      throw new UnprocessableEntityException('Purchase order cannot be confirmed in its current status');
+      throw new UnprocessableEntityException({ error: 'INV_PO_INVALID_STATUS', message: 'Purchase order cannot be confirmed in its current status' });
     }
     po.status = 'confirmed';
     return this.poRepo.save(po);
@@ -241,9 +241,9 @@ export class PurchaseOrderService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!po) throw new NotFoundException('Purchase order not found');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
     if (po.status === 'cancelled' || po.status === 'received') {
-      throw new UnprocessableEntityException('Cannot receive items on a cancelled or fully received purchase order');
+      throw new UnprocessableEntityException({ error: 'INV_PO_INVALID_STATUS', message: 'Cannot receive items on a cancelled or fully received purchase order' });
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -252,7 +252,7 @@ export class PurchaseOrderService {
     try {
       for (const ri of dto.received_items) {
         const poItem = po.items.find((i) => i.id === ri.po_item_id);
-        if (!poItem) throw new NotFoundException(`PO item ${ri.po_item_id} not found on this purchase order`);
+        if (!poItem) throw new NotFoundException({ error: 'INV_PO_ITEM_NOT_FOUND', message: `PO item ${ri.po_item_id} not found on this purchase order` });
 
         await qr.query(
           `UPDATE purchase_order_items SET quantity_received = quantity_received + $1, updated_at = now() WHERE id = $2`,
@@ -321,10 +321,10 @@ export class PurchaseOrderService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!po) throw new NotFoundException('Purchase order not found');
-    if (po.status === 'received') throw new UnprocessableEntityException('Cannot cancel a fully received purchase order');
+    if (!po) throw new NotFoundException({ error: 'INV_PO_NOT_FOUND', message: 'Purchase order not found' });
+    if (po.status === 'received') throw new UnprocessableEntityException({ error: 'INV_PO_CANCEL_RECEIVED', message: 'Cannot cancel a fully received purchase order' });
     const anyReceived = po.items.some((i) => Number(i.quantity_received) > 0);
-    if (anyReceived) throw new UnprocessableEntityException('Cannot cancel a purchase order with received items');
+    if (anyReceived) throw new UnprocessableEntityException({ error: 'INV_PO_CANCEL_RECEIVED', message: 'Cannot cancel a purchase order with received items' });
     po.status = 'cancelled';
     return this.poRepo.save(po);
   }

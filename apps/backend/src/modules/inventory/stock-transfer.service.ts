@@ -63,25 +63,25 @@ export class StockTransferService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    if (!transfer) throw new NotFoundException({ error: 'INV_TRANSFER_NOT_FOUND', message: 'Stock transfer not found' });
     return transfer;
   }
 
   // EXT-INV-022: Create draft transfer
   async createTransfer(businessId: string, userId: string, dto: CreateTransferDto) {
     if (dto.source_warehouse_id === dto.target_warehouse_id) {
-      throw new UnprocessableEntityException('Source and target warehouses must be different');
+      throw new UnprocessableEntityException({ error: 'INV_TRANSFER_SAME_WAREHOUSE', message: 'Source and target warehouses must be different' });
     }
 
     const sourceWh = await this.warehouseRepo.findOne({
       where: { id: dto.source_warehouse_id, business_id: businessId },
     });
-    if (!sourceWh) throw new NotFoundException('Source warehouse not found');
+    if (!sourceWh) throw new NotFoundException({ error: 'INV_TRANSFER_SOURCE_NOT_FOUND', message: 'Source warehouse not found' });
 
     const targetWh = await this.warehouseRepo.findOne({
       where: { id: dto.target_warehouse_id, business_id: businessId },
     });
-    if (!targetWh) throw new NotFoundException('Target warehouse not found');
+    if (!targetWh) throw new NotFoundException({ error: 'INV_TRANSFER_TARGET_NOT_FOUND', message: 'Target warehouse not found' });
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -107,9 +107,10 @@ export class StockTransferService {
           where: { id: itemDto.batch_id, business_id: businessId, warehouse_id: dto.source_warehouse_id },
         });
         if (!batch) {
-          throw new UnprocessableEntityException(
-            `Batch ${itemDto.batch_id} not found in source warehouse`,
-          );
+          throw new UnprocessableEntityException({
+            error: 'INV_TRANSFER_INSUFFICIENT_STOCK',
+            message: `Batch ${itemDto.batch_id} not found in source warehouse`,
+          });
         }
         items.push(qr.manager.create(StockTransferItem, {
           transfer_id: savedTransfer.id,
@@ -138,12 +139,12 @@ export class StockTransferService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    if (!transfer) throw new NotFoundException({ error: 'INV_TRANSFER_NOT_FOUND', message: 'Stock transfer not found' });
     if (transfer.status !== 'draft') {
-      throw new UnprocessableEntityException('Only draft transfers can be posted');
+      throw new UnprocessableEntityException({ error: 'INV_TRANSFER_INVALID_STATUS', message: 'Only draft transfers can be posted' });
     }
     if (!transfer.items?.length) {
-      throw new UnprocessableEntityException('Transfer has no items');
+      throw new UnprocessableEntityException({ error: 'INV_TRANSFER_EMPTY', message: 'Transfer has no items' });
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -157,7 +158,7 @@ export class StockTransferService {
         [id, businessId],
       );
       if (!locked[0] || locked[0].status !== 'draft') {
-        throw new UnprocessableEntityException('Only draft transfers can be posted');
+        throw new UnprocessableEntityException({ error: 'INV_TRANSFER_INVALID_STATUS', message: 'Only draft transfers can be posted' });
       }
 
       for (const item of transfer.items) {
@@ -192,9 +193,9 @@ export class StockTransferService {
   // EXT-INV-024: Cancel (draft → cancelled)
   async cancelTransfer(id: string, businessId: string) {
     const transfer = await this.transferRepo.findOne({ where: { id, business_id: businessId } });
-    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    if (!transfer) throw new NotFoundException({ error: 'INV_TRANSFER_NOT_FOUND', message: 'Stock transfer not found' });
     if (transfer.status !== 'draft') {
-      throw new UnprocessableEntityException('Only draft transfers can be cancelled');
+      throw new UnprocessableEntityException({ error: 'INV_TRANSFER_INVALID_STATUS', message: 'Only draft transfers can be cancelled' });
     }
     await this.transferRepo.update(id, { status: 'cancelled' });
     return this.transferRepo.findOne({ where: { id }, relations: ['items'] });
@@ -203,9 +204,9 @@ export class StockTransferService {
   // EXT-INV-025: Delete draft (hard delete)
   async deleteTransfer(id: string, businessId: string) {
     const transfer = await this.transferRepo.findOne({ where: { id, business_id: businessId } });
-    if (!transfer) throw new NotFoundException('Stock transfer not found');
+    if (!transfer) throw new NotFoundException({ error: 'INV_TRANSFER_NOT_FOUND', message: 'Stock transfer not found' });
     if (transfer.status !== 'draft') {
-      throw new UnprocessableEntityException('Only draft transfers can be deleted');
+      throw new UnprocessableEntityException({ error: 'INV_TRANSFER_INVALID_STATUS', message: 'Only draft transfers can be deleted' });
     }
     await this.transferRepo.delete(id);
     return { deleted: true };

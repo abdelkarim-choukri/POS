@@ -54,8 +54,8 @@ export class AlertService {
 
   async resolveExpirationAlert(id: string, businessId: string, userId: string, dto: ResolveExpirationAlertDto) {
     const alert = await this.expirationRepo.findOne({ where: { id, business_id: businessId } });
-    if (!alert) throw new NotFoundException('Expiration alert not found');
-    if (alert.resolved_at) throw new UnprocessableEntityException('Alert already resolved');
+    if (!alert) throw new NotFoundException({ error: 'INV_ALERT_EXP_NOT_FOUND', message: 'Expiration alert not found' });
+    if (alert.resolved_at) throw new UnprocessableEntityException({ error: 'INV_ALERT_EXP_RESOLVED', message: 'Alert already resolved' });
 
     alert.resolved_at = new Date();
     alert.resolved_by_user_id = userId;
@@ -96,8 +96,8 @@ export class AlertService {
 
   async resolveDiscrepancyAlert(id: string, businessId: string, userId: string, dto: ResolveDiscrepancyAlertDto) {
     const alert = await this.discrepancyRepo.findOne({ where: { id, business_id: businessId } });
-    if (!alert) throw new NotFoundException('Discrepancy alert not found');
-    if (alert.resolved_at) throw new UnprocessableEntityException('Alert already resolved');
+    if (!alert) throw new NotFoundException({ error: 'INV_ALERT_DISC_NOT_FOUND', message: 'Discrepancy alert not found' });
+    if (alert.resolved_at) throw new UnprocessableEntityException({ error: 'INV_ALERT_DISC_RESOLVED', message: 'Alert already resolved' });
 
     if (dto.action === 'accept_loss' && alert.batch_id) {
       const movement = this.movementRepo.create({

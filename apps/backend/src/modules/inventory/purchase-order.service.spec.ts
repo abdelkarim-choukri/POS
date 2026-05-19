@@ -151,6 +151,13 @@ describe('PurchaseOrderService', () => {
       poRepo.findOne.mockResolvedValue(null);
       await expect(service.getPurchaseOrder(PO_ID, OTHER_BIZ)).rejects.toThrow(NotFoundException);
     });
+
+    it('throws 404 with INV_PO_NOT_FOUND key for unknown PO', async () => {
+      poRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.getPurchaseOrder('bad-id', BIZ),
+      ).rejects.toMatchObject({ response: { error: 'INV_PO_NOT_FOUND' } });
+    });
   });
 
   describe('getPurchaseOrder — enrichment', () => {

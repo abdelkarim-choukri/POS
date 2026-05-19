@@ -57,7 +57,7 @@ export class StockAdjustmentService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!adj) throw new NotFoundException('Stock adjustment not found');
+    if (!adj) throw new NotFoundException({ error: 'INV_ADJ_NOT_FOUND', message: 'Stock adjustment not found' });
     return adj;
   }
 
@@ -86,9 +86,10 @@ export class StockAdjustmentService {
         const batch = await qr.manager.findOne(StockBatch, {
           where: { id: itemDto.batch_id, business_id: businessId, warehouse_id: dto.warehouse_id },
         });
-        if (!batch) throw new NotFoundException(
-          `Batch ${itemDto.batch_id} not found`,
-        );
+        if (!batch) throw new NotFoundException({
+          error: 'INV_ADJ_BATCH_NOT_FOUND',
+          message: `Batch ${itemDto.batch_id} not found`,
+        });
 
         items.push(qr.manager.create(StockAdjustmentItem, {
           adjustment_id: savedAdj.id,
@@ -115,9 +116,9 @@ export class StockAdjustmentService {
   // EXT-INV-013: Submit (draft → pending_approval)
   async submitAdjustment(id: string, businessId: string) {
     const adj = await this.adjRepo.findOne({ where: { id, business_id: businessId } });
-    if (!adj) throw new NotFoundException('Stock adjustment not found');
+    if (!adj) throw new NotFoundException({ error: 'INV_ADJ_NOT_FOUND', message: 'Stock adjustment not found' });
     if (adj.status !== 'draft') {
-      throw new UnprocessableEntityException('Only draft adjustments can be submitted');
+      throw new UnprocessableEntityException({ error: 'INV_ADJ_INVALID_STATUS', message: 'Only draft adjustments can be submitted' });
     }
     await this.adjRepo.update(id, { status: 'pending_approval' });
     return this.adjRepo.findOne({ where: { id }, relations: ['items'] });
@@ -126,9 +127,9 @@ export class StockAdjustmentService {
   // EXT-INV-014: Approve (pending_approval → approved)
   async approveAdjustment(id: string, businessId: string, userId: string) {
     const adj = await this.adjRepo.findOne({ where: { id, business_id: businessId } });
-    if (!adj) throw new NotFoundException('Stock adjustment not found');
+    if (!adj) throw new NotFoundException({ error: 'INV_ADJ_NOT_FOUND', message: 'Stock adjustment not found' });
     if (adj.status !== 'pending_approval') {
-      throw new UnprocessableEntityException('Only pending_approval adjustments can be approved');
+      throw new UnprocessableEntityException({ error: 'INV_ADJ_INVALID_STATUS', message: 'Only pending_approval adjustments can be approved' });
     }
     await this.adjRepo.update(id, {
       status: 'approved',
@@ -144,9 +145,9 @@ export class StockAdjustmentService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!adj) throw new NotFoundException('Stock adjustment not found');
+    if (!adj) throw new NotFoundException({ error: 'INV_ADJ_NOT_FOUND', message: 'Stock adjustment not found' });
     if (adj.status !== 'approved') {
-      throw new UnprocessableEntityException('Only approved adjustments can be posted');
+      throw new UnprocessableEntityException({ error: 'INV_ADJ_INVALID_STATUS', message: 'Only approved adjustments can be posted' });
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -160,7 +161,7 @@ export class StockAdjustmentService {
         [id, businessId],
       );
       if (!locked[0] || locked[0].status !== 'approved') {
-        throw new UnprocessableEntityException('Only approved adjustments can be posted');
+        throw new UnprocessableEntityException({ error: 'INV_ADJ_INVALID_STATUS', message: 'Only approved adjustments can be posted' });
       }
 
       for (const item of adj.items) {
@@ -193,9 +194,9 @@ export class StockAdjustmentService {
   // EXT-INV-016: Reject (pending_approval → rejected)
   async rejectAdjustment(id: string, businessId: string, dto: RejectAdjustmentDto) {
     const adj = await this.adjRepo.findOne({ where: { id, business_id: businessId } });
-    if (!adj) throw new NotFoundException('Stock adjustment not found');
+    if (!adj) throw new NotFoundException({ error: 'INV_ADJ_NOT_FOUND', message: 'Stock adjustment not found' });
     if (adj.status !== 'pending_approval') {
-      throw new UnprocessableEntityException('Only pending_approval adjustments can be rejected');
+      throw new UnprocessableEntityException({ error: 'INV_ADJ_INVALID_STATUS', message: 'Only pending_approval adjustments can be rejected' });
     }
     await this.adjRepo.update(id, {
       status: 'rejected',

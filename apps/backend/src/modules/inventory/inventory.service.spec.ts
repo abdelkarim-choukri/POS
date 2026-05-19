@@ -392,6 +392,15 @@ describe('InventoryService', () => {
       await service.updateWarehouse(WAREHOUSE_ID, BIZ_ID, { name: 'Updated' });
       expect(warehouseRepo.save).toHaveBeenCalled();
     });
+
+    it('throws 404 with INV_WAREHOUSE_NOT_FOUND key for unknown warehouse', async () => {
+      const { service } = await buildService({
+        warehouseRepo: { findOne: jest.fn().mockResolvedValue(null) },
+      });
+      await expect(
+        service.updateWarehouse('bad-id', BIZ_ID, {}),
+      ).rejects.toMatchObject({ response: { error: 'INV_WAREHOUSE_NOT_FOUND' } });
+    });
   });
 
   describe('deleteWarehouse [INV-005]', () => {

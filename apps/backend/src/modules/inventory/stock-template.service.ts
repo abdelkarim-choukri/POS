@@ -41,7 +41,7 @@ export class StockTemplateService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!template) throw new NotFoundException('Template not found');
+    if (!template) throw new NotFoundException({ error: 'INV_TEMPLATE_NOT_FOUND', message: 'Template not found' });
     return template;
   }
 
@@ -94,7 +94,7 @@ export class StockTemplateService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!template) throw new NotFoundException('Template not found');
+    if (!template) throw new NotFoundException({ error: 'INV_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     if (dto.name !== undefined) template.name = dto.name;
     if (dto.default_vendor_id !== undefined) template.default_vendor_id = dto.default_vendor_id ?? null;
@@ -146,7 +146,7 @@ export class StockTemplateService {
     const template = await this.templateRepo.findOne({
       where: { id, business_id: businessId },
     });
-    if (!template) throw new NotFoundException('Template not found');
+    if (!template) throw new NotFoundException({ error: 'INV_TEMPLATE_NOT_FOUND', message: 'Template not found' });
     await this.templateRepo.remove(template);
   }
 
@@ -162,7 +162,7 @@ export class StockTemplateService {
       where: { id, business_id: businessId },
       relations: ['items'],
     });
-    if (!template) throw new NotFoundException('Template not found');
+    if (!template) throw new NotFoundException({ error: 'INV_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     // Resolve warehouse: dto.warehouse_id > template.default_warehouse_id
     const warehouseId = dto.warehouse_id ?? template.default_warehouse_id;

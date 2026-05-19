@@ -64,7 +64,7 @@ export class StockBatchService {
     const warehouse = await this.warehouseRepo.findOne({
       where: { id: dto.warehouse_id, business_id: businessId },
     });
-    if (!warehouse) throw new NotFoundException('Warehouse not found');
+    if (!warehouse) throw new NotFoundException({ error: 'INV_BATCH_WAREHOUSE_NOT_FOUND', message: 'Warehouse not found' });
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -123,12 +123,12 @@ export class StockBatchService {
     );
     if (flagRows?.[0]?.is_enabled === true) {
       throw new UnprocessableEntityException({
-        error: 'ADJUSTMENT_APPROVAL_REQUIRED',
+        error: 'INV_BATCH_FEATURE_DISABLED',
         message: 'Stock adjustments require approval when stock_adjustment_approval is enabled. Use POST /api/business/stock-adjustments to create a proposal.',
       });
     }
     const batch = await this.batchRepo.findOne({ where: { id: batchId, business_id: businessId } });
-    if (!batch) throw new NotFoundException('Batch not found');
+    if (!batch) throw new NotFoundException({ error: 'INV_BATCH_NOT_FOUND', message: 'Batch not found' });
 
     await this.dataSource.query(
       `UPDATE stock_batches SET quantity_remaining = quantity_remaining + $1, updated_at = now() WHERE id = $2`,
@@ -153,10 +153,10 @@ export class StockBatchService {
 
   async disposeBatch(batchId: string, businessId: string, userId: string, dto: DisposeBatchDto) {
     const batch = await this.batchRepo.findOne({ where: { id: batchId, business_id: businessId } });
-    if (!batch) throw new NotFoundException('Batch not found');
+    if (!batch) throw new NotFoundException({ error: 'INV_BATCH_NOT_FOUND', message: 'Batch not found' });
 
     if (dto.quantity > Number(batch.quantity_remaining)) {
-      throw new UnprocessableEntityException('Disposal quantity exceeds available quantity');
+      throw new UnprocessableEntityException({ error: 'INV_BATCH_DISPOSE_EXCESS', message: 'Disposal quantity exceeds available quantity' });
     }
 
     const movementType = dto.reason === 'expired' ? 'expiry_disposal' : 'waste';
@@ -184,15 +184,15 @@ export class StockBatchService {
 
   async transferBatch(batchId: string, businessId: string, userId: string, dto: TransferBatchDto) {
     const sourceBatch = await this.batchRepo.findOne({ where: { id: batchId, business_id: businessId } });
-    if (!sourceBatch) throw new NotFoundException('Batch not found');
+    if (!sourceBatch) throw new NotFoundException({ error: 'INV_BATCH_NOT_FOUND', message: 'Batch not found' });
 
     const targetWarehouse = await this.warehouseRepo.findOne({
       where: { id: dto.target_warehouse_id, business_id: businessId },
     });
-    if (!targetWarehouse) throw new NotFoundException('Target warehouse not found');
+    if (!targetWarehouse) throw new NotFoundException({ error: 'INV_BATCH_TARGET_WAREHOUSE_NOT_FOUND', message: 'Target warehouse not found' });
 
     if (dto.quantity > Number(sourceBatch.quantity_remaining)) {
-      throw new UnprocessableEntityException('Transfer quantity exceeds available quantity');
+      throw new UnprocessableEntityException({ error: 'INV_BATCH_TRANSFER_EXCESS', message: 'Transfer quantity exceeds available quantity' });
     }
 
     const qr = this.dataSource.createQueryRunner();
@@ -306,11 +306,12 @@ export class StockBatchService {
     referenceId?: string,
   ): Promise<StockBatch> {
     const sourceBatch = await qr.manager.findOne(StockBatch, { where: { id: sourceBatchId, business_id: businessId } });
-    if (!sourceBatch) throw new NotFoundException('Source batch not found');
+    if (!sourceBatch) throw new NotFoundException({ error: 'INV_BATCH_NOT_FOUND', message: 'Source batch not found' });
     if (quantity > Number(sourceBatch.quantity_remaining)) {
-      throw new UnprocessableEntityException(
-        `Transfer quantity ${quantity} exceeds available ${sourceBatch.quantity_remaining}`,
-      );
+      throw new UnprocessableEntityException({
+        error: 'INV_BATCH_INSUFFICIENT_STOCK',
+        message: `Transfer quantity ${quantity} exceeds available ${sourceBatch.quantity_remaining}`,
+      });
     }
 
     // Decrement source

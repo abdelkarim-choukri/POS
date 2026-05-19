@@ -57,20 +57,20 @@ export class InventoryService {
 
   async updateUnitOfMeasure(id: string, businessId: string, dto: UpdateUnitOfMeasureDto) {
     const uom = await this.uomRepo.findOne({ where: { id, business_id: businessId } });
-    if (!uom) throw new NotFoundException('Unit of measure not found');
+    if (!uom) throw new NotFoundException({ error: 'INV_UOM_NOT_FOUND', message: 'Unit of measure not found' });
     Object.assign(uom, dto);
     return this.uomRepo.save(uom);
   }
 
   async deleteUnitOfMeasure(id: string, businessId: string) {
     const uom = await this.uomRepo.findOne({ where: { id, business_id: businessId } });
-    if (!uom) throw new NotFoundException('Unit of measure not found');
+    if (!uom) throw new NotFoundException({ error: 'INV_UOM_NOT_FOUND', message: 'Unit of measure not found' });
     if (uom.is_system) {
-      throw new UnprocessableEntityException('System units cannot be deleted');
+      throw new UnprocessableEntityException({ error: 'INV_UOM_SYSTEM_DELETE', message: 'System units cannot be deleted' });
     }
     const referencedCount = await this.productRepo.count({ where: { unit_of_measure_id: id } });
     if (referencedCount > 0) {
-      throw new UnprocessableEntityException('Unit is in use by one or more products');
+      throw new UnprocessableEntityException({ error: 'INV_UOM_IN_USE', message: 'Unit is in use by one or more products' });
     }
     uom.is_active = false;
     return this.uomRepo.save(uom);
@@ -88,7 +88,7 @@ export class InventoryService {
 
   async getWarehouse(id: string, businessId: string) {
     const wh = await this.warehouseRepo.findOne({ where: { id, business_id: businessId } });
-    if (!wh) throw new NotFoundException('Warehouse not found');
+    if (!wh) throw new NotFoundException({ error: 'INV_WAREHOUSE_NOT_FOUND', message: 'Warehouse not found' });
     return wh;
   }
 
@@ -96,21 +96,21 @@ export class InventoryService {
     const existing = await this.warehouseRepo.findOne({
       where: { business_id: businessId, code: dto.code },
     });
-    if (existing) throw new ConflictException('Warehouse code already exists for this business');
+    if (existing) throw new ConflictException({ error: 'INV_WAREHOUSE_CODE_CONFLICT', message: 'Warehouse code already exists for this business' });
     const wh = this.warehouseRepo.create({ business_id: businessId, ...dto });
     return this.warehouseRepo.save(wh);
   }
 
   async updateWarehouse(id: string, businessId: string, dto: UpdateWarehouseDto) {
     const wh = await this.warehouseRepo.findOne({ where: { id, business_id: businessId } });
-    if (!wh) throw new NotFoundException('Warehouse not found');
+    if (!wh) throw new NotFoundException({ error: 'INV_WAREHOUSE_NOT_FOUND', message: 'Warehouse not found' });
     Object.assign(wh, dto);
     return this.warehouseRepo.save(wh);
   }
 
   async deleteWarehouse(id: string, businessId: string) {
     const wh = await this.warehouseRepo.findOne({ where: { id, business_id: businessId } });
-    if (!wh) throw new NotFoundException('Warehouse not found');
+    if (!wh) throw new NotFoundException({ error: 'INV_WAREHOUSE_NOT_FOUND', message: 'Warehouse not found' });
     wh.is_active = false;
     return this.warehouseRepo.save(wh);
   }
@@ -131,7 +131,7 @@ export class InventoryService {
 
   async getVendor(id: string, businessId: string) {
     const vendor = await this.vendorRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
     return vendor;
   }
 
@@ -139,21 +139,21 @@ export class InventoryService {
     const existing = await this.vendorRepo.findOne({
       where: { business_id: businessId, code: dto.code },
     });
-    if (existing) throw new ConflictException('Vendor code already exists for this business');
+    if (existing) throw new ConflictException({ error: 'INV_VENDOR_CODE_CONFLICT', message: 'Vendor code already exists for this business' });
     const vendor = this.vendorRepo.create({ business_id: businessId, ...dto });
     return this.vendorRepo.save(vendor);
   }
 
   async updateVendor(id: string, businessId: string, dto: UpdateVendorDto) {
     const vendor = await this.vendorRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
     Object.assign(vendor, dto);
     return this.vendorRepo.save(vendor);
   }
 
   async deleteVendor(id: string, businessId: string) {
     const vendor = await this.vendorRepo.findOne({ where: { id, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
     vendor.is_active = false;
     return this.vendorRepo.save(vendor);
   }
@@ -162,7 +162,7 @@ export class InventoryService {
 
   async listVendorCheckDetails(vendorId: string, businessId: string) {
     const vendor = await this.vendorRepo.findOne({ where: { id: vendorId, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
     const records = await this.checkDetailRepo.find({
       where: { vendor_id: vendorId, business_id: businessId },
       order: { check_date: 'DESC' },
@@ -172,7 +172,7 @@ export class InventoryService {
 
   async createVendorCheckDetail(vendorId: string, businessId: string, dto: CreateVendorCheckDetailDto) {
     const vendor = await this.vendorRepo.findOne({ where: { id: vendorId, business_id: businessId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (!vendor) throw new NotFoundException({ error: 'INV_VENDOR_NOT_FOUND', message: 'Vendor not found' });
     const detail = this.checkDetailRepo.create({
       business_id: businessId,
       vendor_id: vendorId,
@@ -195,21 +195,21 @@ export class InventoryService {
     const existing = await this.brandRepo.findOne({
       where: { business_id: businessId, name: dto.name },
     });
-    if (existing) throw new ConflictException('Brand name already exists for this business');
+    if (existing) throw new ConflictException({ error: 'INV_BRAND_NAME_CONFLICT', message: 'Brand name already exists for this business' });
     const brand = this.brandRepo.create({ business_id: businessId, ...dto });
     return this.brandRepo.save(brand);
   }
 
   async updateBrand(id: string, businessId: string, dto: UpdateBrandDto) {
     const brand = await this.brandRepo.findOne({ where: { id, business_id: businessId } });
-    if (!brand) throw new NotFoundException('Brand not found');
+    if (!brand) throw new NotFoundException({ error: 'INV_BRAND_NOT_FOUND', message: 'Brand not found' });
     Object.assign(brand, dto);
     return this.brandRepo.save(brand);
   }
 
   async deleteBrand(id: string, businessId: string) {
     const brand = await this.brandRepo.findOne({ where: { id, business_id: businessId } });
-    if (!brand) throw new NotFoundException('Brand not found');
+    if (!brand) throw new NotFoundException({ error: 'INV_BRAND_NOT_FOUND', message: 'Brand not found' });
     brand.is_active = false;
     return this.brandRepo.save(brand);
   }
@@ -218,14 +218,14 @@ export class InventoryService {
 
   private async resolveProduct(productId: string, businessId: string): Promise<Product> {
     const product = await this.productRepo.findOne({ where: { id: productId, business_id: businessId } });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException({ error: 'INV_PRODUCT_NOT_FOUND', message: 'Product not found' });
     return product;
   }
 
   async getNutritionInfo(productId: string, businessId: string) {
     await this.resolveProduct(productId, businessId);
     const ni = await this.nutritionRepo.findOne({ where: { product_id: productId } });
-    if (!ni) throw new NotFoundException('No nutrition info for this product');
+    if (!ni) throw new NotFoundException({ error: 'INV_NUTRITION_NOT_FOUND', message: 'No nutrition info for this product' });
     return ni;
   }
 
