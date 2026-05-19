@@ -96,8 +96,10 @@ export class AccountingGenerator {
     businessType: string,
     period: DateRange,
     type: string,
+    cutoffTime?: string,
   ): Promise<UniversalReportResponse> {
     const L = REPORT_LABELS[lang];
+    const cutoffHours = cutoffTime ? parseInt(cutoffTime.split(':')[0], 10) : 2;
     const targetDay = resolveTargetDay(type, period);
 
     const [mainRows, voidRows, couponRows] = await Promise.all([

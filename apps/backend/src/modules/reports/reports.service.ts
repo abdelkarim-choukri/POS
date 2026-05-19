@@ -12,6 +12,7 @@ import { OperationsGenerator } from './generators/operations.generator';
 import { AccountingGenerator } from './generators/accounting.generator';
 import { ExistingWrappersGenerator } from './generators/existing-wrappers.generator';
 import { InventoryReportsGenerator } from './generators/inventory-reports.generator';
+import { CapitalDetailGenerator } from './generators/capital-detail.generator';
 
 // restaurant only (kitchen-performance)
 const RESTAURANT_ONLY_REPORTS = new Set(['kitchen-performance']);
@@ -31,6 +32,8 @@ const ALL_REPORT_IDS = new Set([
   'stock-position', 'stock-movements', 'vendor-purchases', 'input-tva',
   // Phase 12D reports
   'cogs', 'vendor-balance', 'bill-aging',
+  // Phase 15 ADM
+  'capital-detail',
 ]);
 
 @Injectable()
@@ -44,6 +47,7 @@ export class ReportsService {
     private accountingGen: AccountingGenerator,
     private wrappersGen: ExistingWrappersGenerator,
     private inventoryGen: InventoryReportsGenerator,
+    private capitalDetailGen: CapitalDetailGenerator,
   ) {}
 
   async getReport(businessId: string, reportId: string, query: ReportQueryDto, lang: ReportLanguage) {
@@ -123,8 +127,10 @@ export class ReportsService {
       // TVA & Accounting
       case 'tva-declaration':
         return this.accountingGen.tvaDeclaration(businessId, lang, businessType, period, query.type);
-      case 'daily-close':
-        return this.accountingGen.dailyClose(businessId, lang, businessType, period, query.type);
+      case 'daily-close': {
+        const cutoff = business.daily_settlement_cutoff_time ?? '02:00';
+        return this.accountingGen.dailyClose(businessId, lang, businessType, period, query.type, cutoff);
+      }
       case 'invoice-register': {
         const page = query.page ?? 1;
         const limit = query.limit ?? 500;
@@ -179,6 +185,8 @@ export class ReportsService {
         return this.inventoryGen.billAging(businessId, lang, businessType, period, query.type, {
           as_of_date: query.as_of_date,
         });
+      case 'capital-detail':
+        return this.capitalDetailGen.capitalDetail(businessId, lang, businessType, period, query.type);
       default:
         throw new NotFoundException({ error: 'REPORT_NOT_IMPLEMENTED', message: `Report ${reportId} is not implemented yet` });
     }

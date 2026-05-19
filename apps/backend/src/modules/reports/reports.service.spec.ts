@@ -10,6 +10,7 @@ import { OperationsGenerator } from './generators/operations.generator';
 import { AccountingGenerator } from './generators/accounting.generator';
 import { ExistingWrappersGenerator } from './generators/existing-wrappers.generator';
 import { InventoryReportsGenerator } from './generators/inventory-reports.generator';
+import { CapitalDetailGenerator } from './generators/capital-detail.generator';
 import { PromotionService } from '../promotion/promotion.service';
 import { CouponExtService } from '../promotion/coupon-ext.service';
 import { PointsExchangeService } from '../promotion/pex.service';
@@ -55,6 +56,7 @@ async function buildService(businessType = 'retail', dsQuery?: jest.Mock) {
       AccountingGenerator,
       ExistingWrappersGenerator,
       InventoryReportsGenerator,
+      CapitalDetailGenerator,
       { provide: getRepositoryToken(Business), useValue: makeBusinessRepo(businessType) },
       { provide: DataSource, useValue: ds },
       { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -561,7 +563,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator, CapitalDetailGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: promoMock },
@@ -590,7 +592,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator, CapitalDetailGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -617,7 +619,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator, CapitalDetailGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
@@ -642,7 +644,7 @@ describe('ReportsService Part C — Existing Wrappers', () => {
     const module = await Test.createTestingModule({
       providers: [
         ReportsService, SalesGenerator, PaymentsGenerator, CustomersGenerator, OperationsGenerator,
-        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator,
+        AccountingGenerator, ExistingWrappersGenerator, InventoryReportsGenerator, CapitalDetailGenerator,
         { provide: getRepositoryToken(Business), useValue: makeBusinessRepo() },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
         { provide: PromotionService, useValue: MOCK_PROMO_SERVICE },
