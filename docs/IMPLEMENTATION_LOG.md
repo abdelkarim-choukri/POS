@@ -448,9 +448,54 @@ See extension spec §10 (REC-001–020) for requirement IDs.
 - [x] `RecommendationModule` registered in AppModule
 - [x] 18 unit tests in `recommendation.service.spec.ts`
 
-### Phases 15 — see extension spec §15 (PENDING)
+### Phase 15 — Platform Admin Enhancements (DONE). 621 tests passing (44 suites).
 
-Order: 15 (ADM).
+See extension spec §15 (ADM-001–ADM-071) for requirement IDs.
+
+- [x] Migration `1714015000000-AddPlatformAdminEnhancements` — 8 new tables: trade_categories, couriers, business_courier_links, business_custom_authorities, version_log_menus, version_log_entries, system_parameters, morocco_regions; 2 column additions to businesses (trade_category_id UUID nullable, daily_settlement_cutoff_time TIME default '02:00'); 5 indexes; seeded Morocco regions (12 regions, 75+ prefectures, communes for major cities), 3 version-log menus, 6 system parameters
+- [x] 8 new entities: TradeCategory (self-referencing tree), Courier, BusinessCourierLink (composite PK), BusinessCustomAuthority, VersionLogMenu, VersionLogEntry, SystemParameter, MoroccoRegion (self-referencing tree, VARCHAR(50) ids); Business entity updated with 2 new columns
+- [x] `PlatformAdminService` — 23 methods across 7 domains:
+      Trade Categories: listTradeCategoryTree, createTradeCategory, updateTradeCategory, deleteTradeCategory, getTradeCategoryOptions (ADM-001–005);
+      Couriers: listCouriers, createCourier, updateCourier, deleteCourier, listBusinessCouriers, linkCourierToBusiness, unlinkCourierFromBusiness (ADM-010–016);
+      Custom Authority: getBusinessCustomAuthority, setBusinessCustomAuthority, resolveEffectiveFeatures (5-min in-process Map cache, ADM-020–022);
+      Version Log: listVersionLogMenus, createVersionLogEntry, updateVersionLogEntry, deleteVersionLogEntry, listVersionLogEntries (ADM-030–034);
+      System Parameters: listSystemParameters, updateSystemParameter (ADM-040–041);
+      Settlement Cutoff: getSettlementCutoff, updateSettlementCutoff (ADM-050–051);
+      Morocco Address: getMoroccoRegionsTree, validateAddress (ADM-060–061)
+- [x] `PlatformAdminSuperController` — 14 routes under `/api/super/*` (super_admin only): trade categories (5), couriers (4), custom authority (2), version log (4), system parameters (2)
+- [x] `PlatformAdminBusinessController` — 5 routes under `/api/business/*`: list/link/unlink business couriers, get/update settlement cutoff (owner-only for PUT)
+- [x] `PlatformAdminAuthController` — 5 routes: `@Public()` trade-categories/tree, authenticated version-log endpoints (GET menus + entries), `@Public()` Morocco regions/tree and regions/validate
+- [x] `CapitalDetailGenerator` — `capital-detail` report: 4 parallel SQL queries (cash openings/closings, transactions by payment method, refunds, payouts), computes running daily cash position, 5 summary KPIs
+- [x] `AccountingGenerator.dailyClose()` extended: optional `cutoffTime?: string` param; `ReportsService` passes `business.daily_settlement_cutoff_time ?? '02:00'` per XCC-018
+- [x] `capital-detail` added to ALL_REPORT_IDS and reports dispatcher
+- [x] `PlatformAdminModule` registered in AppModule
+- [x] 25 unit tests in `platform-admin.service.spec.ts`
+
+### Cross-cutting pass — POST Phase 15 (DONE). 628 tests passing (44 suites).
+
+Three independent areas completed in a single pass:
+
+**1. Audit log DB writes (replacing 5 console.log stubs)**
+- [x] `chain.service.ts` — `fulfillChildPo` console.log replaced with `AuditLog` DB save (`action:'fulfill'`, `entity_type:'purchase_order'`); `performedBy: string` 4th param threaded from controller via `req.user.sub`; save placed AFTER `qr.commitTransaction()` so audit is not part of the business transaction
+- [x] `vendor-payment.service.ts` — `voidPayment` console.log replaced with `AuditLog` DB save (`action:'void'`, `entity_type:'vendor_payment'`); `performedBy: string` 4th param added; controller passes `@CurrentUser('sub')`
+- [x] `table-session.service.ts` — 3 stubs replaced: item void (`action:'void'`, `entity_type:'table_session_item'`), session cancel (`action:'cancel'`, `entity_type:'table_session'`), force close (`action:'force_close'`); domain save (`itemRepo.save`) always runs BEFORE audit save to prevent phantom entries on failure
+- [x] `chain.module.ts`, `inventory.module.ts`, `restaurant.module.ts` — `AuditLog` added to `TypeOrmModule.forFeature` in each
+
+**2. Inventory WebSocket events from BullMQ processors**
+- [x] `expiration-scan.processor.ts` — injects `EventGateway` (global via CommonModule); after saving a NEW alert emits `inventory:expiration_alert` to `dashboard:${businessId}` room; idempotent: no emit when existing unresolved alert found
+- [x] `reconciliation.processor.ts` — same pattern; emits `inventory:discrepancy_alert` to `dashboard:${businessId}` after saving new alert
+- [x] 4 new tests: `expiration-scan.processor.spec.ts` (2 tests: emits on new, skips on existing) and `reconciliation.processor.spec.ts` (2 tests: same pattern)
+
+**3. Error key standardization across all modules (90+ plain-string throws → structured error objects)**
+- [x] Customer module — CUST_NOT_FOUND, CUST_PHONE_CONFLICT, CUST_GRADE_NOT_FOUND, CUST_LABEL_NOT_FOUND, CUST_ATTR_NOT_FOUND, CUST_ATTR_TYPE_IMMUTABLE, CUST_ATTR_VALIDATION_FAILED, CUST_POINTS_INSUFFICIENT, CUST_PERMISSION_DENIED
+- [x] Promotion module — PROM_NOT_FOUND, PROM_CATEGORY/PRODUCT/GRADE/LABEL/CUSTOMER/LOCATION_NOT_FOUND/CROSS_TENANT, PROM_PERCENTAGE_INVALID, PROM_DATE_INVALID, PROM_CODE_CONFLICT, PROM_LOCKED_FIELD, PROM_ALREADY_ARCHIVED, PROM_ARCHIVE_AGAIN
+- [x] Coupon module — CPN_TYPE_NOT_FOUND, CPN_NOT_FOUND, CPN_NOT_AVAILABLE, CPN_ALREADY_REDEEMED
+- [x] PEX module — PEX_RULE_NOT_FOUND, PEX_POINT_VALUE_IMMUTABLE, PEX_CUSTOMER_NOT_FOUND, PEX_POINTS_INSUFFICIENT, PEX_DAILY_LIMIT_EXCEEDED, PEX_TOTAL_LIMIT_EXCEEDED, PEX_RULE_INACTIVE, PEX_RULE_DEACTIVATED
+- [x] Inventory module — INV_UOM_NOT_FOUND, INV_WAREHOUSE_NOT_FOUND, INV_VENDOR_NOT_FOUND, INV_BRAND_NOT_FOUND, INV_NUTRITION_NOT_FOUND, INV_PRODUCT_NOT_FOUND, INV_BATCH_NOT_FOUND, INV_BATCH_DISPOSED, INV_BATCH_NO_STOCK, INV_TEMPLATE_NOT_FOUND, INV_PO_NOT_FOUND, INV_PO_NOT_DRAFT, INV_PO_NOT_CONFIRMED, INV_PO_HAS_RECEIVED, INV_ALERT_NOT_FOUND, INV_ALERT_RESOLVED, INV_DISCREPANCY_ALERT_NOT_FOUND, INV_ADJ_NOT_FOUND, INV_TRANSFER_NOT_FOUND, INV_VENDOR_PAYMENT_NOT_FOUND, INV_VENDOR_PAYMENT_VOIDED, INV_FEATURE_DISABLED
+- [x] Restaurant module — RST_AREA_NAME_CONFLICT, RST_AREA_NOT_FOUND, RST_AREA_HAS_TABLES, RST_TABLE_TYPE_NOT_FOUND, RST_TABLE_NUMBER_CONFLICT, RST_TABLE_NOT_FOUND, RST_TABLE_HAS_SESSION, RST_SESSION_NOT_FOUND, RST_PERM_CLOSE, RST_PERM_CLOSE_PARTIAL, RST_PERM_TRANSFER (existing RST_* keys preserved untouched)
+- [x] Communications module — COM_CHANNEL_NOT_FOUND, COM_TEMPLATE_NOT_FOUND, COM_TEMPLATE_HAS_SENDS, COM_CUSTOMER_NOT_FOUND, COM_INSUFFICIENT_BALANCE, COM_OPT_OUT_TOKEN_INVALID, COM_ANNOUNCEMENT_NOT_FOUND
+- [x] Chain module — CHN_ALREADY_PARENT, CHN_BUSINESS_NOT_FOUND, CHN_ALREADY_IN_CHAIN, CHN_DEPTH_EXCEEDED, CHN_CHILD_NOT_FOUND, CHN_SYNC_CONFIG_NOT_FOUND, CHN_PO_NOT_FOUND, CHN_WAREHOUSE_NOT_FOUND, CHN_PROMOTION_NOT_FOUND
+- [x] Auth, terminal, KDS, recommendation, super-admin, job modules — AUTH_*, TERM_*, KDS_*, REC_*, SA_*, JOB_* keys applied throughout
 
 ## Planned cross-cutting features (post Phase 15)
 
