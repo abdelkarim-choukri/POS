@@ -67,7 +67,7 @@ export class TerminalService {
       where: { terminal_code: terminalCode, is_active: true },
       relations: ['location', 'location.business', 'location.business.business_type', 'location.business.business_type.features'],
     });
-    if (!terminal) throw new NotFoundException('Terminal not found or inactive');
+    if (!terminal) throw new NotFoundException({ error: 'TERM_TERMINAL_NOT_FOUND', message: 'Terminal not found or inactive' });
 
     terminal.is_online = true;
     terminal.last_seen_at = new Date();
@@ -85,7 +85,7 @@ export class TerminalService {
       where: { id: terminalId },
       relations: ['location', 'location.business', 'location.business.business_type', 'location.business.business_type.features'],
     });
-    if (!terminal) throw new NotFoundException('Terminal not found');
+    if (!terminal) throw new NotFoundException({ error: 'TERM_TERMINAL_NOT_FOUND', message: 'Terminal not found' });
 
     const features = terminal.location.business.business_type.features
       .filter((f) => f.is_enabled)
@@ -174,7 +174,7 @@ export class TerminalService {
       where: { business_id: businessId, phone, is_active: true },
       relations: ['grade'],
     });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'TERM_CUSTOMER_NOT_FOUND', message: 'Customer not found' });
 
     return {
       id: customer.id,
@@ -192,7 +192,7 @@ export class TerminalService {
     const existing = await this.customerRepo.findOne({
       where: { business_id: businessId, phone: dto.phone },
     });
-    if (existing) throw new ConflictException('Phone number already registered');
+    if (existing) throw new ConflictException({ error: 'TERM_PHONE_CONFLICT', message: 'Phone number already registered' });
 
     const counterRaw = await this.businessRepo.manager.query(
       `UPDATE businesses SET customer_counter = customer_counter + 1 WHERE id = $1 RETURNING customer_counter`,
@@ -251,9 +251,9 @@ export class TerminalService {
       where: { coupon_code: couponCode, business_id: businessId },
       relations: ['coupon_type'],
     });
-    if (!coupon) throw new NotFoundException('Coupon not found');
+    if (!coupon) throw new NotFoundException({ error: 'TERM_COUPON_NOT_FOUND', message: 'Coupon not found' });
     if (coupon.status === 'redeemed') {
-      throw new HttpException({ status: 'redeemed', message: 'Coupon already redeemed' }, HttpStatus.GONE);
+      throw new HttpException({ error: 'CPN_ALREADY_REDEEMED', status: 'redeemed', message: 'Coupon already redeemed' }, HttpStatus.GONE);
     }
 
     const now = new Date();
@@ -296,7 +296,7 @@ export class TerminalService {
         where: { id: dto.customer_id, business_id: businessId, is_active: true },
         relations: ['grade'],
       });
-      if (!customerWithGrade) throw new NotFoundException('Customer not found');
+      if (!customerWithGrade) throw new NotFoundException({ error: 'TERM_CUSTOMER_NOT_FOUND', message: 'Customer not found' });
     }
 
     // ── 3. Pre-load business (stacking mode + points config) ──────────────────
@@ -318,7 +318,7 @@ export class TerminalService {
     // ── 4. Build pipeline inputs with resolved TVA rates ──────────────────────
     const pipelineLines: PipelineLineInput[] = dto.items.map((item, idx) => {
       const product = productMap.get(item.product_id);
-      if (!product) throw new BadRequestException(`Product ${item.product_id} not found`);
+      if (!product) throw new BadRequestException({ error: 'BIZ_PRODUCT_NOT_FOUND', message: `Product ${item.product_id} not found` });
       const tvaRate = resolveTvaRate(
         { tva_exempt: product.tva_exempt, tva_rate: product.tva_rate },
         { default_tva_rate: product.category.default_tva_rate },
@@ -716,18 +716,18 @@ export class TerminalService {
     userCanVoid: boolean,
   ) {
     const txn = await this.transactionRepo.findOne({ where: { id: transactionId } });
-    if (!txn) throw new NotFoundException('Transaction not found');
+    if (!txn) throw new NotFoundException({ error: 'TERM_TRANSACTION_NOT_FOUND', message: 'Transaction not found' });
     if (txn.status !== TransactionStatus.COMPLETED) {
-      throw new BadRequestException('Can only void completed transactions');
+      throw new BadRequestException({ error: 'TERM_VOID_INVALID_STATUS', message: 'Can only void completed transactions' });
     }
 
     if (!userCanVoid) {
-      if (!dto.manager_pin) throw new UnauthorizedException('Manager PIN required');
+      if (!dto.manager_pin) throw new UnauthorizedException({ error: 'TERM_VOID_MANAGER_REQUIRED', message: 'Manager PIN required' });
       const manager = await this.userRepo.findOne({
         where: { pin: dto.manager_pin, business_id: txn.business_id, is_active: true },
       });
       if (!manager || !userHasPermission(manager, 'can_void')) {
-        throw new UnauthorizedException('Invalid manager PIN');
+        throw new UnauthorizedException({ error: 'TERM_VOID_MANAGER_INVALID', message: 'Invalid manager PIN' });
       }
     }
 

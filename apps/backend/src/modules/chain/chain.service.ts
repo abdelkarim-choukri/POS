@@ -48,20 +48,20 @@ export class ChainService {
   // ── CHN-002 ───────────────────────────────────────────────────────────────
   async promoteToParent(businessId: string) {
     const biz = await this.bizRepo.findOne({ where: { id: businessId } });
-    if (!biz) throw new NotFoundException('Business not found');
-    if (biz.chain_role === 'child') throw new UnprocessableEntityException('A child business cannot be promoted to parent');
+    if (!biz) throw new NotFoundException({ error: 'CHN_BUSINESS_NOT_FOUND', message: 'Business not found' });
+    if (biz.chain_role === 'child') throw new UnprocessableEntityException({ error: 'CHN_CANNOT_PROMOTE_CHILD', message: 'A child business cannot be promoted to parent' });
     biz.chain_role = 'parent';
     return this.bizRepo.save(biz);
   }
 
   // ── CHN-003 ───────────────────────────────────────────────────────────────
   async linkChild(childId: string, parentId: string) {
-    if (childId === parentId) throw new UnprocessableEntityException('A business cannot be its own parent');
+    if (childId === parentId) throw new UnprocessableEntityException({ error: 'CHN_SELF_PARENT', message: 'A business cannot be its own parent' });
     const child = await this.bizRepo.findOne({ where: { id: childId } });
-    if (!child) throw new NotFoundException('Child business not found');
+    if (!child) throw new NotFoundException({ error: 'CHN_BUSINESS_NOT_FOUND', message: 'Child business not found' });
     const parent = await this.bizRepo.findOne({ where: { id: parentId } });
-    if (!parent) throw new NotFoundException('Parent business not found');
-    if (parent.chain_role !== 'parent') throw new UnprocessableEntityException('Target business is not a chain parent — promote it first');
+    if (!parent) throw new NotFoundException({ error: 'CHN_PARENT_NOT_FOUND', message: 'Parent business not found' });
+    if (parent.chain_role !== 'parent') throw new UnprocessableEntityException({ error: 'CHN_NOT_PARENT', message: 'Target business is not a chain parent — promote it first' });
     child.parent_business_id = parentId;
     child.chain_role = 'child';
     return this.bizRepo.save(child);
@@ -70,7 +70,7 @@ export class ChainService {
   // ── CHN-004 ───────────────────────────────────────────────────────────────
   async unlinkChild(childId: string) {
     const child = await this.bizRepo.findOne({ where: { id: childId } });
-    if (!child) throw new NotFoundException('Business not found');
+    if (!child) throw new NotFoundException({ error: 'CHN_BUSINESS_NOT_FOUND', message: 'Business not found' });
     child.parent_business_id = null;
     child.chain_role = 'standalone';
     return this.bizRepo.save(child);
@@ -99,7 +99,7 @@ export class ChainService {
          )::boolean AS has_access`,
         [userId, targetBusinessId],
       );
-      if (!has_access) throw new ForbiddenException('You do not have access to this business');
+      if (!has_access) throw new ForbiddenException({ error: 'CHN_ACCESS_DENIED', message: 'You do not have access to this business' });
     }
 
     const [roleRow] = await this.dataSource.query(
@@ -123,7 +123,7 @@ export class ChainService {
     grantedByUserId?: string,
   ) {
     const user = await this.userRepo.findOne({ where: { id: targetUserId } });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException({ error: 'CHN_USER_NOT_FOUND', message: 'User not found' });
 
     if (businessIds.length > 0) {
       const [{ cnt }] = await this.dataSource.query(
@@ -131,7 +131,7 @@ export class ChainService {
          WHERE id = ANY($1::uuid[]) AND (parent_business_id = $2 OR id = $2)`,
         [businessIds, grantingBusinessId],
       );
-      if (cnt !== businessIds.length) throw new UnprocessableEntityException('One or more businesses are not children of this chain');
+      if (cnt !== businessIds.length) throw new UnprocessableEntityException({ error: 'CHN_NOT_IN_CHAIN', message: 'One or more businesses are not children of this chain' });
     }
 
     await this.ubrRepo.upsert(
@@ -186,14 +186,14 @@ export class ChainService {
       `SELECT * FROM background_jobs WHERE id = $1 AND business_id = $2`,
       [jobId, businessId],
     );
-    if (!job) throw new NotFoundException('Sync job not found');
+    if (!job) throw new NotFoundException({ error: 'CHN_SYNC_JOB_NOT_FOUND', message: 'Sync job not found' });
     return job;
   }
 
   // ── CHN-023 ───────────────────────────────────────────────────────────────
   async getUnmappedProducts(childBusinessId: string) {
     const child = await this.bizRepo.findOne({ where: { id: childBusinessId } });
-    if (!child || !child.parent_business_id) throw new UnprocessableEntityException('Business has no parent');
+    if (!child || !child.parent_business_id) throw new UnprocessableEntityException({ error: 'CHN_NO_PARENT', message: 'Business has no parent' });
 
     return this.dataSource.query(
       `SELECT p.id, p.name, p.sku, c.name AS category_name
@@ -212,7 +212,7 @@ export class ChainService {
   // ── CHN-024 ───────────────────────────────────────────────────────────────
   async pullProduct(childBusinessId: string, parentProductId: string) {
     const child = await this.bizRepo.findOne({ where: { id: childBusinessId } });
-    if (!child || !child.parent_business_id) throw new UnprocessableEntityException('Business has no parent');
+    if (!child || !child.parent_business_id) throw new UnprocessableEntityException({ error: 'CHN_NO_PARENT', message: 'Business has no parent' });
 
     const [parentProduct] = await this.dataSource.query(
       `SELECT p.*, c.name AS category_name, c.sort_order AS category_sort_order,
@@ -222,7 +222,7 @@ export class ChainService {
        WHERE p.id = $1 AND p.business_id = $2`,
       [parentProductId, child.parent_business_id],
     );
-    if (!parentProduct) throw new NotFoundException('Product not found in parent catalogue');
+    if (!parentProduct) throw new NotFoundException({ error: 'CHN_PRODUCT_NOT_FOUND', message: 'Product not found in parent catalogue' });
 
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
@@ -292,7 +292,7 @@ export class ChainService {
       `SELECT * FROM promotions WHERE id = $1 AND business_id = $2`,
       [promotionId, parentBusinessId],
     );
-    if (!promo) throw new NotFoundException('Promotion not found');
+    if (!promo) throw new NotFoundException({ error: 'PROM_NOT_FOUND', message: 'Promotion not found' });
 
     const results: Array<{ child_business_id: string; promotion_id: string; tva_warnings: any[] }> = [];
 
@@ -322,7 +322,7 @@ export class ChainService {
       `SELECT * FROM promotions WHERE id = $1 AND business_id = $2`,
       [promotionId, parentBusinessId],
     );
-    if (!promo) throw new NotFoundException('Promotion not found');
+    if (!promo) throw new NotFoundException({ error: 'PROM_NOT_FOUND', message: 'Promotion not found' });
 
     const results = [];
     for (const childId of childBusinessIds) {
@@ -409,11 +409,11 @@ export class ChainService {
   // ── CHN-050 ───────────────────────────────────────────────────────────────
   async getParentVendorInfo(childBusinessId: string) {
     const child = await this.bizRepo.findOne({ where: { id: childBusinessId } });
-    if (!child) throw new NotFoundException('Business not found');
-    if (!child.parent_business_id) throw new UnprocessableEntityException('This business has no parent');
+    if (!child) throw new NotFoundException({ error: 'CHN_BUSINESS_NOT_FOUND', message: 'Business not found' });
+    if (!child.parent_business_id) throw new UnprocessableEntityException({ error: 'CHN_NO_PARENT', message: 'This business has no parent' });
 
     const parent = await this.bizRepo.findOne({ where: { id: child.parent_business_id } });
-    if (!parent) throw new NotFoundException('Parent business not found');
+    if (!parent) throw new NotFoundException({ error: 'CHN_PARENT_NOT_FOUND', message: 'Parent business not found' });
 
     return {
       parent_business_id: parent.id,
@@ -447,7 +447,7 @@ export class ChainService {
          AND po.status IN ('confirmed', 'sent', 'partially_received')`,
       [poId, parentBusinessId],
     );
-    if (!po) throw new NotFoundException('Purchase order not found or not accessible');
+    if (!po) throw new NotFoundException({ error: 'CHN_PO_NOT_FOUND', message: 'Purchase order not found or not accessible' });
 
     const poItems = await this.dataSource.query(
       `SELECT * FROM purchase_order_items WHERE purchase_order_id = $1`,

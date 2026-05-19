@@ -61,14 +61,14 @@ export class BusinessService {
 
   async updateCategory(businessId: string, id: string, dto: UpdateCategoryDto) {
     const cat = await this.categoryRepo.findOne({ where: { id, business_id: businessId } });
-    if (!cat) throw new NotFoundException('Category not found');
+    if (!cat) throw new NotFoundException({ error: 'BIZ_CATEGORY_NOT_FOUND', message: 'Category not found' });
     Object.assign(cat, dto);
     return this.categoryRepo.save(cat);
   }
 
   async deleteCategory(businessId: string, id: string) {
     const cat = await this.categoryRepo.findOne({ where: { id, business_id: businessId } });
-    if (!cat) throw new NotFoundException('Category not found');
+    if (!cat) throw new NotFoundException({ error: 'BIZ_CATEGORY_NOT_FOUND', message: 'Category not found' });
     cat.is_active = false;
     return this.categoryRepo.save(cat);
   }
@@ -92,21 +92,21 @@ export class BusinessService {
 
   async updateProduct(businessId: string, id: string, dto: UpdateProductDto) {
     const product = await this.productRepo.findOne({ where: { id, business_id: businessId } });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND', message: 'Product not found' });
     Object.assign(product, dto);
     return this.productRepo.save(product);
   }
 
   async toggleSoldOut(businessId: string, id: string) {
     const product = await this.productRepo.findOne({ where: { id, business_id: businessId } });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND', message: 'Product not found' });
     product.is_sold_out = !product.is_sold_out;
     return this.productRepo.save(product);
   }
 
   async deleteProduct(businessId: string, id: string) {
     const product = await this.productRepo.findOne({ where: { id, business_id: businessId } });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND', message: 'Product not found' });
     product.is_active = false;
     return this.productRepo.save(product);
   }

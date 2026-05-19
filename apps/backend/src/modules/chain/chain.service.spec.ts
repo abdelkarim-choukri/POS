@@ -152,7 +152,7 @@ describe('ChainService', () => {
 
     it('throws 404 if business not found', async () => {
       bizRepo.findOne.mockResolvedValue(null);
-      await expect(service.unlinkChild('no-such')).rejects.toThrow(NotFoundException);
+      await expect(service.unlinkChild('no-such')).rejects.toMatchObject({ response: { error: 'CHN_BUSINESS_NOT_FOUND' } });
     });
   });
 

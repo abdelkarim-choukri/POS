@@ -32,13 +32,13 @@ export class AuthService {
       where: { email, is_active: true },
       relations: ['business'],
     });
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException({ error: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
 
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException({ error: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
 
     if (!user.dashboard_access) {
-      throw new UnauthorizedException('No dashboard access');
+      throw new UnauthorizedException({ error: 'AUTH_NO_DASHBOARD_ACCESS', message: 'No dashboard access' });
     }
 
     const payload: JwtPayload = {
@@ -67,10 +67,10 @@ export class AuthService {
   // ── Super Admin login ────────────────────────────────────────────────────
   async superAdminLogin(email: string, password: string) {
     const admin = await this.superAdminRepo.findOne({ where: { email, is_active: true } });
-    if (!admin) throw new UnauthorizedException('Invalid credentials');
+    if (!admin) throw new UnauthorizedException({ error: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
 
     const valid = await bcrypt.compare(password, admin.password_hash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException({ error: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
 
     await this.superAdminRepo.update(admin.id, { last_login_at: new Date() });
 
@@ -91,14 +91,14 @@ export class AuthService {
       where    : { terminal_code: terminalCode, is_active: true },
       relations: ['location', 'location.business'],
     });
-    if (!terminal) throw new UnauthorizedException('Terminal not found');
+    if (!terminal) throw new UnauthorizedException({ error: 'AUTH_TERMINAL_NOT_FOUND', message: 'Terminal not found' });
 
     const businessId = terminal.location.business_id;
 
     const user = await this.userRepo.findOne({
       where: { pin, business_id: businessId, is_active: true },
     });
-    if (!user) throw new UnauthorizedException('Invalid PIN');
+    if (!user) throw new UnauthorizedException({ error: 'AUTH_INVALID_PIN', message: 'Invalid PIN' });
 
     const payload: JwtPayload = {
       sub        : user.id,
@@ -143,17 +143,17 @@ export class AuthService {
       };
       return { access_token: this.jwtService.sign(newPayload) };
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException({ error: 'AUTH_INVALID_REFRESH', message: 'Invalid refresh token' });
     }
   }
 
   // ── Change password ──────────────────────────────────────────────────────
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new BadRequestException('User not found');
+    if (!user) throw new BadRequestException({ error: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
 
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!valid) throw new BadRequestException('Current password is incorrect');
+    if (!valid) throw new BadRequestException({ error: 'AUTH_PASSWORD_INCORRECT', message: 'Current password is incorrect' });
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
     await this.userRepo.save(user);

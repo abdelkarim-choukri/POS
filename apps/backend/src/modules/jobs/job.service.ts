@@ -44,7 +44,7 @@ export class JobService {
     } = {},
   ): Promise<BackgroundJob> {
     const job = await this.jobRepo.findOne({ where: { id } });
-    if (!job) throw new NotFoundException(`Job ${id} not found`);
+    if (!job) throw new NotFoundException({ error: 'JOB_NOT_FOUND', message: `Job ${id} not found` });
 
     Object.assign(job, { status, ...updates });
 

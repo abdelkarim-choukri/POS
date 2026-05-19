@@ -50,7 +50,7 @@ export class KdsService {
       where: { id: orderId },
       relations: ['items', 'user'],
     });
-    if (!order) throw new NotFoundException('Order not found');
+    if (!order) throw new NotFoundException({ error: 'KDS_ORDER_NOT_FOUND', message: 'Order not found' });
 
     order.order_status = newStatus;
     const saved = await this.txnRepo.save(order);
@@ -170,7 +170,7 @@ export class KdsService {
       where: { id: itemId, business_id: businessId },
       relations: ['table_session', 'table_session.table'],
     });
-    if (!item) throw new NotFoundException('KDS item not found');
+    if (!item) throw new NotFoundException({ error: 'KDS_ITEM_NOT_FOUND', message: 'KDS item not found' });
 
     const allowedNext = KDS_TRANSITIONS[item.kds_status];
     if (allowedNext !== newStatus) {

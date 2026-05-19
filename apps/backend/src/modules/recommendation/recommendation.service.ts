@@ -65,7 +65,7 @@ export class RecommendationService {
   // ── REC-003 ───────────────────────────────────────────────────────────────
   async updateTemplate(id: string, businessId: string, dto: UpdateTemplateDto) {
     const template = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!template) throw new NotFoundException('Recommendation template not found');
+    if (!template) throw new NotFoundException({ error: 'REC_TEMPLATE_NOT_FOUND', message: 'Recommendation template not found' });
     Object.assign(template, dto);
     return this.templateRepo.save(template);
   }
@@ -73,7 +73,7 @@ export class RecommendationService {
   // ── REC-004 ───────────────────────────────────────────────────────────────
   async deleteTemplate(id: string, businessId: string) {
     const template = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!template) throw new NotFoundException('Recommendation template not found');
+    if (!template) throw new NotFoundException({ error: 'REC_TEMPLATE_NOT_FOUND', message: 'Recommendation template not found' });
     await this.templateRepo.remove(template);
     return { deleted: true };
   }
@@ -81,7 +81,7 @@ export class RecommendationService {
   // ── REC-005 ───────────────────────────────────────────────────────────────
   async setTemplateItems(id: string, businessId: string, dto: SetTemplateItemsDto) {
     const template = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!template) throw new NotFoundException('Recommendation template not found');
+    if (!template) throw new NotFoundException({ error: 'REC_TEMPLATE_NOT_FOUND', message: 'Recommendation template not found' });
     if (template.template_type !== 'manual') {
       throw new UnprocessableEntityException({
         error: 'REC_ITEMS_NOT_MANUAL',
@@ -105,7 +105,7 @@ export class RecommendationService {
   // ── REC-010 ───────────────────────────────────────────────────────────────
   async resolveTemplate(id: string, businessId: string, query: ResolveTemplateQueryDto) {
     const template = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!template) throw new NotFoundException('Recommendation template not found');
+    if (!template) throw new NotFoundException({ error: 'REC_TEMPLATE_NOT_FOUND', message: 'Recommendation template not found' });
 
     switch (template.template_type) {
       case 'top_seller':

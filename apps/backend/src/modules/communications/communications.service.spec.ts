@@ -161,7 +161,7 @@ describe('CommunicationsService', () => {
       });
 
       await expect(service.dismissPlatformAnnouncement('nonexistent', USER_ID))
-        .rejects.toThrow(NotFoundException);
+        .rejects.toMatchObject({ response: { error: 'COM_ANNOUNCEMENT_NOT_FOUND' } });
     });
   });
 

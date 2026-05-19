@@ -67,7 +67,7 @@ export class NotificationSendService {
 
   async updateTemplate(id: string, businessId: string, dto: UpdateTemplateDto) {
     const t = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!t) throw new NotFoundException('Template not found');
+    if (!t) throw new NotFoundException({ error: 'COM_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     if (dto.name !== undefined) t.name = dto.name;
     if (dto.subject !== undefined) t.subject = dto.subject ?? null;
@@ -83,13 +83,14 @@ export class NotificationSendService {
 
   async deleteTemplate(id: string, businessId: string) {
     const t = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!t) throw new NotFoundException('Template not found');
+    if (!t) throw new NotFoundException({ error: 'COM_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     const usageCount = await this.sendRepo.count({ where: { template_id: id } });
     if (usageCount > 0) {
-      throw new UnprocessableEntityException(
-        'Template has been used in sends and cannot be deleted',
-      );
+      throw new UnprocessableEntityException({
+        error: 'COM_TEMPLATE_HAS_SENDS',
+        message: 'Template has been used in sends and cannot be deleted',
+      });
     }
 
     await this.templateRepo.remove(t);
@@ -100,7 +101,7 @@ export class NotificationSendService {
 
   async previewTemplate(id: string, businessId: string, dto: PreviewTemplateDto) {
     const t = await this.templateRepo.findOne({ where: { id, business_id: businessId } });
-    if (!t) throw new NotFoundException('Template not found');
+    if (!t) throw new NotFoundException({ error: 'COM_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     let customer: Customer | null = null;
     if (dto.customer_id) {
@@ -124,33 +125,35 @@ export class NotificationSendService {
       where: { business_id: businessId, channel: dto.channel },
     });
     if (!channel || !channel.is_active) {
-      throw new UnprocessableEntityException(
-        `Channel '${dto.channel}' is not configured or inactive`,
-      );
+      throw new UnprocessableEntityException({
+        error: 'COM_NO_CHANNEL_CREDENTIALS',
+        message: `Channel '${dto.channel}' is not configured or inactive`,
+      });
     }
 
     const customer = await this.customerRepo.findOne({
       where: { id: dto.to_customer_id, business_id: businessId },
     });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     let template: NotificationTemplate | null = null;
     if (dto.template_id) {
       template = await this.templateRepo.findOne({
         where: { id: dto.template_id, business_id: businessId },
       });
-      if (!template) throw new NotFoundException('Template not found');
+      if (!template) throw new NotFoundException({ error: 'COM_TEMPLATE_NOT_FOUND', message: 'Template not found' });
     }
 
     const isMarketing = template ? !template.is_transactional : false;
     if (isMarketing && !customer.consent_marketing) {
-      throw new UnprocessableEntityException(
-        'Customer has not consented to marketing communications',
-      );
+      throw new UnprocessableEntityException({
+        error: 'COM_CONSENT_REQUIRED',
+        message: 'Customer has not consented to marketing communications',
+      });
     }
 
     if (dto.channel === 'sms' && (channel.balance_cached ?? 0) <= 0) {
-      throw new UnprocessableEntityException('Insufficient SMS balance');
+      throw new UnprocessableEntityException({ error: 'COM_SMS_INSUFFICIENT_BALANCE', message: 'Insufficient SMS balance' });
     }
 
     const recipientAddress = dto.to_address ?? this.resolveAddress(customer, dto.channel);
@@ -216,7 +219,7 @@ export class NotificationSendService {
     const template = await this.templateRepo.findOne({
       where: { id: dto.template_id, business_id: businessId },
     });
-    if (!template) throw new NotFoundException('Template not found');
+    if (!template) throw new NotFoundException({ error: 'COM_TEMPLATE_NOT_FOUND', message: 'Template not found' });
 
     const estimatedRecipients = await this.estimateSegmentSize(businessId, dto);
 
@@ -311,13 +314,13 @@ export class NotificationSendService {
   async optOut(token: string) {
     const send = await this.sendRepo.findOne({ where: { opt_out_token: token } });
     if (!send || !send.recipient_customer_id) {
-      throw new NotFoundException('Invalid opt-out token');
+      throw new NotFoundException({ error: 'COM_OPT_OUT_TOKEN_INVALID', message: 'Invalid opt-out token' });
     }
 
     const customer = await this.customerRepo.findOne({
       where: { id: send.recipient_customer_id },
     });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'CUST_NOT_FOUND', message: 'Customer not found' });
 
     if (customer.consent_marketing) {
       customer.consent_marketing = false;

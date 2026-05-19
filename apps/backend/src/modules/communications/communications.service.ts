@@ -63,7 +63,7 @@ export class CommunicationsService {
     const announcement = await this.platformAnnouncementRepo.findOne({
       where: { id: announcementId },
     });
-    if (!announcement) throw new NotFoundException('Announcement not found');
+    if (!announcement) throw new NotFoundException({ error: 'COM_ANNOUNCEMENT_NOT_FOUND', message: 'Announcement not found' });
 
     const existing = await this.dismissalRepo.findOne({
       where: { user_id: userId, announcement_id: announcementId },
@@ -106,7 +106,7 @@ export class CommunicationsService {
     dto: UpdateBusinessAnnouncementDto,
   ) {
     const a = await this.bizAnnouncementRepo.findOne({ where: { id, business_id: businessId } });
-    if (!a) throw new NotFoundException('Announcement not found');
+    if (!a) throw new NotFoundException({ error: 'COM_ANNOUNCEMENT_NOT_FOUND', message: 'Announcement not found' });
 
     if (dto.title !== undefined) a.title = dto.title;
     if (dto.body !== undefined) a.body = dto.body;
@@ -119,7 +119,7 @@ export class CommunicationsService {
 
   async deleteBusinessAnnouncement(id: string, businessId: string) {
     const a = await this.bizAnnouncementRepo.findOne({ where: { id, business_id: businessId } });
-    if (!a) throw new NotFoundException('Announcement not found');
+    if (!a) throw new NotFoundException({ error: 'COM_ANNOUNCEMENT_NOT_FOUND', message: 'Announcement not found' });
     await this.bizAnnouncementRepo.remove(a);
     return { deleted: true };
   }

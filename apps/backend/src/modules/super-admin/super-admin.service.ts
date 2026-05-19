@@ -104,7 +104,7 @@ export class SuperAdminService {
       where: { id },
       relations: ['business_type', 'subscription', 'locations', 'users'],
     });
-    if (!business) throw new NotFoundException('Business not found');
+    if (!business) throw new NotFoundException({ error: 'SA_BUSINESS_NOT_FOUND', message: 'Business not found' });
     return business;
   }
 
@@ -133,7 +133,7 @@ export class SuperAdminService {
 
   async updateFeatures(businessTypeId: string, dto: UpdateFeaturesDto) {
     const businessType = await this.businessTypeRepo.findOne({ where: { id: businessTypeId } });
-    if (!businessType) throw new NotFoundException('Business type not found');
+    if (!businessType) throw new NotFoundException({ error: 'SA_BUSINESS_TYPE_NOT_FOUND', message: 'Business type not found' });
 
     for (const feature of dto.features) {
       const existing = await this.featureRepo.findOne({
@@ -170,7 +170,7 @@ export class SuperAdminService {
 
   async createTerminal(dto: CreateTerminalDto) {
     const exists = await this.terminalRepo.findOne({ where: { terminal_code: dto.terminal_code } });
-    if (exists) throw new ConflictException('Terminal code already exists');
+    if (exists) throw new ConflictException({ error: 'SA_TERMINAL_CODE_CONFLICT', message: 'Terminal code already exists' });
 
     // Create unassigned terminal (needs a temporary location — assign later)
     const terminal = this.terminalRepo.create({
@@ -182,10 +182,10 @@ export class SuperAdminService {
 
   async assignTerminal(terminalId: string, dto: AssignTerminalDto) {
     const terminal = await this.terminalRepo.findOne({ where: { id: terminalId } });
-    if (!terminal) throw new NotFoundException('Terminal not found');
+    if (!terminal) throw new NotFoundException({ error: 'SA_TERMINAL_NOT_FOUND', message: 'Terminal not found' });
 
     const location = await this.locationRepo.findOne({ where: { id: dto.location_id } });
-    if (!location) throw new NotFoundException('Location not found');
+    if (!location) throw new NotFoundException({ error: 'SA_LOCATION_NOT_FOUND', message: 'Location not found' });
 
     terminal.location_id = dto.location_id;
     return this.terminalRepo.save(terminal);
@@ -223,7 +223,7 @@ export class SuperAdminService {
 
   async updateSubscription(id: string, dto: UpdateSubscriptionDto) {
     const sub = await this.subscriptionRepo.findOne({ where: { id } });
-    if (!sub) throw new NotFoundException('Subscription not found');
+    if (!sub) throw new NotFoundException({ error: 'SA_SUBSCRIPTION_NOT_FOUND', message: 'Subscription not found' });
     Object.assign(sub, dto);
     return this.subscriptionRepo.save(sub);
   }
@@ -284,7 +284,7 @@ export class SuperAdminService {
 
   async updatePlatformAnnouncement(id: string, dto: UpdatePlatformAnnouncementDto) {
     const a = await this.platformAnnouncementRepo.findOne({ where: { id } });
-    if (!a) throw new NotFoundException('Announcement not found');
+    if (!a) throw new NotFoundException({ error: 'SA_ANNOUNCEMENT_NOT_FOUND', message: 'Announcement not found' });
 
     if (dto.title !== undefined) a.title = dto.title;
     if (dto.body !== undefined) a.body = dto.body;
@@ -301,7 +301,7 @@ export class SuperAdminService {
 
   async deletePlatformAnnouncement(id: string) {
     const a = await this.platformAnnouncementRepo.findOne({ where: { id } });
-    if (!a) throw new NotFoundException('Announcement not found');
+    if (!a) throw new NotFoundException({ error: 'SA_ANNOUNCEMENT_NOT_FOUND', message: 'Announcement not found' });
     await this.platformAnnouncementRepo.remove(a);
     return { deleted: true };
   }
