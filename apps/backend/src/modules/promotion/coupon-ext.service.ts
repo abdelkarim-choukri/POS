@@ -37,7 +37,7 @@ export class CouponExtService {
     const ct = await this.couponTypeRepo.findOne({
       where: { id: dto.coupon_type_id, business_id: businessId, is_active: true },
     });
-    if (!ct) throw new NotFoundException('Coupon type not found or inactive');
+    if (!ct) throw new NotFoundException({ error: 'CPN_TYPE_NOT_FOUND', message: 'Coupon type not found or inactive' });
 
     if (dto.customer_ids.length <= 100) {
       // Synchronous path — issue inline, return results
@@ -78,7 +78,7 @@ export class CouponExtService {
     const ct = await this.couponTypeRepo.findOne({
       where: { id: dto.coupon_type_id, business_id: businessId, is_active: true },
     });
-    if (!ct) throw new NotFoundException('Coupon type not found or inactive');
+    if (!ct) throw new NotFoundException({ error: 'CPN_TYPE_NOT_FOUND', message: 'Coupon type not found or inactive' });
 
     const job = await this.jobService.createJob({
       business_id: businessId,

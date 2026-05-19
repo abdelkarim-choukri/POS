@@ -110,7 +110,7 @@ export class CouponService {
     const ct = await this.couponTypeRepo.findOne({
       where: { id: couponTypeId, business_id: businessId, is_active: true },
     });
-    if (!ct) throw new NotFoundException('Coupon type not found or inactive');
+    if (!ct) throw new NotFoundException({ error: 'CPN_TYPE_NOT_FOUND', message: 'Coupon type not found or inactive' });
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + ct.validity_days_from_issue);
@@ -180,12 +180,13 @@ export class CouponService {
     voidedByUserId: string,
   ): Promise<{ coupon: Coupon; voided_by_user_id: string; reason: string }> {
     const coupon = await this.couponRepo.findOne({ where: { id, business_id: businessId } });
-    if (!coupon) throw new NotFoundException('Coupon not found');
+    if (!coupon) throw new NotFoundException({ error: 'CPN_NOT_FOUND', message: 'Coupon not found' });
 
     if (coupon.status !== 'available') {
-      throw new UnprocessableEntityException(
-        `Cannot void a coupon with status "${coupon.status}". Only available coupons can be voided.`,
-      );
+      throw new UnprocessableEntityException({
+        error: 'CPN_NOT_AVAILABLE',
+        message: `Cannot void a coupon with status "${coupon.status}". Only available coupons can be voided.`,
+      });
     }
 
     coupon.status = 'voided';
@@ -199,9 +200,9 @@ export class CouponService {
       where: { coupon_code: couponCode, business_id: businessId },
       relations: ['coupon_type'],
     });
-    if (!coupon) throw new NotFoundException('Coupon not found');
+    if (!coupon) throw new NotFoundException({ error: 'CPN_NOT_FOUND', message: 'Coupon not found' });
     if (coupon.status === 'redeemed') {
-      throw new HttpException({ status: 'redeemed', message: 'Coupon already redeemed' }, HttpStatus.GONE);
+      throw new HttpException({ error: 'CPN_ALREADY_REDEEMED', status: 'redeemed', message: 'Coupon already redeemed' }, HttpStatus.GONE);
     }
 
     const now = new Date();

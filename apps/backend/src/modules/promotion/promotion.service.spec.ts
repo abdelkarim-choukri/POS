@@ -306,7 +306,9 @@ describe('PromotionService', () => {
       const { service } = await buildService({
         findOne: jest.fn().mockResolvedValue(null),
       });
-      await expect(service.getDetail(PROMO_ID, 'other-biz')).rejects.toThrow(NotFoundException);
+      await expect(service.getDetail(PROMO_ID, 'other-biz')).rejects.toMatchObject({
+        response: { error: 'PROM_NOT_FOUND' },
+      });
     });
   });
 });

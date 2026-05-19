@@ -46,7 +46,7 @@ export class PromotionService {
 
   private async findOrFail(id: string, businessId: string): Promise<Promotion> {
     const p = await this.promoRepo.findOne({ where: { id, business_id: businessId } });
-    if (!p) throw new NotFoundException();
+    if (!p) throw new NotFoundException({ error: 'PROM_NOT_FOUND' });
     return p;
   }
 
@@ -58,33 +58,33 @@ export class PromotionService {
       const cat = await this.categoryRepo.findOne({
         where: { id: dto.target_category_id, business_id: businessId },
       });
-      if (!cat) throw new BadRequestException(`target_category_id not found in this business`);
+      if (!cat) throw new BadRequestException({ error: 'PROM_CATEGORY_NOT_FOUND', message: 'target_category_id not found in this business' });
     }
     if (dto.target_product_id) {
       const prod = await this.productRepo.findOne({
         where: { id: dto.target_product_id, business_id: businessId },
       });
-      if (!prod) throw new BadRequestException(`target_product_id not found in this business`);
+      if (!prod) throw new BadRequestException({ error: 'PROM_PRODUCT_NOT_FOUND', message: 'target_product_id not found in this business' });
     }
     if (dto.target_grade_ids?.length) {
       const grades = await this.gradeRepo.findByIds(dto.target_grade_ids);
       const wrongBiz = grades.filter((g) => g.business_id !== businessId);
-      if (wrongBiz.length) throw new BadRequestException(`Some target_grade_ids do not belong to this business`);
+      if (wrongBiz.length) throw new BadRequestException({ error: 'PROM_GRADE_CROSS_TENANT', message: 'Some target_grade_ids do not belong to this business' });
     }
     if (dto.target_label_ids?.length) {
       const labels = await this.labelRepo.findByIds(dto.target_label_ids);
       const wrongBiz = labels.filter((l) => l.business_id !== businessId);
-      if (wrongBiz.length) throw new BadRequestException(`Some target_label_ids do not belong to this business`);
+      if (wrongBiz.length) throw new BadRequestException({ error: 'PROM_LABEL_CROSS_TENANT', message: 'Some target_label_ids do not belong to this business' });
     }
     if (dto.target_customer_ids?.length) {
       const customers = await this.customerRepo.findByIds(dto.target_customer_ids);
       const wrongBiz = customers.filter((c) => c.business_id !== businessId);
-      if (wrongBiz.length) throw new BadRequestException(`Some target_customer_ids do not belong to this business`);
+      if (wrongBiz.length) throw new BadRequestException({ error: 'PROM_CUSTOMER_CROSS_TENANT', message: 'Some target_customer_ids do not belong to this business' });
     }
     if (dto.applicable_location_ids?.length) {
       const locs = await this.locationRepo.findByIds(dto.applicable_location_ids);
       const wrongBiz = locs.filter((l) => l.business_id !== businessId);
-      if (wrongBiz.length) throw new BadRequestException(`Some applicable_location_ids do not belong to this business`);
+      if (wrongBiz.length) throw new BadRequestException({ error: 'PROM_LOCATION_CROSS_TENANT', message: 'Some applicable_location_ids do not belong to this business' });
     }
   }
 
@@ -92,7 +92,7 @@ export class PromotionService {
     const percentTypes = ['percent_off_order', 'percent_off_category', 'percent_off_product'];
     if (dto.promotion_type && percentTypes.includes(dto.promotion_type)) {
       if (dto.value !== undefined && (dto.value < 0 || dto.value > 100)) {
-        throw new BadRequestException('value must be between 0 and 100 for percentage promotion types');
+        throw new BadRequestException({ error: 'PROM_PERCENTAGE_INVALID', message: 'value must be between 0 and 100 for percentage promotion types' });
       }
     }
   }
@@ -155,14 +155,14 @@ export class PromotionService {
 
   async create(businessId: string, dto: CreatePromotionDto, userId: string): Promise<Promotion> {
     if (dto.start_date && dto.end_date && dto.start_date > dto.end_date) {
-      throw new BadRequestException('start_date must be <= end_date');
+      throw new BadRequestException({ error: 'PROM_DATE_INVALID', message: 'start_date must be <= end_date' });
     }
     this.validatePercentage(dto);
     await this.validateForeignIds(businessId, dto);
 
     const code = dto.code ?? generateCode();
     const existing = await this.promoRepo.findOne({ where: { business_id: businessId, code } });
-    if (existing) throw new ConflictException(`Promotion code "${code}" already exists in this business`);
+    if (existing) throw new ConflictException({ error: 'PROM_CODE_CONFLICT', message: `Promotion code "${code}" already exists in this business` });
 
     const promo = this.promoRepo.create({
       ...dto,
@@ -186,6 +186,7 @@ export class PromotionService {
       );
       if (attemptedLocked.length > 0) {
         throw new UnprocessableEntityException({
+          error: 'PROM_LOCKED_FIELD',
           message: 'Cannot update immutable fields once a promotion has been redeemed',
           locked_fields: attemptedLocked,
         });
@@ -195,7 +196,7 @@ export class PromotionService {
     if (dto.start_date || dto.end_date) {
       const startDate = dto.start_date ?? p.start_date;
       const endDate = dto.end_date ?? p.end_date;
-      if (startDate > endDate) throw new BadRequestException('start_date must be <= end_date');
+      if (startDate > endDate) throw new BadRequestException({ error: 'PROM_DATE_INVALID', message: 'start_date must be <= end_date' });
     }
 
     this.validatePercentage({ promotion_type: p.promotion_type, ...dto });
@@ -210,7 +211,7 @@ export class PromotionService {
   async activate(id: string, businessId: string): Promise<Promotion> {
     const p = await this.findOrFail(id, businessId);
     if (p.status === 'archived') {
-      throw new UnprocessableEntityException('Archived promotions cannot be reactivated');
+      throw new UnprocessableEntityException({ error: 'PROM_ALREADY_ARCHIVED', message: 'Archived promotions cannot be reactivated' });
     }
     p.status = 'active';
     const saved = await this.promoRepo.save(p);
@@ -227,7 +228,7 @@ export class PromotionService {
   async pause(id: string, businessId: string): Promise<Promotion> {
     const p = await this.findOrFail(id, businessId);
     if (p.status === 'archived') {
-      throw new UnprocessableEntityException('Archived promotions cannot be paused');
+      throw new UnprocessableEntityException({ error: 'PROM_ALREADY_ARCHIVED', message: 'Archived promotions cannot be paused' });
     }
     p.status = 'paused';
     return this.promoRepo.save(p);
@@ -238,7 +239,7 @@ export class PromotionService {
   async archive(id: string, businessId: string): Promise<Promotion> {
     const p = await this.findOrFail(id, businessId);
     if (p.status === 'archived') {
-      throw new UnprocessableEntityException('Promotion is already archived');
+      throw new UnprocessableEntityException({ error: 'PROM_ARCHIVE_AGAIN', message: 'Promotion is already archived' });
     }
     p.status = 'archived';
     return this.promoRepo.save(p);

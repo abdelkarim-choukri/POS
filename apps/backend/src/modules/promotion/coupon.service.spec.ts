@@ -167,7 +167,10 @@ describe('CouponService', () => {
         customer_id: null,
       };
       const { service } = await buildService({}, { findOne: jest.fn().mockResolvedValue(redeemed) });
-      await expect(service.lookupCoupon('ABC123', BIZ_ID)).rejects.toMatchObject({ status: 410 });
+      await expect(service.lookupCoupon('ABC123', BIZ_ID)).rejects.toMatchObject({
+        status: 410,
+        response: expect.objectContaining({ error: 'CPN_ALREADY_REDEEMED' }),
+      });
     });
   });
 

@@ -63,7 +63,7 @@ export class PointsExchangeService {
       where: { id, business_id: businessId },
       relations: ['details'],
     });
-    if (!rule) throw new NotFoundException('Points exchange rule not found');
+    if (!rule) throw new NotFoundException({ error: 'PEX_RULE_NOT_FOUND', message: 'Exchange rule not found' });
 
     const total_redemptions = await this.redemptionRepo.count({ where: { rule_id: id } });
     return { ...rule, total_redemptions };
@@ -131,7 +131,7 @@ export class PointsExchangeService {
   // [PEX-005] Update rule — point_value/rule_type immutable once current_redemptions > 0
   async update(id: string, businessId: string, dto: UpdatePexRuleDto) {
     const rule = await this.ruleRepo.findOne({ where: { id, business_id: businessId } });
-    if (!rule) throw new NotFoundException('Points exchange rule not found');
+    if (!rule) throw new NotFoundException({ error: 'PEX_RULE_NOT_FOUND', message: 'Exchange rule not found' });
 
     if (rule.current_redemptions > 0) {
       const lockedAttempted = (['point_value'] as const).filter(
@@ -139,6 +139,7 @@ export class PointsExchangeService {
       );
       if (lockedAttempted.length > 0) {
         throw new UnprocessableEntityException({
+          error: 'PEX_POINT_VALUE_IMMUTABLE',
           message: 'Cannot change point_value once redemptions exist',
           locked_fields: lockedAttempted,
         });
@@ -153,7 +154,7 @@ export class PointsExchangeService {
   // [PEX-006] Deactivate rule — sets is_active=false
   async deactivate(id: string, businessId: string) {
     const rule = await this.ruleRepo.findOne({ where: { id, business_id: businessId } });
-    if (!rule) throw new NotFoundException('Points exchange rule not found');
+    if (!rule) throw new NotFoundException({ error: 'PEX_RULE_NOT_FOUND', message: 'Exchange rule not found' });
     rule.is_active = false;
     return this.ruleRepo.save(rule);
   }
@@ -161,7 +162,7 @@ export class PointsExchangeService {
   // [PEX-010] List rules redeemable by a specific customer right now
   async listRedeemableForCustomer(businessId: string, customerId: string) {
     const customer = await this.customerRepo.findOne({ where: { id: customerId, business_id: businessId } });
-    if (!customer) throw new NotFoundException('Customer not found');
+    if (!customer) throw new NotFoundException({ error: 'PEX_CUSTOMER_NOT_FOUND', message: 'Customer not found' });
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -222,19 +223,19 @@ export class PointsExchangeService {
       where: { id: ruleId, business_id: businessId, is_active: true },
       relations: ['details'],
     });
-    if (!rule) throw new NotFoundException('Points exchange rule not found or inactive');
+    if (!rule) throw new NotFoundException({ error: 'PEX_RULE_NOT_FOUND', message: 'Exchange rule not found' });
 
     // Date window check
     const today = new Date().toISOString().slice(0, 10);
     if (rule.rule_start_date && rule.rule_start_date > today) {
-      throw new UnprocessableEntityException('Rule is not yet active');
+      throw new UnprocessableEntityException({ error: 'PEX_RULE_INACTIVE', message: 'Rule is not yet active' });
     }
     if (rule.rule_end_date && rule.rule_end_date < today) {
-      throw new UnprocessableEntityException('Rule has expired');
+      throw new UnprocessableEntityException({ error: 'PEX_RULE_INACTIVE', message: 'Rule has expired' });
     }
 
     const detail = rule.details?.[0];
-    if (!detail) throw new UnprocessableEntityException('Rule has no details configured');
+    if (!detail) throw new UnprocessableEntityException({ error: 'PEX_RULE_INACTIVE', message: 'Rule has no details configured' });
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -245,13 +246,14 @@ export class PointsExchangeService {
         `SELECT id, points_balance FROM customers WHERE id = $1 AND business_id = $2 FOR UPDATE`,
         [customerId, businessId],
       );
-      if (!customerRows.length) throw new NotFoundException('Customer not found');
+      if (!customerRows.length) throw new NotFoundException({ error: 'PEX_CUSTOMER_NOT_FOUND', message: 'Customer not found' });
 
       const pointsBalance: number = customerRows[0].points_balance;
       if (pointsBalance < rule.point_value) {
-        throw new UnprocessableEntityException(
-          `Insufficient points: customer has ${pointsBalance}, rule requires ${rule.point_value}`,
-        );
+        throw new UnprocessableEntityException({
+          error: 'PEX_POINTS_INSUFFICIENT',
+          message: `Insufficient points: customer has ${pointsBalance}, rule requires ${rule.point_value}`,
+        });
       }
 
       // Per-customer limit
@@ -261,7 +263,7 @@ export class PointsExchangeService {
           [ruleId, customerId],
         );
         if (parseInt(countRows[0].count, 10) >= rule.per_customer_limit) {
-          throw new UnprocessableEntityException('Per-customer redemption limit reached');
+          throw new UnprocessableEntityException({ error: 'PEX_DAILY_LIMIT_EXCEEDED', message: 'Per-customer redemption limit reached' });
         }
       }
 
@@ -273,7 +275,7 @@ export class PointsExchangeService {
           [ruleId, customerId],
         );
         if (parseInt(dayRows[0].count, 10) >= rule.per_customer_per_day_limit) {
-          throw new UnprocessableEntityException('Daily redemption limit reached');
+          throw new UnprocessableEntityException({ error: 'PEX_DAILY_LIMIT_EXCEEDED', message: 'Daily redemption limit reached' });
         }
       }
 
@@ -287,7 +289,7 @@ export class PointsExchangeService {
         [ruleId],
       );
       if (claimRows.length === 0) {
-        throw new UnprocessableEntityException('Total redemption limit reached (concurrent)');
+        throw new UnprocessableEntityException({ error: 'PEX_TOTAL_LIMIT_EXCEEDED', message: 'Total redemption limit reached (concurrent)' });
       }
 
       // Decrement customer points
@@ -314,7 +316,7 @@ export class PointsExchangeService {
 
       if (rule.rule_type === 'coupon') {
         // Use the linked coupon_type directly — guaranteed non-null for coupon rule_type
-        if (!detail.coupon_type_id) throw new UnprocessableEntityException('Rule detail missing coupon_type_id');
+        if (!detail.coupon_type_id) throw new UnprocessableEntityException({ error: 'PEX_RULE_INACTIVE', message: 'Rule detail missing coupon_type_id' });
         couponTypeId = detail.coupon_type_id;
       } else if (rule.rule_type === 'free_product') {
         // Create ephemeral CouponType with free_item discount type
