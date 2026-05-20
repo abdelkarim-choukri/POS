@@ -13,7 +13,8 @@
     "migration:run": "npx typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "npx typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "seed:demo": "ts-node src/seeds/demo-seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
