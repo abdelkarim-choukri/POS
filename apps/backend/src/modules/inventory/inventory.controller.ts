@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, Request,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { InventoryService } from './inventory.service';
 import {
   CreateUnitOfMeasureDto, UpdateUnitOfMeasureDto,
@@ -11,6 +12,7 @@ import {
   SetNutritionInfoDto, ListNutritionQueryDto,
 } from './dto/inventory.dto';
 
+@ApiTags('Inventory')
 @Controller('business')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}

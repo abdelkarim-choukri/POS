@@ -11,6 +11,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 
@@ -21,6 +22,7 @@ if (!existsSync(UPLOAD_DIR)) {
   mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+@ApiTags('Business')
 @Controller('business')
 @Roles('owner', 'manager')
 @UseGuards(RolesGuard)

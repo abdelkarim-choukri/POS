@@ -1,10 +1,12 @@
 import {
   Controller, Post, Param, Body, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { NotificationSendService } from './notification-send.service';
 import { OptOutDto, WebhookPayloadDto } from './dto/notifications.dto';
 
+@ApiTags('Notifications (Public)')
 @Controller()
 export class NotificationsPublicController {
   constructor(private readonly sendService: NotificationSendService) {}

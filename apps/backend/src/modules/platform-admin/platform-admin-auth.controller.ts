@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Query, Body } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators';
 import { PlatformAdminService } from './platform-admin.service';
 import { ListVersionLogEntriesQueryDto, ValidateAddressDto } from './dto/platform-admin.dto';
 
+@ApiTags('Platform Admin')
 @Controller('auth')
 export class PlatformAdminAuthController {
   constructor(private service: PlatformAdminService) {}

@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PurchaseOrderService } from './purchase-order.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   ReceivePurchaseOrderDto,
 } from './dto/stock-engine.dto';
 
+@ApiTags('Inventory — Purchase Orders')
 @Controller('business/purchase-orders')
 @UseGuards(RolesGuard)
 export class PurchaseOrderController {

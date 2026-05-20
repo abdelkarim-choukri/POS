@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ChainService } from './chain.service';
 import { LinkParentDto } from './dto/chain.dto';
 
+@ApiTags('Chain (Super Admin)')
 @Controller('super')
 @UseGuards(RolesGuard)
 export class ChainSuperController {

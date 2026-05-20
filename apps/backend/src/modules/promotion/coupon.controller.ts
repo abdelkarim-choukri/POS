@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CouponService } from './coupon.service';
 import { CouponExtService } from './coupon-ext.service';
 import { CurrentUser, Roles } from '../../common/decorators';
@@ -12,6 +13,7 @@ import {
   CouponReportQueryDto, DiscountWriteOffReportQueryDto,
 } from './dto/coupon.dto';
 
+@ApiTags('Promotions — Coupons')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class CouponController {

@@ -2,11 +2,13 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PromotionService } from './promotion.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 import { CreatePromotionDto, UpdatePromotionDto, ListPromotionsQueryDto, PromotionReportQueryDto } from './dto/promotion.dto';
 
+@ApiTags('Promotions')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class PromotionController {

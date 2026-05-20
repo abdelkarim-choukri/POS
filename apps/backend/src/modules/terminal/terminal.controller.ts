@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TerminalService } from './terminal.service';
 import { CurrentUser, Public } from '../../common/decorators';
 import { CreateTransactionDto, VoidTransactionDto, QuickAddCustomerDto, EvaluateCartDto } from './dto';
 import { userHasPermission } from '../../common/utils/permissions';
 
+@ApiTags('Terminal')
 @Controller('terminal')
 export class TerminalController {
   constructor(private service: TerminalService) {}

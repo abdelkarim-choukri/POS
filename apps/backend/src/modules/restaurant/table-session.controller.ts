@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TableSessionService } from './table-session.service';
 import { CheckoutService } from './checkout.service';
 import { CurrentUser } from '../../common/decorators';
@@ -11,6 +12,7 @@ import {
   ModifyItemDto, TransferItemsDto, CancelSessionDto, SplitBillDto,
 } from './dto/table-session.dto';
 
+@ApiTags('Restaurant — Table Sessions')
 @Controller('terminal')
 @UseGuards(RolesGuard)
 export class TableSessionController {

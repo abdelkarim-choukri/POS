@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Param, Body, Query, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { VendorPaymentService } from './vendor-payment.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -10,6 +11,7 @@ import {
   VoidVendorPaymentDto,
 } from './dto/stock-engine.dto';
 
+@ApiTags('Inventory — Vendor Payments')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class VendorPaymentController {

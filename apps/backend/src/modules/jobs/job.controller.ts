@@ -1,8 +1,10 @@
 import { Controller, Get, Param, NotFoundException, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { JobService } from './job.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 
+@ApiTags('Jobs')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class JobController {

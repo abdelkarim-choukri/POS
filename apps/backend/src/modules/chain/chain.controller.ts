@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Put, Param, Body, Query, Request, UseGuards, HttpCode,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ChainService } from './chain.service';
@@ -10,6 +11,7 @@ import {
   ChainDashboardQueryDto, ChainTransactionsQueryDto, FulfillChildPoDto,
 } from './dto/chain.dto';
 
+@ApiTags('Chain')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class ChainController {

@@ -1,11 +1,13 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { PlatformAdminService } from './platform-admin.service';
 import { LinkCourierDto, UpdateSettlementCutoffDto } from './dto/platform-admin.dto';
 
+@ApiTags('Platform Admin')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class PlatformAdminBusinessController {

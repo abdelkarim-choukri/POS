@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, UseGuards,
   HttpCode, HttpStatus, ForbiddenException, NotFoundException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CustomerService } from './customer.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -14,6 +15,7 @@ import {
   PointsHistoryQueryDto, PointsAdjustmentDto,
 } from './dto/customer.dto';
 
+@ApiTags('Customers')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class CustomerController {

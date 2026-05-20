@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Body, Request, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ChainService } from './chain.service';
 import { SwitchBusinessDto } from './dto/chain.dto';
 
+@ApiTags('Chain')
 @Controller('auth')
 @UseGuards(RolesGuard)
 export class ChainAuthController {

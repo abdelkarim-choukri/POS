@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Param, Body, Query, UseGuards, ForbiddenException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { StockAdjustmentService } from './stock-adjustment.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   ListAdjustmentsQueryDto,
 } from './dto/stock-adjustment-transfer.dto';
 
+@ApiTags('Inventory — Adjustments')
 @Controller('business/stock-adjustments')
 @UseGuards(RolesGuard)
 export class StockAdjustmentController {

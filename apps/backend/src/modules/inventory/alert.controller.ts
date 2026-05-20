@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Param, Body, Query, UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AlertService } from './alert.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   ResolveDiscrepancyAlertDto,
 } from './dto/stock-engine.dto';
 
+@ApiTags('Inventory — Alerts')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class AlertController {

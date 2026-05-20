@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Put, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CommunicationsService } from './communications.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -10,6 +11,7 @@ import {
   UpsertNotificationChannelDto, TestChannelDto,
 } from './dto/communications.dto';
 
+@ApiTags('Communications')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class CommunicationsController {

@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards,
   HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { StockTemplateService } from './stock-template.service';
 import { CurrentUser } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   GeneratePurchaseOrderDto,
 } from './dto/stock-engine.dto';
 
+@ApiTags('Inventory — Templates')
 @Controller('business/stock-templates')
 @UseGuards(RolesGuard)
 export class StockTemplateController {

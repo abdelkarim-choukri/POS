@@ -255,10 +255,10 @@ A graphify knowledge graph MAY exist at `graphify-out/GRAPH_REPORT.md`.
 
 ## Implementation status
 
-**Current state: 596 tests passing, 43 suites, zero regressions.**
+**Current state: 628 tests passing, 44 suites, zero regressions.**
 
-Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D, 13, 14.
-Next: 15 (ADM — Platform Admin).
+Completed phases: 0, 5, 6, 7, 8, 9, 10, Reports, 11A, 12A, 12B, 12C, 12D, 13, 14, 15, cross-cutting pass.
+Next: remaining cross-cutting items (real-time WS events for non-inventory modules, i18n error key audit on any missed files).
 
 Key architectural facts for future phases:
 - `StockConsumptionService` is injected into `TerminalService` (FIFO, try-catch wrapped)
@@ -280,6 +280,14 @@ Key architectural facts for future phases:
 - `RecommendationModule` at `src/modules/recommendation/`: `RecommendationController` (6 business routes) + `RecommendationTerminalController` (1 terminal route) + `RecommendationService` (7 methods: listTemplates, createTemplate, updateTemplate, deleteTemplate, setTemplateItems, resolveTemplate, getFeaturedItems)
 - Template types: `manual`/`seasonal` return configured items; `top_seller` runs 7-day sales COUNT SQL; `high_margin` runs margin ORDER BY SQL; `time_of_day` checks time window + DOW then returns configured items; `customer_grade_targeted` checks customer grade then returns configured items
 - `whole_price_1`–`4` NUMERIC(12,2) NULL added to `products` (REC-MOD-001); tier selected via `recommendation_templates.whole_price_tier`; tier applied in `resolveManualItems` private helper
+- `PlatformAdminModule` at `src/modules/platform-admin/`: `PlatformAdminSuperController` (14 routes super), `PlatformAdminBusinessController` (5 routes business), `PlatformAdminAuthController` (5 routes auth/public), `PlatformAdminService` (23 methods)
+- `PlatformAdminService.resolveEffectiveFeatures()` merges business base features with per-business `BusinessCustomAuthority` overrides; results cached in-process Map with 5-min TTL; cache invalidated on `setBusinessCustomAuthority()`
+- `CapitalDetailGenerator` in `ReportsModule` handles `capital-detail` report: 4 parallel SQL queries (cash openings, transactions, refunds, payouts), running balance by day
+- `AccountingGenerator.dailyClose()` now accepts optional `cutoffTime?: string` param (HH:MM); `ReportsService` passes `business.daily_settlement_cutoff_time ?? '02:00'` (XCC-018)
+- `Business` entity has `trade_category_id` (UUID nullable) and `daily_settlement_cutoff_time` (TIME default '02:00') columns added in migration 1714015000000
+- Morocco address hierarchy in `morocco_regions` table: 3 levels (region/prefecture/commune); `id` and `parent_id` are `VARCHAR(50)` (not UUID) to support string codes like 'mr-r-01'
+- Cross-cutting pass (done): all `console.log([AUDIT])` stubs replaced with `AuditLog` DB writes (chain, vendor-payment, table-session); `inventory:expiration_alert` + `inventory:discrepancy_alert` WebSocket events now emitted from BullMQ processors to `dashboard:${businessId}`; all 90+ error throws standardized to `{ error: 'MODULE_KEY' }` pattern across every module
+- Error key prefixes by module: `CUST_*` (customer), `PROM_*/CPN_*/PEX_*` (promotion/coupon), `INV_*` (inventory), `RST_*` (restaurant), `COM_*` (communications), `CHN_*` (chain), `AUTH_*` (auth), `BIZ_*` (business), `TERM_*` (terminal), `KDS_*` (kds), `REC_*` (recommendation), `SA_*` (super-admin), `JOB_*` (jobs), `ADM_*` (platform-admin — already done in Phase 15)
 
 Full phase-by-phase build log: @docs/IMPLEMENTATION_LOG.md
-Pending phases: @docs/spec/POS_Implementation_Plan.md
+Pending: no planned phases remain — codebase ready for production hardening and frontend integration.

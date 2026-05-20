@@ -1,7 +1,9 @@
 import { Controller, Get, Patch, Param, Body, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { KdsService } from './kds.service';
 import { Public } from '../../common/decorators';
 
+@ApiTags('KDS (Legacy)')
 @Controller('kds')
 export class KdsController {
   constructor(private kdsService: KdsService) {}

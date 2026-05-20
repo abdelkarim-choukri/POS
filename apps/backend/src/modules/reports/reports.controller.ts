@@ -1,10 +1,12 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportQueryDto } from './dto/report-query.dto';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 import { ReportLanguage } from '../../common/i18n/report-labels';
 
+@ApiTags('Reports')
 @Controller('business/reports')
 @Roles('owner', 'manager')
 @UseGuards(RolesGuard)

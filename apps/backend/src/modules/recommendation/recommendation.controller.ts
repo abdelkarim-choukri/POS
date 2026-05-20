@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Put, Delete,
   Param, Body, Query, Request, UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RecommendationService } from './recommendation.service';
@@ -9,6 +10,7 @@ import {
   CreateTemplateDto, UpdateTemplateDto, SetTemplateItemsDto, TemplateQueryDto,
 } from './dto/recommendation.dto';
 
+@ApiTags('Recommendations')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class RecommendationController {

@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Delete, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { StockTransferService } from './stock-transfer.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -9,6 +10,7 @@ import {
   ListTransfersQueryDto,
 } from './dto/stock-adjustment-transfer.dto';
 
+@ApiTags('Inventory — Transfers')
 @Controller('business/stock-transfers')
 @UseGuards(RolesGuard)
 @Roles('owner', 'manager')

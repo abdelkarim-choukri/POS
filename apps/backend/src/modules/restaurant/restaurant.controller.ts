@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RestaurantService } from './restaurant.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   CreateTableDto, UpdateTableDto, ListTablesQueryDto,
 } from './dto/restaurant.dto';
 
+@ApiTags('Restaurant')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class RestaurantController {

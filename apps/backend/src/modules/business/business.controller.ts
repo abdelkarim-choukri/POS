@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { BusinessService } from './business.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -12,6 +13,7 @@ import {
   ReportFilterDto, RefundDto, TvaDeclarationQueryDto,
 } from './dto';
 
+@ApiTags('Business')
 @Controller('business')
 @Roles('owner', 'manager')
 @UseGuards(RolesGuard)

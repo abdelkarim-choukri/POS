@@ -1,11 +1,13 @@
 import {
   Controller, Get, Post, Param, Query, Body, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { KdsService } from './kds.service';
 import { CurrentUser } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
 import { GetKdsItemsDto, UpdateKdsItemStatusDto } from './dto';
 
+@ApiTags('KDS (Terminal)')
 @Controller('terminal/kds')
 @UseGuards(RolesGuard)
 export class KdsItemsController {

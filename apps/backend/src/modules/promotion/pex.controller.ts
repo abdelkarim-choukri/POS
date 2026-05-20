@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PointsExchangeService } from './pex.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -11,6 +12,7 @@ import {
   CheckPointValueQueryDto, RedeemPointsDto, PexReportQueryDto,
 } from './dto/pex.dto';
 
+@ApiTags('Promotions — Points Exchange')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class PointsExchangeController {

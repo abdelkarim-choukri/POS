@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { SuperAdminService } from './super-admin.service';
 import { Roles, CurrentUser } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -13,6 +14,7 @@ import {
   CreatePlatformAnnouncementDto, UpdatePlatformAnnouncementDto, ListPlatformAnnouncementsQueryDto,
 } from '../communications/dto/communications.dto';
 
+@ApiTags('Super Admin')
 @Controller('super')
 @Roles('super_admin')
 @UseGuards(RolesGuard)

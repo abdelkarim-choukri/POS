@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { NotificationSendService } from './notification-send.service';
@@ -10,6 +11,7 @@ import {
   SendSingleDto, SendToSegmentDto, SendHistoryQueryDto,
 } from './dto/notifications.dto';
 
+@ApiTags('Notifications')
 @Controller('business')
 @UseGuards(RolesGuard)
 export class NotificationsController {

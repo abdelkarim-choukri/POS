@@ -1,8 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators';
 import { RecommendationService } from './recommendation.service';
 import { ResolveTemplateQueryDto } from './dto/recommendation.dto';
 
+@ApiTags('Recommendations (Terminal)')
 @Controller('terminal')
 export class RecommendationTerminalController {
   constructor(private recommendationService: RecommendationService) {}

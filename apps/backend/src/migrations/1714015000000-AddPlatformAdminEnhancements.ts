@@ -106,8 +106,8 @@ export class AddPlatformAdminEnhancements1714015000000 implements MigrationInter
     // ── morocco_regions (self-referencing tree: region > prefecture > commune) ──
     await qr.query(`
       CREATE TABLE "morocco_regions" (
-        "id"         UUID NOT NULL DEFAULT gen_random_uuid(),
-        "parent_id"  UUID NULL,
+        "id"         VARCHAR(50) NOT NULL,
+        "parent_id"  VARCHAR(50) NULL,
         "name"       VARCHAR(200) NOT NULL,
         "code"       VARCHAR(50)  NOT NULL,
         "level"      VARCHAR(20)  NOT NULL,

@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { StockBatchService } from './stock-batch.service';
 import { CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards';
@@ -12,6 +13,7 @@ import {
   TransferBatchDto,
 } from './dto/stock-engine.dto';
 
+@ApiTags('Inventory — Stock Batches')
 @Controller('business/stock-batches')
 @UseGuards(RolesGuard)
 export class StockBatchController {
