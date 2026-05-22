@@ -10,6 +10,7 @@ import {
   CreateBusinessAnnouncementDto, UpdateBusinessAnnouncementDto,
   UpsertNotificationChannelDto, TestChannelDto,
 } from './dto/communications.dto';
+import { encrypt, decrypt } from '../../common/utils/crypto';
 
 @Injectable()
 export class CommunicationsService {
@@ -142,12 +143,24 @@ export class CommunicationsService {
 
   async getChannels(businessId: string) {
     const channels = await this.channelRepo.find({ where: { business_id: businessId } });
-    return channels.map((ch) => ({
-      ...ch,
-      provider_config_json: ch.provider_config_json
-        ? Object.fromEntries(Object.keys(ch.provider_config_json).map((k) => [k, '***']))
-        : null,
-    }));
+    return channels.map((ch) => {
+      let config = ch.provider_config_json as Record<string, unknown> | null;
+      // decrypt if stored as { _enc: "iv:tag:ciphertext" }
+      if (config && typeof config === 'object' && '_enc' in config) {
+        try {
+          config = JSON.parse(decrypt(config._enc as string));
+        } catch (err) {
+          console.error('[CommunicationsService] Failed to decrypt channel config:', err);
+          config = {};
+        }
+      }
+      return {
+        ...ch,
+        provider_config_json: config
+          ? Object.fromEntries(Object.keys(config).map((k) => [k, '***']))
+          : null,
+      };
+    });
   }
 
   // ── COM-021: Upsert channel config ────────────────────────────────────────
@@ -158,7 +171,11 @@ export class CommunicationsService {
       channel: dto.channel,
     };
     if (dto.provider !== undefined) channelData.provider = dto.provider;
-    if (dto.provider_config_json !== undefined) channelData.provider_config_json = dto.provider_config_json;
+    if (dto.provider_config_json !== undefined) {
+      channelData.provider_config_json = dto.provider_config_json
+        ? { _enc: encrypt(JSON.stringify(dto.provider_config_json)) }
+        : null;
+    }
     if (dto.default_sender_id !== undefined) channelData.default_sender_id = dto.default_sender_id;
     if (dto.default_sender_name !== undefined) channelData.default_sender_name = dto.default_sender_name;
     if (dto.is_active !== undefined) channelData.is_active = dto.is_active;

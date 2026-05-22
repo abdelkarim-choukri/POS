@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Public } from '../../common/decorators';
+import { Public, Roles } from '../../common/decorators';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { PlatformAdminService } from './platform-admin.service';
 import { ListVersionLogEntriesQueryDto, ValidateAddressDto } from './dto/platform-admin.dto';
 
 @ApiTags('Platform Admin')
 @Controller('auth')
+@UseGuards(RolesGuard)
 export class PlatformAdminAuthController {
   constructor(private service: PlatformAdminService) {}
 
@@ -19,11 +21,13 @@ export class PlatformAdminAuthController {
 
   // ── Version log (ADM-040–041) ─────────────────────────────────────────────
 
+  @Roles('owner', 'manager', 'super_admin')
   @Get('version-log/menus')
   listVersionLogMenus() {
     return this.service.listVersionLogMenus();
   }
 
+  @Roles('owner', 'manager', 'super_admin')
   @Get('version-log/entries')
   listVersionLogEntries(@Query() query: ListVersionLogEntriesQueryDto) {
     return this.service.listVersionLogEntries(query);

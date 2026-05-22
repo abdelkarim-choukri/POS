@@ -1,7 +1,7 @@
 // apps/backend/src/modules/terminal/dto/transaction.dto.ts
 import {
   IsString, IsOptional, IsNumber, IsUUID,
-  IsEnum, IsArray, ValidateNested, IsInt,
+  IsEnum, IsArray, ValidateNested, IsInt, MaxLength,
 } from 'class-validator';
 
 import { Type, Transform } from 'class-transformer';
@@ -116,9 +116,11 @@ export class QuickAddCustomerDto {
 
 export class VoidTransactionDto {
   @IsString()
+  @MaxLength(500)
   reason: string;
 
   @IsOptional()
+  @MaxLength(10)
   @IsString()
   manager_pin?: string;
 }

@@ -14,7 +14,11 @@ import { Terminal } from '../../common/entities/terminal.entity';
     TypeOrmModule.forFeature([User, SuperAdmin, Terminal]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+      secret: (() => {
+        const s = process.env.JWT_SECRET;
+        if (!s) throw new Error('JWT_SECRET environment variable is required');
+        return s;
+      })(),
       signOptions: { expiresIn: '1h' },
     }),
   ],

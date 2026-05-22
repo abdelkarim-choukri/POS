@@ -68,18 +68,18 @@ export class BusinessController {
   }
 
   @Get('products/:id/variants')
-  listVariants(@Param('id') productId: string) {
-    return this.service.listVariants(productId);
+  listVariants(@CurrentUser('business_id') businessId: string, @Param('id') productId: string) {
+    return this.service.listVariants(businessId, productId);
   }
 
   @Post('products/:id/variants')
-  createVariant(@Param('id') productId: string, @Body() dto: CreateVariantDto) {
-    return this.service.createVariant(productId, dto);
+  createVariant(@CurrentUser('business_id') businessId: string, @Param('id') productId: string, @Body() dto: CreateVariantDto) {
+    return this.service.createVariant(businessId, productId, dto);
   }
 
   @Put('variants/:id')
-  updateVariant(@Param('id') id: string, @Body() dto: UpdateVariantDto) {
-    return this.service.updateVariant(id, dto);
+  updateVariant(@CurrentUser('business_id') businessId: string, @Param('id') id: string, @Body() dto: UpdateVariantDto) {
+    return this.service.updateVariant(businessId, id, dto);
   }
 
   // ===== MODIFIERS =====
@@ -99,13 +99,13 @@ export class BusinessController {
   }
 
   @Post('modifier-groups/:id/modifiers')
-  addModifier(@Param('id') groupId: string, @Body() dto: CreateModifierDto) {
-    return this.service.addModifier(groupId, dto);
+  addModifier(@CurrentUser('business_id') businessId: string, @Param('id') groupId: string, @Body() dto: CreateModifierDto) {
+    return this.service.addModifier(businessId, groupId, dto);
   }
 
   @Post('products/:id/modifier-groups')
-  linkModifierGroup(@Param('id') productId: string, @Body() dto: LinkModifierGroupDto) {
-    return this.service.linkModifierGroupToProduct(productId, dto);
+  linkModifierGroup(@CurrentUser('business_id') businessId: string, @Param('id') productId: string, @Body() dto: LinkModifierGroupDto) {
+    return this.service.linkModifierGroupToProduct(businessId, productId, dto);
   }
 
   // ===== EMPLOYEES =====
@@ -130,8 +130,8 @@ export class BusinessController {
   }
 
   @Get('employees/:id/clock-history')
-  getClockHistory(@Param('id') employeeId: string) {
-    return this.service.getClockHistory(employeeId);
+  getClockHistory(@CurrentUser('business_id') businessId: string, @Param('id') employeeId: string) {
+    return this.service.getClockHistory(businessId, employeeId);
   }
 
   // ===== LOCATIONS =====

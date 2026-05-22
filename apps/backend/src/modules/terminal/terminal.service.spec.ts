@@ -869,3 +869,37 @@ describe('TerminalService – createTransaction with table_session_id', () => {
     expect(paidEmit[2]).toMatchObject({ session_id: SESSION_ID, table_id: TABLE_ID });
   });
 });
+
+// ── voidTransaction (multi-tenant security) ───────────────────────────────────
+
+describe('TerminalService – voidTransaction', () => {
+  let service: TerminalService;
+  let transactionRepo: ReturnType<typeof makeMockRepo>;
+
+  beforeEach(async () => {
+    transactionRepo = makeMockRepo({
+      findOne: jest.fn().mockResolvedValue({
+        id: 'txn-1',
+        business_id: 'biz-1',
+        status: 'completed',
+      }),
+    });
+
+    const setup = makeTestModule({ transactionRepo });
+    const compiled = await setup.module.compile();
+    service = compiled.get(TerminalService);
+  });
+
+  it('voidTransaction: voids successfully when business_id matches', async () => {
+    await expect(
+      service.voidTransaction('biz-1', 'txn-1', 'user-1', { reason: 'test' } as any, true),
+    ).resolves.toBeDefined();
+  });
+
+  it('voidTransaction: cross-tenant returns 404', async () => {
+    transactionRepo.findOne.mockResolvedValue(null); // not found for wrong business
+    await expect(
+      service.voidTransaction('other-biz', 'txn-1', 'user-1', {} as any, true),
+    ).rejects.toThrow(NotFoundException);
+  });
+});

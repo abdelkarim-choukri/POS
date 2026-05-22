@@ -15,11 +15,13 @@ export class PlatformAdminBusinessController {
 
   // ── Couriers (ADM-014–016) ────────────────────────────────────────────────
 
+  @Roles('owner', 'manager')
   @Get('couriers')
   listBusinessCouriers(@CurrentUser('business_id') businessId: string) {
     return this.service.listBusinessCouriers(businessId);
   }
 
+  @Roles('owner', 'manager')
   @Post('couriers/link')
   linkCourier(
     @CurrentUser('business_id') businessId: string,
@@ -28,6 +30,7 @@ export class PlatformAdminBusinessController {
     return this.service.linkCourierToBusiness(businessId, dto);
   }
 
+  @Roles('owner', 'manager')
   @Delete('couriers/:courier_id')
   @HttpCode(HttpStatus.OK)
   unlinkCourier(

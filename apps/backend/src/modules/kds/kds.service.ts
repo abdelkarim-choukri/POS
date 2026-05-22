@@ -45,9 +45,9 @@ export class KdsService {
     });
   }
 
-  async updateOrderStatus(orderId: string, newStatus: string) {
+  async updateOrderStatus(businessId: string, orderId: string, newStatus: string) {
     const order = await this.txnRepo.findOne({
-      where: { id: orderId },
+      where: { id: orderId, business_id: businessId },
       relations: ['items', 'user'],
     });
     if (!order) throw new NotFoundException({ error: 'KDS_ORDER_NOT_FOUND', message: 'Order not found' });

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { getDatabaseConfig } from './config/database.config';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -31,6 +32,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     TypeOrmModule.forRootAsync({
       useFactory: getDatabaseConfig,
     }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
     CommonModule,
     JobModule,
     AuthModule,

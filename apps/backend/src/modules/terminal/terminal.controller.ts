@@ -22,7 +22,7 @@ export class TerminalController {
   }
 
   @Post('heartbeat')
-  heartbeat(@Body('terminal_id') terminalId: string) {
+  heartbeat(@CurrentUser('terminal_id') terminalId: string) {
     return this.service.heartbeat(terminalId);
   }
 
@@ -95,7 +95,7 @@ export class TerminalController {
 
   @Post('transactions/:id/void')
   voidTransaction(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: VoidTransactionDto) {
-    return this.service.voidTransaction(id, user.id, dto, userHasPermission(user, 'can_void'));
+    return this.service.voidTransaction(user.business_id, id, user.id, dto, userHasPermission(user, 'can_void'));
   }
 
   @Get('transactions/today')
@@ -104,12 +104,12 @@ export class TerminalController {
   }
 
   @Post('sync')
-  pushSync(@Body('terminal_id') terminalId: string, @Body('operations') operations: any[]) {
+  pushSync(@CurrentUser('terminal_id') terminalId: string, @Body('operations') operations: any[]) {
     return this.service.pushSync(terminalId, operations);
   }
 
   @Get('sync/status')
-  getSyncStatus(@Query('terminal_id') terminalId: string) {
+  getSyncStatus(@CurrentUser('terminal_id') terminalId: string) {
     return this.service.getSyncStatus(terminalId);
   }
 }

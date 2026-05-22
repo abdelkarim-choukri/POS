@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsUUID, IsBoolean, IsInt, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsUUID, IsBoolean, IsInt, MaxLength, Min } from 'class-validator';
 
 export class CreateProductDto {
   @IsUUID()
@@ -13,10 +13,12 @@ export class CreateProductDto {
   description?: string;
 
   @IsNumber()
+  @Min(0)
   price: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   cost_price?: number;
 
   @IsOptional()
@@ -49,10 +51,12 @@ export class UpdateProductDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   cost_price?: number;
 
   @IsOptional()
@@ -75,6 +79,7 @@ export class CreateVariantDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_override?: number;
 
   @IsOptional()
@@ -89,6 +94,7 @@ export class UpdateVariantDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price_override?: number;
 
   @IsOptional()

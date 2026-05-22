@@ -17,6 +17,7 @@ export class ReportQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1000)
   page?: number;
 
   @IsOptional()

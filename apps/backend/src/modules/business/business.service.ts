@@ -112,18 +112,24 @@ export class BusinessService {
   }
 
   // Variants
-  async listVariants(productId: string) {
+  async listVariants(businessId: string, productId: string) {
+    const product = await this.productRepo.findOne({ where: { id: productId, business_id: businessId } });
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND' });
     return this.variantRepo.find({ where: { product_id: productId }, order: { name: 'ASC' } });
   }
 
-  async createVariant(productId: string, dto: CreateVariantDto) {
+  async createVariant(businessId: string, productId: string, dto: CreateVariantDto) {
+    const product = await this.productRepo.findOne({ where: { id: productId, business_id: businessId } });
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND' });
     const variant = this.variantRepo.create({ ...dto, product_id: productId });
     return this.variantRepo.save(variant);
   }
 
-  async updateVariant(id: string, dto: UpdateVariantDto) {
+  async updateVariant(businessId: string, id: string, dto: UpdateVariantDto) {
     const variant = await this.variantRepo.findOne({ where: { id } });
-    if (!variant) throw new NotFoundException('Variant not found');
+    if (!variant) throw new NotFoundException({ error: 'BIZ_VARIANT_NOT_FOUND' });
+    const product = await this.productRepo.findOne({ where: { id: variant.product_id, business_id: businessId } });
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND' });
     Object.assign(variant, dto);
     return this.variantRepo.save(variant);
   }
@@ -150,12 +156,18 @@ export class BusinessService {
     return this.modGroupRepo.save(group);
   }
 
-  async addModifier(groupId: string, dto: CreateModifierDto) {
+  async addModifier(businessId: string, groupId: string, dto: CreateModifierDto) {
+    const group = await this.modGroupRepo.findOne({ where: { id: groupId, business_id: businessId } });
+    if (!group) throw new NotFoundException({ error: 'BIZ_MODIFIER_GROUP_NOT_FOUND' });
     const mod = this.modifierRepo.create({ ...dto, modifier_group_id: groupId });
     return this.modifierRepo.save(mod);
   }
 
-  async linkModifierGroupToProduct(productId: string, dto: LinkModifierGroupDto) {
+  async linkModifierGroupToProduct(businessId: string, productId: string, dto: LinkModifierGroupDto) {
+    const product = await this.productRepo.findOne({ where: { id: productId, business_id: businessId } });
+    if (!product) throw new NotFoundException({ error: 'BIZ_PRODUCT_NOT_FOUND' });
+    const group = await this.modGroupRepo.findOne({ where: { id: dto.modifier_group_id, business_id: businessId } });
+    if (!group) throw new NotFoundException({ error: 'BIZ_MODIFIER_GROUP_NOT_FOUND' });
     const link = this.pmgRepo.create({ product_id: productId, modifier_group_id: dto.modifier_group_id });
     return this.pmgRepo.save(link);
   }
@@ -172,11 +184,13 @@ export class BusinessService {
 
   async createEmployee(businessId: string, dto: CreateEmployeeDto) {
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const pinHash = dto.pin ? await bcrypt.hash(dto.pin, 10) : null;
     const user = this.userRepo.create({
       business_id: businessId,
       email: dto.email,
       password_hash: passwordHash,
-      pin: dto.pin,
+      pin_hash: pinHash,
+      needs_pin_reset: false,
       first_name: dto.first_name,
       last_name: dto.last_name,
       role: dto.role,
@@ -187,24 +201,28 @@ export class BusinessService {
       },
       dashboard_access: dto.dashboard_access || false,
     });
-    const saved = await this.userRepo.save(user) as typeof user;
-    const { password_hash, ...result } = saved;
+    const saved = await this.userRepo.save(user) as any;
+    const { password_hash: _ph, pin_hash: _pinh, pin: _pin, ...result } = saved;
     return result;
   }
 
   async updateEmployee(businessId: string, id: string, dto: UpdateEmployeeDto) {
     const user = await this.userRepo.findOne({ where: { id, business_id: businessId } });
     if (!user) throw new NotFoundException('Employee not found');
-    const { can_void, can_refund, ...rest } = dto;
+    const { can_void, can_refund, pin, ...rest } = dto;
     Object.assign(user, rest);
+    if (pin !== undefined) {
+      (user as any).pin_hash = pin ? await bcrypt.hash(pin, 10) : null;
+      (user as any).needs_pin_reset = false;
+    }
     if (can_void !== undefined || can_refund !== undefined) {
       const perms = { ...(user.permissions || {}) };
       if (can_void !== undefined) perms['can_void'] = can_void;
       if (can_refund !== undefined) perms['can_refund'] = can_refund;
       user.permissions = perms;
     }
-    const saved = await this.userRepo.save(user) as typeof user;
-    const { password_hash, ...result } = saved;
+    const saved = await this.userRepo.save(user) as any;
+    const { password_hash: _ph, pin_hash: _pinh, pin: _p, ...result } = saved;
     return result;
   }
 
@@ -212,10 +230,14 @@ export class BusinessService {
     const user = await this.userRepo.findOne({ where: { id, business_id: businessId } });
     if (!user) throw new NotFoundException('Employee not found');
     user.is_active = isActive;
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user) as any;
+    const { password_hash: _ph, pin_hash: _pinh, pin: _p, ...result } = saved;
+    return result;
   }
 
-  async getClockHistory(employeeId: string) {
+  async getClockHistory(businessId: string, employeeId: string) {
+    const employee = await this.userRepo.findOne({ where: { id: employeeId, business_id: businessId } });
+    if (!employee) throw new NotFoundException({ error: 'BIZ_EMPLOYEE_NOT_FOUND' });
     return this.clockRepo.find({
       where: { user_id: employeeId },
       order: { clock_in: 'DESC' },

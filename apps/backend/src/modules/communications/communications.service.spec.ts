@@ -8,6 +8,9 @@ import { BusinessAnnouncement } from '../../common/entities/business-announcemen
 import { NotificationChannel } from '../../common/entities/notification-channel.entity';
 import { Business } from '../../common/entities/business.entity';
 
+// Set the encryption key before any imports that might trigger getKey()
+process.env.CREDENTIAL_ENCRYPTION_KEY = 'a'.repeat(64);
+
 const BIZ_ID = 'biz-com-1';
 const USER_ID = 'user-com-1';
 const BIZ_TYPE_ID = 'bt-uuid-1';
@@ -275,6 +278,51 @@ describe('CommunicationsService', () => {
         expect.objectContaining({ conflictPaths: ['business_id', 'channel'] }),
       );
       expect(result).toEqual(saved);
+    });
+
+    it('stores provider_config_json as { _enc: "..." } envelope when credentials provided', async () => {
+      const saved = { business_id: BIZ_ID, channel: 'sms', provider: 'infobip', is_active: true };
+      const { service, channelRepo } = await buildService({
+        channelRepo: {
+          upsert: jest.fn().mockResolvedValue({}),
+          findOne: jest.fn().mockResolvedValue(saved),
+        },
+      });
+
+      await service.upsertChannel(BIZ_ID, {
+        channel: 'sms',
+        provider: 'infobip',
+        provider_config_json: { api_key: 'secret' },
+        is_active: true,
+      });
+
+      const upsertArg = channelRepo.upsert.mock.calls[0][0];
+      expect(upsertArg.provider_config_json).toMatchObject({ _enc: expect.any(String) });
+      // The _enc value must be a 3-part colon-separated AES-GCM envelope
+      expect(upsertArg.provider_config_json._enc.split(':').length).toBe(3);
+    });
+  });
+
+  describe('getChannels decryption [COM-020]', () => {
+    it('decrypts _enc wrapper and redacts keys before returning', async () => {
+      const { encrypt } = await import('../../common/utils/crypto');
+      const encValue = encrypt(JSON.stringify({ api_key: 'secret-key' }));
+      const encryptedChannel = {
+        business_id: BIZ_ID,
+        channel: 'sms',
+        provider: 'infobip',
+        provider_config_json: { _enc: encValue },
+        is_active: true,
+      };
+      const { service } = await buildService({
+        channelRepo: { find: jest.fn().mockResolvedValue([encryptedChannel]) },
+      });
+
+      const result = await service.getChannels(BIZ_ID);
+
+      expect(result).toHaveLength(1);
+      // The decrypted config keys must be redacted, not the _enc key
+      expect(result[0].provider_config_json).toEqual({ api_key: '***' });
     });
   });
 

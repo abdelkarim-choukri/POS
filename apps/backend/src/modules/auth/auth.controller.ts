@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Put, Body, Request } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Request, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, PinLoginDto, ChangePasswordDto, SuperAdminLoginDto } from './dto';
 import { Public } from '../../common/decorators';
@@ -7,6 +8,7 @@ import { CurrentUser } from '../../common/decorators';
 
 @ApiTags('Auth')
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private authService: AuthService) {}
 

@@ -28,6 +28,12 @@ export class User {
   @Column({ type: 'varchar', length: 10, nullable: true })
   pin: string;
 
+  @Column({ type: 'varchar', length: 72, nullable: true })
+  pin_hash: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  needs_pin_reset: boolean;
+
   @Column({ type: 'varchar', length: 100 })
   first_name: string;
 

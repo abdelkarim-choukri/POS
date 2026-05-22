@@ -2,6 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException, UnauthorizedException,
   BadRequestException, HttpException, HttpStatus, UnprocessableEntityException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { KdsService } from '../kds/kds.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -710,12 +711,13 @@ export class TerminalService {
   }
 
   async voidTransaction(
+    businessId: string,
     transactionId: string,
     userId: string,
     dto: VoidTransactionDto,
     userCanVoid: boolean,
   ) {
-    const txn = await this.transactionRepo.findOne({ where: { id: transactionId } });
+    const txn = await this.transactionRepo.findOne({ where: { id: transactionId, business_id: businessId } });
     if (!txn) throw new NotFoundException({ error: 'TERM_TRANSACTION_NOT_FOUND', message: 'Transaction not found' });
     if (txn.status !== TransactionStatus.COMPLETED) {
       throw new BadRequestException({ error: 'TERM_VOID_INVALID_STATUS', message: 'Can only void completed transactions' });
@@ -723,9 +725,18 @@ export class TerminalService {
 
     if (!userCanVoid) {
       if (!dto.manager_pin) throw new UnauthorizedException({ error: 'TERM_VOID_MANAGER_REQUIRED', message: 'Manager PIN required' });
-      const manager = await this.userRepo.findOne({
-        where: { pin: dto.manager_pin, business_id: txn.business_id, is_active: true },
+      // bcrypt hashes are salted — load candidates and compare each PIN hash
+      const candidates = await this.userRepo.find({
+        where: { business_id: businessId, is_active: true },
       });
+      let manager: User | null = null;
+      for (const candidate of candidates) {
+        if (!candidate.pin_hash) continue;
+        if (await bcrypt.compare(dto.manager_pin, candidate.pin_hash)) {
+          manager = candidate;
+          break;
+        }
+      }
       if (!manager || !userHasPermission(manager, 'can_void')) {
         throw new UnauthorizedException({ error: 'TERM_VOID_MANAGER_INVALID', message: 'Invalid manager PIN' });
       }

@@ -86,6 +86,7 @@ export class AuthService {
   // ── Terminal PIN login ────────────────────────────────────────────────────
   // FIX: payload now includes terminal_id + location_id
   // FIX: response.user now returns business_id (was missing → catalog 401)
+  // FIX: PIN comparison now uses bcrypt — no plaintext PIN stored or compared in SQL
   async pinLogin(pin: string, terminalCode: string) {
     const terminal = await this.terminalRepo.findOne({
       where    : { terminal_code: terminalCode, is_active: true },
@@ -95,9 +96,27 @@ export class AuthService {
 
     const businessId = terminal.location.business_id;
 
-    const user = await this.userRepo.findOne({
-      where: { pin, business_id: businessId, is_active: true },
+    // bcrypt hashes are salted — we cannot use a SQL WHERE clause for comparison.
+    // Load active employees for this business and compare each PIN hash.
+    const candidates = await this.userRepo.find({
+      where: { business_id: businessId, is_active: true },
     });
+
+    let user: User | null = null;
+    for (const candidate of candidates) {
+      if (!candidate.pin_hash) continue;
+      if (candidate.needs_pin_reset) {
+        if (await bcrypt.compare(pin, candidate.pin_hash)) {
+          throw new UnauthorizedException({ error: 'AUTH_PIN_RESET_REQUIRED', message: 'PIN reset required. Please contact your manager.' });
+        }
+        continue;
+      }
+      if (await bcrypt.compare(pin, candidate.pin_hash)) {
+        user = candidate;
+        break;
+      }
+    }
+
     if (!user) throw new UnauthorizedException({ error: 'AUTH_INVALID_PIN', message: 'Invalid PIN' });
 
     const payload: JwtPayload = {
@@ -105,9 +124,9 @@ export class AuthService {
       email      : user.email,
       type       : 'user',
       role       : user.role,
-      business_id: user.business_id,       // ← required by catalog endpoint
-      terminal_id: terminal.id,            // ← new: lets terminal endpoints skip a DB lookup
-      location_id: terminal.location_id,   // ← new: needed for transaction creation
+      business_id: user.business_id,
+      terminal_id: terminal.id,
+      location_id: terminal.location_id,
     };
 
     return {
@@ -117,7 +136,7 @@ export class AuthService {
         first_name : user.first_name,
         last_name  : user.last_name,
         role       : user.role,
-        business_id: user.business_id,     // ← was missing from original response
+        business_id: user.business_id,
         permissions: user.permissions,
       },
       terminal: {
@@ -163,13 +182,18 @@ export class AuthService {
   // ── Get profile ──────────────────────────────────────────────────────────
   async getProfile(userId: string, type: string) {
     if (type === 'super_admin') {
-      const admin = await this.superAdminRepo.findOne({ where: { id: userId } });
-      return { ...admin, password_hash: undefined, type: 'super_admin' };
+      const admin = await this.superAdminRepo.findOne({
+        where : { id: userId },
+        select: ['id', 'email', 'name', 'is_active', 'last_login_at'] as any,
+      });
+      return { ...admin, type: 'super_admin' };
     }
     const user = await this.userRepo.findOne({
-      where    : { id: userId },
+      where   : { id: userId },
       relations: ['business'],
+      select  : ['id', 'email', 'first_name', 'last_name', 'role', 'phone', 'is_active',
+                 'permissions', 'dashboard_access', 'language_preference', 'business_id'] as any,
     });
-    return { ...user, password_hash: undefined, pin: undefined, type: 'user' };
+    return { ...user, type: 'user' };
   }
 }
