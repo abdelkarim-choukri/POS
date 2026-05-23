@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, X, FolderOpen, Search } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface Category {
   id: string
@@ -22,11 +23,31 @@ const mockCategories: Category[] = [
 
 export default function CategoriesPage({ onNavigate }: { onNavigate?: (page: string, id?: string) => void }) {
   const [items, setItems] = useState(mockCategories)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Category | null>(null)
   const [form, setForm] = useState({ name: "", description: "", sort_order: 1 })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    apiFetch<{ data: any[] }>("/api/business/categories")
+      .then(res => {
+        const mapped: Category[] = res.data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          sort_order: c.sort_order ?? 0,
+          is_active: c.is_active ?? true,
+          product_count: c.product_count ?? 0,
+        }))
+        setItems(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load categories"))
+      .finally(() => setLoading(false))
+  }, [])
 
   const filtered = items.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
 
@@ -42,12 +63,25 @@ export default function CategoriesPage({ onNavigate }: { onNavigate?: (page: str
     setShowModal(true)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return
-    if (editing) {
-      setItems(prev => prev.map(c => c.id === editing.id ? { ...c, ...form } : c))
-    } else {
-      setItems(prev => [...prev, { id: `cat-${Date.now()}`, ...form, is_active: true, product_count: 0 }])
+    setError(null)
+    try {
+      if (editing) {
+        const updated = await apiFetch<any>(`/api/business/categories/${editing.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: form.name, description: form.description || undefined, sort_order: form.sort_order }),
+        })
+        setItems(prev => prev.map(c => c.id === editing.id ? { ...c, name: updated.name, description: updated.description, sort_order: updated.sort_order } : c))
+      } else {
+        const created = await apiFetch<any>("/api/business/categories", {
+          method: "POST",
+          body: JSON.stringify({ name: form.name, description: form.description || undefined, sort_order: form.sort_order }),
+        })
+        setItems(prev => [...prev, { id: created.id, name: created.name, description: created.description, sort_order: created.sort_order ?? form.sort_order, is_active: created.is_active ?? true, product_count: 0 }])
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save category")
     }
     setShowModal(false)
   }
@@ -55,13 +89,24 @@ export default function CategoriesPage({ onNavigate }: { onNavigate?: (page: str
   const toggle = (id: string) =>
     setItems(prev => prev.map(c => c.id === id ? { ...c, is_active: !c.is_active } : c))
 
-  const remove = (id: string) => {
-    setItems(prev => prev.filter(c => c.id !== id))
+  const remove = async (id: string) => {
+    setError(null)
+    try {
+      await apiFetch(`/api/business/categories/${id}`, { method: "DELETE" })
+      setItems(prev => prev.filter(c => c.id !== id))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete category")
+    }
     setConfirmDelete(null)
   }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -87,7 +132,10 @@ export default function CategoriesPage({ onNavigate }: { onNavigate?: (page: str
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-[#1F1F23]">
-            {filtered.map(cat => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 dark:text-gray-600">Loading...</td></tr>
+            )}
+            {!loading && filtered.map(cat => (
               <tr key={cat.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20] transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -126,7 +174,7 @@ export default function CategoriesPage({ onNavigate }: { onNavigate?: (page: str
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 dark:text-gray-600">No categories found</td></tr>
             )}
           </tbody>

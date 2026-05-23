@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Calendar,
@@ -1773,8 +1774,206 @@ function TransactionsTab({
 }
 
 // ==================== MAIN REPORTS PAGE ====================
+// ==================== UNIVERSAL API REPORTS TAB ====================
+interface UniversalReportResponse {
+  report_id: string
+  title: string
+  generated_at: string
+  date_range: { start: string; end: string }
+  kpis?: { key: string; label: string; value: number | string; format?: string }[]
+  tables?: { title: string; columns: { key: string; label: string }[]; rows: Record<string, unknown>[] }[]
+  meta?: Record<string, unknown>
+}
+
+const REPORT_OPTIONS = [
+  { value: "sales-summary", label: "Sales Summary" },
+  { value: "sales-by-hour", label: "Sales by Hour" },
+  { value: "sales-by-day", label: "Sales by Day" },
+  { value: "sales-by-month", label: "Sales by Month" },
+  { value: "sales-by-category", label: "Sales by Category" },
+  { value: "sales-by-product", label: "Sales by Product" },
+  { value: "payment-summary", label: "Payment Summary" },
+  { value: "cash-report", label: "Cash Report" },
+  { value: "customer-summary", label: "Customer Summary" },
+  { value: "top-customers", label: "Top Customers" },
+  { value: "employee-performance", label: "Employee Performance" },
+  { value: "voids-cancellations", label: "Voids & Cancellations" },
+  { value: "tva-declaration", label: "TVA Declaration" },
+]
+
+const DATE_RANGE_OPTIONS = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "last_7days", label: "Last 7 Days" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+]
+
+function ApiReportsTab() {
+  const [reportId, setReportId] = useState("sales-summary")
+  const [dateRange, setDateRange] = useState("today")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [report, setReport] = useState<UniversalReportResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchReport = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ date_range: dateRange })
+      if (dateRange === "custom" && startDate) params.set("start_date", startDate)
+      if (dateRange === "custom" && endDate) params.set("end_date", endDate)
+      const res = await apiFetch<UniversalReportResponse>(`/api/business/reports/${reportId}?${params}`)
+      setReport(res)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load report")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchReport() }, [reportId, dateRange])
+
+  const formatKpiValue = (kpi: { value: number | string; format?: string }) => {
+    if (typeof kpi.value === "number") {
+      if (kpi.format === "currency") return `${kpi.value.toLocaleString("fr-MA", { minimumFractionDigits: 2 })} MAD`
+      if (kpi.format === "percent") return `${kpi.value}%`
+      return kpi.value.toLocaleString()
+    }
+    return String(kpi.value)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Report</label>
+            <select
+              value={reportId}
+              onChange={e => setReportId(e.target.value)}
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {REPORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date Range</label>
+            <select
+              value={dateRange}
+              onChange={e => setDateRange(e.target.value)}
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {DATE_RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          {dateRange === "custom" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start</label>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+              </div>
+            </>
+          )}
+          <button
+            onClick={fetchReport}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Run Report
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && <div className="py-10 text-center text-gray-400">Loading...</div>}
+
+      {/* Report Output */}
+      {!loading && report && (
+        <div className="space-y-6">
+          {/* Report header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{report.title}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {report.date_range.start} — {report.date_range.end} &middot; Generated {new Date(report.generated_at).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {/* KPIs */}
+          {report.kpis && report.kpis.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {report.kpis.map(kpi => (
+                <div key={kpi.key} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">{kpi.label}</p>
+                  <p className="text-xl font-bold font-mono text-gray-900 dark:text-white">{formatKpiValue(kpi)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tables */}
+          {report.tables && report.tables.map((table, ti) => (
+            <div key={ti} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
+              {table.title && (
+                <div className="px-4 py-3 border-b border-gray-200 dark:border-[#1F1F23]">
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{table.title}</h3>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-[#0F0F12]/50">
+                    <tr>
+                      {table.columns.map(col => (
+                        <th key={col.key} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {table.rows.map((row, ri) => (
+                      <tr key={ri} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50">
+                        {table.columns.map(col => (
+                          <td key={col.key} className="px-4 py-3 text-gray-700 dark:text-gray-300 font-mono">
+                            {String(row[col.key] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {table.rows.length === 0 && (
+                      <tr><td colSpan={table.columns.length} className="px-4 py-8 text-center text-gray-400">No data for this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState("sales")
+  const [activeTab, setActiveTab] = useState("api-reports")
   const [isLoading, setIsLoading] = useState(false)
   const [startDate, setStartDate] = useState("2024-01-09")
   const [endDate, setEndDate] = useState("2024-01-15")
@@ -1785,6 +1984,7 @@ export default function ReportsPage() {
   const canRefund = true // This would come from user permissions
 
   const tabs = [
+    { id: "api-reports", label: "Live Reports" },
     { id: "sales", label: "Sales" },
     { id: "payments", label: "Payments" },
     { id: "accounting", label: "Accounting (TVA)" },
@@ -1834,6 +2034,8 @@ export default function ReportsPage() {
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case "api-reports":
+        return <ApiReportsTab />
       case "sales":
         return <SalesTab isLoading={isLoading} />
       case "payments":

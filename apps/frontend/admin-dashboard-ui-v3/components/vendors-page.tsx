@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -188,6 +189,9 @@ function SlidePanel({ isOpen, onClose, title, children }: { isOpen: boolean; onC
 }
 
 export default function VendorsPage() {
+  const [vendors, setVendors] = useState<Vendor[]>(mockVendors)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showAddModal, setShowAddModal] = useState(false)
@@ -200,8 +204,40 @@ export default function VendorsPage() {
   const [checkFormData, setCheckFormData] = useState({ check_number: "", bank_name: "", amount: "", issue_date: "", due_date: "" })
   const [paymentFormData, setPaymentFormData] = useState({ po_number: "", amount: "", payment_method: "cash" as const, payment_date: new Date().toISOString().split("T")[0], reference_number: "", notes: "" })
 
-  const filteredVendors = mockVendors.filter(v => {
-    const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || v.contact_name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch vendors from API with debounced search
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams()
+        if (searchQuery) params.set("search", searchQuery)
+        const res = await apiFetch<{ data: any[] }>(`/api/business/inventory/vendors?${params}`)
+        const mapped: Vendor[] = res.data.map((v: any) => ({
+          id: v.id,
+          name: v.name,
+          contact_name: v.contact_name ?? "",
+          email: v.email ?? "",
+          phone: v.phone ?? "",
+          address: v.address ?? "",
+          payment_terms: v.payment_terms_days ? `Net ${v.payment_terms_days}` : "COD",
+          status: v.is_active === false ? "inactive" : "active",
+          total_orders: 0,
+          total_spent: 0,
+          created_at: v.created_at ?? "",
+        }))
+        setVendors(mapped)
+      } catch (e: any) {
+        setError(e.message ?? "Failed to load vendors")
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  const filteredVendors = vendors.filter(v => {
+    const matchesSearch = searchQuery === "" || v.name.toLowerCase().includes(searchQuery.toLowerCase()) || v.contact_name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || v.status === statusFilter
     return matchesSearch && matchesStatus
   })
@@ -260,7 +296,7 @@ export default function VendorsPage() {
               <Building2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockVendors.length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{vendors.length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Total Vendors</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -269,7 +305,7 @@ export default function VendorsPage() {
               <Package className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockVendors.reduce((acc, v) => acc + v.total_orders, 0)}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{vendors.reduce((acc, v) => acc + v.total_orders, 0)}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Total Orders</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -278,7 +314,7 @@ export default function VendorsPage() {
               <DollarSign className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{(mockVendors.reduce((acc, v) => acc + v.total_spent, 0) / 1000).toFixed(0)}K MAD</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{(vendors.reduce((acc, v) => acc + v.total_spent, 0) / 1000).toFixed(0)}K MAD</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Total Spent</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -287,7 +323,7 @@ export default function VendorsPage() {
               <FileText className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockVendors.filter(v => v.status === "active").length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{vendors.filter(v => v.status === "active").length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Active Vendors</p>
         </div>
       </div>
@@ -317,9 +353,17 @@ export default function VendorsPage() {
         </div>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Vendors Table */}
       <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
-        <table className="w-full">
+        {loading && <div className="py-10 text-center text-gray-400">Loading...</div>}
+        {!loading && <table className="w-full">
           <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
             <tr>
               <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Vendor</th>
@@ -392,7 +436,7 @@ export default function VendorsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table>}
       </div>
 
       {/* Add Vendor Modal */}

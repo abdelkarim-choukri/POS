@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -73,15 +74,21 @@ interface CustomerTransaction {
 
 interface Customer {
   id: string
+  customer_code?: string
   first_name: string
   last_name: string
   email?: string
   phone?: string
   grade: "Bronze" | "Silver" | "Gold" | "Platinum"
+  grade_id?: string
+  grade_obj?: { name: string; color: string }
   points_balance: number
   total_spent: number
+  visit_count?: number
   labels: CustomerLabel[]
   last_visit: string
+  is_active?: boolean
+  created_at?: string
   notes?: string
   points_history: PointsHistory[]
   transactions: CustomerTransaction[]
@@ -438,6 +445,8 @@ function MultiSelectDropdown({
 // ============== CUSTOMERS PAGE ==============
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>(mockCustomers)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [gradeFilter, setGradeFilter] = useState<string>("all")
   const [labelFilter, setLabelFilter] = useState<string[]>([])
@@ -466,6 +475,48 @@ export default function CustomersPage() {
     notes: "",
     labels: [] as string[],
   })
+
+  // Fetch customers from API with debounced search
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ page: "1", limit: "50" })
+        if (searchQuery) params.set("search", searchQuery)
+        const res = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
+          `/api/business/customers?${params}`
+        )
+        const mapped: Customer[] = res.data.map((c: any) => ({
+          id: c.id,
+          customer_code: c.customer_code,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: c.email,
+          phone: c.phone,
+          grade: (c.grade?.name ?? "Bronze") as Customer["grade"],
+          grade_id: c.grade_id,
+          grade_obj: c.grade,
+          points_balance: c.points_balance ?? 0,
+          total_spent: c.total_spent ?? 0,
+          visit_count: c.visit_count ?? 0,
+          labels: [],
+          last_visit: c.created_at ? c.created_at.split("T")[0] : "",
+          is_active: c.is_active,
+          created_at: c.created_at,
+          notes: undefined,
+          points_history: [],
+          transactions: [],
+        }))
+        setCustomers(mapped)
+      } catch (e: any) {
+        setError(e.message ?? "Failed to load customers")
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   // Stats calculation
   const stats = {
@@ -532,35 +583,60 @@ export default function CustomersPage() {
     setShowAddModal(true)
   }
 
-  const handleSaveCustomer = () => {
+  const handleSaveCustomer = async () => {
     if (showEditModal && selectedCustomer) {
-      setCustomers(prev => prev.map(c => 
-        c.id === selectedCustomer.id 
-          ? { 
-              ...c, 
-              ...formData, 
-              labels: mockLabels.filter(l => formData.labels.includes(l.id)) 
-            } 
-          : c
-      ))
+      try {
+        const updated = await apiFetch<any>(`/api/business/customers/${selectedCustomer.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined,
+            notes: formData.notes || undefined,
+          }),
+        })
+        setCustomers(prev => prev.map(c =>
+          c.id === selectedCustomer.id
+            ? { ...c, first_name: updated.first_name, last_name: updated.last_name, email: updated.email, phone: updated.phone }
+            : c
+        ))
+      } catch (e: any) {
+        setError(e.message ?? "Failed to update customer")
+      }
       setShowEditModal(false)
     } else if (showAddModal) {
-      const newCustomer: Customer = {
-        id: String(customers.length + 1),
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        email: formData.email || undefined,
-        phone: formData.phone || undefined,
-        grade: "Bronze",
-        points_balance: 0,
-        total_spent: 0,
-        labels: mockLabels.filter(l => formData.labels.includes(l.id)),
-        last_visit: new Date().toISOString().split("T")[0],
-        notes: formData.notes || undefined,
-        points_history: [],
-        transactions: [],
+      try {
+        const created = await apiFetch<any>("/api/business/customers", {
+          method: "POST",
+          body: JSON.stringify({
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined,
+            notes: formData.notes || undefined,
+          }),
+        })
+        const newCustomer: Customer = {
+          id: created.id,
+          customer_code: created.customer_code,
+          first_name: created.first_name,
+          last_name: created.last_name,
+          email: created.email,
+          phone: created.phone,
+          grade: "Bronze",
+          points_balance: 0,
+          total_spent: 0,
+          labels: [],
+          last_visit: new Date().toISOString().split("T")[0],
+          notes: formData.notes || undefined,
+          points_history: [],
+          transactions: [],
+        }
+        setCustomers(prev => [...prev, newCustomer])
+      } catch (e: any) {
+        setError(e.message ?? "Failed to create customer")
       }
-      setCustomers(prev => [...prev, newCustomer])
       setShowAddModal(false)
     }
   }
@@ -723,9 +799,19 @@ export default function CustomersPage() {
         </div>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Customers Table */}
       <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
-        <table className="w-full">
+        {loading && (
+          <div className="py-10 text-center text-gray-400">Loading...</div>
+        )}
+        {!loading && <table className="w-full">
           <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
             <tr>
               <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Customer</th>
@@ -787,8 +873,8 @@ export default function CustomersPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-        {filteredCustomers.length === 0 && (
+        </table>}
+        {!loading && filteredCustomers.length === 0 && (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             No customers found matching your criteria.
           </div>

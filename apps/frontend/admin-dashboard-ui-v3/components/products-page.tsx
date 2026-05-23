@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -292,6 +293,8 @@ function SlidePanel({ isOpen, onClose, title, children, width = "md" }: { isOpen
 export default function ProductsPage() {
   const [categories, setCategories] = useState<Category[]>(mockCategories)
   const [products, setProducts] = useState<Product[]>(mockProducts)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [soldOutFilter, setSoldOutFilter] = useState<"all" | "available" | "sold_out">("all")
@@ -317,6 +320,63 @@ export default function ProductsPage() {
     track_stock: false,
   })
   const [categoryForm, setCategoryForm] = useState({ name: "", description: "" })
+
+  // Fetch categories on mount
+  useEffect(() => {
+    apiFetch<{ data: any[] }>("/api/business/categories")
+      .then(res => {
+        const mapped: Category[] = res.data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          product_count: c.product_count ?? 0,
+          is_active: c.is_active ?? true,
+          sort_order: c.sort_order ?? 0,
+        }))
+        setCategories(mapped)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fetch products with debounced search and category filter
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ page: "1", limit: "50" })
+        if (searchQuery) params.set("search", searchQuery)
+        if (selectedCategory) params.set("category_id", selectedCategory)
+        const res = await apiFetch<{ data: any[]; total: number }>(
+          `/api/business/products?${params}`
+        )
+        const mapped: Product[] = res.data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          category_id: p.category_id,
+          category_name: p.category?.name ?? "",
+          price: Number(p.price ?? 0),
+          sku: p.sku ?? "",
+          description: p.description,
+          tva_rate: Number(p.tva_rate ?? 20),
+          is_sold_out: p.is_sold_out ?? false,
+          is_active: p.is_active ?? true,
+          track_stock: p.track_stock ?? false,
+          image_url: p.image_url,
+          variants: [],
+          modifier_groups: [],
+          brand: undefined,
+          unit_of_measure: undefined,
+        }))
+        setProducts(mapped)
+      } catch (e: any) {
+        setError(e.message ?? "Failed to load products")
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery, selectedCategory])
 
   // Filtered products
   const filteredProducts = products.filter(p => {
@@ -483,9 +543,17 @@ export default function ProductsPage() {
           </div>
         </div>
 
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
         {/* Products Table */}
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
-          <table className="w-full">
+          {loading && <div className="py-10 text-center text-gray-400">Loading...</div>}
+          {!loading && <table className="w-full">
             <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
               <tr>
                 <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Product</th>
@@ -560,8 +628,8 @@ export default function ProductsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-          {filteredProducts.length === 0 && (
+          </table>}
+          {!loading && filteredProducts.length === 0 && (
             <div className="text-center py-12">
               <Package className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No products found</h3>

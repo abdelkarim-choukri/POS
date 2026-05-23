@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -230,7 +231,9 @@ function SlidePanel({ isOpen, onClose, title, children, width = "xl" }: { isOpen
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function WarehousesPage() {
-  const [warehouses] = useState<WarehouseType[]>(mockWarehouses)
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>(mockWarehouses)
+  const [warehousesLoading, setWarehousesLoading] = useState(false)
+  const [warehousesError, setWarehousesError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedWarehouse, setSelectedWarehouse] = useState<WarehouseType | null>(null)
   const [showWarehouseDetail, setShowWarehouseDetail] = useState(false)
@@ -257,6 +260,57 @@ export default function WarehousesPage() {
   const filteredWarehouses = warehouses.filter(w =>
     w.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  // Fetch warehouses from API on mount
+  useEffect(() => {
+    setWarehousesLoading(true)
+    apiFetch<{ data: any[] }>("/api/business/inventory/warehouses")
+      .then(res => {
+        const mapped: WarehouseType[] = res.data.map((w: any) => ({
+          id: w.id,
+          name: w.name,
+          location_id: w.location_id ?? null,
+          location_name: w.location_name ?? null,
+          is_default: w.is_default ?? false,
+          notes: w.notes ?? "",
+          total_skus: w.total_skus ?? 0,
+          total_stock_value: w.total_stock_value ?? 0,
+          stock_batches: [],
+        }))
+        setWarehouses(mapped)
+      })
+      .catch(e => setWarehousesError(e.message ?? "Failed to load warehouses"))
+      .finally(() => setWarehousesLoading(false))
+  }, [])
+
+  const handleSaveWarehouse = async () => {
+    setWarehousesError(null)
+    try {
+      const created = await apiFetch<any>("/api/business/inventory/warehouses", {
+        method: "POST",
+        body: JSON.stringify({
+          name: warehouseForm.name,
+          location_id: warehouseForm.location_id || undefined,
+          is_default: warehouseForm.is_default,
+          notes: warehouseForm.notes || undefined,
+        }),
+      })
+      setWarehouses(prev => [...prev, {
+        id: created.id,
+        name: created.name,
+        location_id: created.location_id ?? null,
+        location_name: null,
+        is_default: created.is_default ?? false,
+        notes: created.notes ?? "",
+        total_skus: 0,
+        total_stock_value: 0,
+        stock_batches: [],
+      }])
+    } catch (e: any) {
+      setWarehousesError(e.message ?? "Failed to create warehouse")
+    }
+    setShowAddWarehouse(false)
+  }
 
   // Filtered discrepancy alerts
   const filteredDiscrepancies = mockDiscrepancyAlerts.filter(d => {
@@ -365,6 +419,13 @@ export default function WarehousesPage() {
             </div>
           )}
 
+          {/* Error Banner */}
+          {warehousesError && (
+            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+              {warehousesError}
+            </div>
+          )}
+
           {/* Search */}
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4 mb-6">
             <div className="relative max-w-md">
@@ -380,8 +441,9 @@ export default function WarehousesPage() {
           </div>
 
           {/* Warehouses Grid */}
+          {warehousesLoading && <div className="py-10 text-center text-gray-400">Loading...</div>}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredWarehouses.map(warehouse => (
+            {!warehousesLoading && filteredWarehouses.map(warehouse => (
               <div
                 key={warehouse.id}
                 className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5 hover:shadow-lg transition-shadow cursor-pointer"
@@ -420,7 +482,7 @@ export default function WarehousesPage() {
               </div>
             ))}
 
-            {filteredWarehouses.length === 0 && (
+            {!warehousesLoading && filteredWarehouses.length === 0 && (
               <div className="col-span-full bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
                 <Warehouse className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No warehouses found</h3>
@@ -800,7 +862,7 @@ export default function WarehousesPage() {
           </div>
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddWarehouse(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddWarehouse(false)}>Add Warehouse</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSaveWarehouse}>Add Warehouse</Button>
           </div>
         </div>
       </Modal>

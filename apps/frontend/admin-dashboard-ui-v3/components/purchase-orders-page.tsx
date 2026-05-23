@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -174,6 +175,9 @@ function StatusBadge({ status }: { status: PurchaseOrder["status"] }) {
 }
 
 export default function PurchaseOrdersPage() {
+  const [orders, setOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [vendorFilter, setVendorFilter] = useState("all")
@@ -192,11 +196,55 @@ export default function PurchaseOrdersPage() {
     items: [] as { product_id: string; quantity: number; unit_price: number }[],
   })
 
-  const filteredOrders = mockPurchaseOrders.filter(po => {
-    const matchesSearch = po.po_number.toLowerCase().includes(searchQuery.toLowerCase()) || po.vendor_name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || po.status === statusFilter
-    const matchesVendor = vendorFilter === "all" || po.vendor_id === vendorFilter
-    return matchesSearch && matchesStatus && matchesVendor
+  // Fetch purchase orders from API
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ page: "1", limit: "50" })
+        if (statusFilter !== "all") params.set("status", statusFilter)
+        if (vendorFilter !== "all") params.set("vendor_id", vendorFilter)
+        const res = await apiFetch<{ data: any[]; total: number }>(
+          `/api/business/inventory/purchase-orders?${params}`
+        )
+        const mapped: PurchaseOrder[] = res.data.map((po: any) => ({
+          id: po.id,
+          po_number: po.po_number,
+          vendor_id: po.vendor_id,
+          vendor_name: po.vendor?.name ?? "",
+          warehouse_id: po.warehouse_id ?? "",
+          warehouse_name: po.warehouse?.name ?? "",
+          status: po.status,
+          items: (po.items ?? []).map((item: any) => ({
+            id: item.id,
+            product_name: item.product?.name ?? "",
+            sku: item.product?.sku ?? "",
+            quantity: item.quantity,
+            unit_price: Number(item.unit_price_ht ?? 0),
+            total: Number(item.quantity ?? 0) * Number(item.unit_price_ht ?? 0),
+          })),
+          subtotal: Number(po.total_ht ?? 0),
+          tax: Number(po.total_tva ?? 0),
+          total: Number(po.total_ttc ?? 0),
+          expected_date: po.expected_delivery_date ? po.expected_delivery_date.split("T")[0] : "",
+          notes: po.notes ?? "",
+          created_at: po.created_at ? po.created_at.split("T")[0] : "",
+          created_by: "",
+        }))
+        setOrders(mapped)
+      } catch (e: any) {
+        setError(e.message ?? "Failed to load purchase orders")
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [statusFilter, vendorFilter])
+
+  const filteredOrders = orders.filter(po => {
+    const matchesSearch = searchQuery === "" || po.po_number.toLowerCase().includes(searchQuery.toLowerCase()) || po.vendor_name.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesSearch
   })
 
   const toggleRow = (id: string) => {
@@ -257,14 +305,21 @@ export default function PurchaseOrdersPage() {
         </Button>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-5 gap-4 mb-6">
         {[
-          { label: "All Orders", count: mockPurchaseOrders.length, color: "bg-gray-100 dark:bg-[#0F0F12]" },
-          { label: "Draft", count: mockPurchaseOrders.filter(p => p.status === "draft").length, color: "bg-gray-100 dark:bg-[#0F0F12]" },
-          { label: "Sent", count: mockPurchaseOrders.filter(p => p.status === "sent").length, color: "bg-blue-100 dark:bg-blue-900/30" },
-          { label: "Partial", count: mockPurchaseOrders.filter(p => p.status === "partial").length, color: "bg-amber-100 dark:bg-amber-900/30" },
-          { label: "Received", count: mockPurchaseOrders.filter(p => p.status === "received").length, color: "bg-green-100 dark:bg-green-900/30" },
+          { label: "All Orders", count: orders.length, color: "bg-gray-100 dark:bg-[#0F0F12]" },
+          { label: "Draft", count: orders.filter(p => p.status === "draft").length, color: "bg-gray-100 dark:bg-[#0F0F12]" },
+          { label: "Sent", count: orders.filter(p => p.status === "sent").length, color: "bg-blue-100 dark:bg-blue-900/30" },
+          { label: "Partial", count: orders.filter(p => p.status === "partial").length, color: "bg-amber-100 dark:bg-amber-900/30" },
+          { label: "Received", count: orders.filter(p => p.status === "received").length, color: "bg-green-100 dark:bg-green-900/30" },
         ].map(stat => (
           <div key={stat.label} className={`${stat.color} rounded-xl p-4 text-center`}>
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.count}</p>
@@ -311,7 +366,8 @@ export default function PurchaseOrdersPage() {
 
       {/* Orders Table */}
       <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
-        <table className="w-full">
+        {loading && <div className="py-10 text-center text-gray-400">Loading...</div>}
+        {!loading && <table className="w-full">
           <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
             <tr>
               <th className="w-10 p-4"></th>
@@ -400,7 +456,7 @@ export default function PurchaseOrdersPage() {
               </React.Fragment>
             ))}
           </tbody>
-        </table>
+        </table>}
       </div>
 
       {/* Create PO Modal */}
