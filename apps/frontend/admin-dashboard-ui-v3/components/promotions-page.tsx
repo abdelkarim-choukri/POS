@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -690,6 +691,8 @@ function CreateEditModal({
 // ============== MAIN COMPONENT ==============
 export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>(mockPromotions)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"all" | PromotionStatus>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -702,6 +705,40 @@ export default function PromotionsPage() {
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([])
   const [excludedStores, setExcludedStores] = useState<string[]>([])
   const [isValidating, setIsValidating] = useState(false)
+
+  const fetchPromotions = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[]; total: number }>("/api/business/promotions")
+      const mapped: Promotion[] = res.data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description ?? "",
+        type: p.type,
+        discount_value: p.value ?? p.discount_value ?? 0,
+        buy_quantity: p.buy_quantity,
+        get_quantity: p.get_quantity,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        days_of_week: p.days_of_week ?? [],
+        min_order_amount: p.min_order_amount,
+        max_uses_total: p.max_uses,
+        max_uses_per_customer: p.max_uses_per_customer,
+        applicable_categories: p.applicable_categories ?? [],
+        applicable_products: p.applicable_products ?? [],
+        status: p.status,
+        usage_count: p.current_uses ?? 0,
+      }))
+      setPromotions(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load promotions")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchPromotions() }, [])
 
   const tabs: { key: "all" | PromotionStatus; label: string }[] = [
     { key: "all", label: "All" },
@@ -729,22 +766,25 @@ export default function PromotionsPage() {
     setIsModalOpen(true)
   }
 
-  const handleToggleStatus = (promotionId: string) => {
-    setPromotions((prev) =>
-      prev.map((p) => {
-        if (p.id === promotionId) {
-          const newStatus: PromotionStatus = p.status === "paused" ? "active" : "paused"
-          return { ...p, status: newStatus }
-        }
-        return p
-      })
-    )
+  const handleToggleStatus = async (promotionId: string) => {
+    const promo = promotions.find(p => p.id === promotionId)
+    if (!promo) return
+    const endpoint = promo.status === "paused" ? "activate" : "pause"
+    try {
+      await apiFetch(`/api/business/promotions/${promotionId}/${endpoint}`, { method: "POST" })
+      await fetchPromotions()
+    } catch (e: any) {
+      setError(e.message ?? `Failed to ${endpoint} promotion`)
+    }
   }
 
-  const handleArchive = (promotionId: string) => {
-    setPromotions((prev) =>
-      prev.map((p) => (p.id === promotionId ? { ...p, status: "archived" as PromotionStatus } : p))
-    )
+  const handleArchive = async (promotionId: string) => {
+    try {
+      await apiFetch(`/api/business/promotions/${promotionId}/archive`, { method: "POST" })
+      await fetchPromotions()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to archive promotion")
+    }
   }
 
   const handleSave = (data: Partial<Promotion>) => {
@@ -830,8 +870,11 @@ export default function PromotionsPage() {
   const scheduledCount = promotions.filter((p) => p.status === "scheduled").length
   const totalRedemptions = promotions.reduce((sum, p) => sum + p.usage_count, 0)
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="p-6 space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

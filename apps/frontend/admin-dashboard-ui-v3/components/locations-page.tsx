@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -173,10 +174,12 @@ function HealthBadge({ lastSeenAt }: { lastSeenAt: string | null }) {
 // ============== MAIN PAGE COMPONENT ==============
 export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>(mockLocations)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"locations" | "all-terminals">("locations")
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set(["loc-1"]))
   const [searchQuery, setSearchQuery] = useState("")
-  
+
   // Modals
   const [showAddLocation, setShowAddLocation] = useState(false)
   const [showEditLocation, setShowEditLocation] = useState(false)
@@ -185,6 +188,59 @@ export default function LocationsPage() {
 
   // Form state
   const [locationForm, setLocationForm] = useState({ name: "", address: "", city: "" })
+
+  const fetchLocations = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/business/locations")
+      const mapped: Location[] = res.data.map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        address: l.address ?? "",
+        city: l.city ?? "",
+        terminal_count: l.terminal_count ?? 0,
+        active_terminal_count: l.active_terminal_count ?? 0,
+        status: l.is_active ? "active" : "inactive",
+        terminals: [],
+      }))
+      setLocations(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load locations")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchLocations() }, [])
+
+  const handleSaveAddLocation = async () => {
+    if (!locationForm.name.trim()) return
+    try {
+      await apiFetch("/api/business/locations", {
+        method: "POST",
+        body: JSON.stringify(locationForm),
+      })
+      setShowAddLocation(false)
+      await fetchLocations()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to create location")
+    }
+  }
+
+  const handleSaveEditLocation = async () => {
+    if (!selectedLocation || !locationForm.name.trim()) return
+    try {
+      await apiFetch(`/api/business/locations/${selectedLocation.id}`, {
+        method: "PUT",
+        body: JSON.stringify(locationForm),
+      })
+      setShowEditLocation(false)
+      await fetchLocations()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update location")
+    }
+  }
 
   // All terminals (assigned + unassigned)
   const allTerminals = [
@@ -222,8 +278,11 @@ export default function LocationsPage() {
     setShowAssignTerminal(locationId)
   }
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="h-full">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -448,7 +507,7 @@ export default function LocationsPage() {
           <Input label="City" placeholder="Casablanca" value={locationForm.city} onChange={(e) => setLocationForm(f => ({ ...f, city: e.target.value }))} />
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddLocation(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddLocation(false)}>Add Location</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSaveAddLocation}>Add Location</Button>
           </div>
         </div>
       </Modal>
@@ -461,7 +520,7 @@ export default function LocationsPage() {
           <Input label="City" placeholder="Casablanca" value={locationForm.city} onChange={(e) => setLocationForm(f => ({ ...f, city: e.target.value }))} />
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowEditLocation(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowEditLocation(false)}>Save Changes</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSaveEditLocation}>Save Changes</Button>
           </div>
         </div>
       </Modal>

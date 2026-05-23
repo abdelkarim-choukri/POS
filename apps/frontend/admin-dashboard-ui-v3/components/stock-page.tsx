@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { Search, AlertTriangle, Package, TrendingDown, DollarSign } from "lucide-react"
 
 interface StockPosition {
@@ -25,28 +26,60 @@ const STATUS_CONFIG = {
 }
 
 export default function StockPage({ onNavigate }: { onNavigate?: (page: string, id?: string) => void }) {
+  const [stock, setStock] = useState<StockPosition[]>(mockStock)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [lowOnly, setLowOnly] = useState(false)
   const [warehouse, setWarehouse] = useState("all")
 
-  const warehouses = ["all", ...Array.from(new Set(mockStock.map(s => s.warehouse)))]
-  const filtered = mockStock.filter(s => {
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ tables: { rows: any[] }[] }>("/api/business/reports/stock-position?date_range=today")
+      .then(res => {
+        const rows = res.tables?.[0]?.rows ?? []
+        const mapped: StockPosition[] = rows.map((r: any, i: number) => ({
+          id: r.id ?? String(i),
+          product: r.product_name ?? "",
+          category: r.category ?? "",
+          sku: r.sku ?? "",
+          warehouse: r.warehouse_name ?? "",
+          qty: r.current_qty ?? 0,
+          unit: r.unit ?? "",
+          reorder_point: r.reorder_point ?? 0,
+          cost_per_unit: r.cost_per_unit ?? 0,
+          total_value: r.total_value ?? 0,
+          batch_count: r.batch_count ?? 0,
+          status: r.status ?? "ok",
+        }))
+        setStock(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load stock"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const warehouses = ["all", ...Array.from(new Set(stock.map(s => s.warehouse)))]
+  const filtered = stock.filter(s => {
     const matchSearch = s.product.toLowerCase().includes(search.toLowerCase()) || s.sku.toLowerCase().includes(search.toLowerCase())
     const matchWH = warehouse === "all" || s.warehouse === warehouse
     const matchLow = !lowOnly || s.status !== "ok"
     return matchSearch && matchWH && matchLow
   })
 
-  const totalValue = mockStock.reduce((sum, s) => sum + s.total_value, 0)
-  const lowCount = mockStock.filter(s => s.status === "low").length
-  const outCount = mockStock.filter(s => s.status === "out").length
+  const totalValue = stock.reduce((sum, s) => sum + s.total_value, 0)
+  const lowCount = stock.filter(s => s.status === "low").length
+  const outCount = stock.filter(s => s.status === "out").length
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   return (
     <div className="space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Products", value: mockStock.length.toString(), icon: Package, color: "text-indigo-500" },
+          { label: "Total Products", value: stock.length.toString(), icon: Package, color: "text-indigo-500" },
           { label: "Low Stock", value: lowCount.toString(), icon: TrendingDown, color: "text-yellow-500" },
           { label: "Out of Stock", value: outCount.toString(), icon: AlertTriangle, color: "text-red-500" },
           { label: "Total Value", value: `${totalValue.toLocaleString()} MAD`, icon: DollarSign, color: "text-green-500" },

@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -373,6 +374,8 @@ export default function CouponsPage() {
   // State
   const [couponTypes, setCouponTypes] = useState<CouponType[]>(mockCouponTypes)
   const [issuedCoupons, setIssuedCoupons] = useState<IssuedCoupon[]>(mockIssuedCoupons)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   
   // Filter state for issued coupons
   const [searchQuery, setSearchQuery] = useState("")
@@ -402,7 +405,29 @@ export default function CouponsPage() {
   })
   const [customerSearch, setCustomerSearch] = useState("")
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
-  
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/coupon-types")
+      .then(res => {
+        const mapped: CouponType[] = res.data.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          discount_type: t.type === "fixed" ? "fixed" : "percentage",
+          value: t.value ?? 0,
+          validity_days: t.validity_days ?? 30,
+          max_uses: t.max_uses ?? 1,
+          description: t.description ?? "",
+          is_active: t.is_active,
+          created_at: t.created_at ?? "",
+        }))
+        setCouponTypes(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load coupon types"))
+      .finally(() => setLoading(false))
+  }, [])
+
   // Filter issued coupons
   const filteredCoupons = issuedCoupons.filter((coupon) => {
     const matchesSearch = 
@@ -571,8 +596,11 @@ export default function CouponsPage() {
     }
   }
   
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="p-6 space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Coupons</h1>

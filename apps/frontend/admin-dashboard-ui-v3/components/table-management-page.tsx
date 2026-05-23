@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   UtensilsCrossed,
   MapPin,
@@ -323,9 +324,40 @@ function TableTypesTab() {
 
 function TablesTab() {
   const [tables, setTables] = useState(TABLES)
+  const [diningAreas, setDiningAreas] = useState(DINING_AREAS)
+  const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [areaFilter, setAreaFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([
+      apiFetch<{ data: any[] }>("/api/business/tables"),
+      apiFetch<{ data: any[] }>("/api/business/dining-areas"),
+    ]).then(([tablesRes, areasRes]) => {
+      setTables(tablesRes.data.map((t: any) => ({
+        id: t.id,
+        table_number: String(t.table_number),
+        capacity: t.capacity ?? 4,
+        area_id: t.dining_area?.id ?? "",
+        area_name: t.dining_area?.name ?? "",
+        table_type_id: t.table_type?.id ?? "",
+        table_type_name: t.table_type?.name ?? "",
+        is_active: t.is_active,
+      })))
+      setDiningAreas(areasRes.data.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        sort_order: a.sort_order ?? 0,
+        is_active: a.is_active,
+        table_count: a.table_count ?? 0,
+      })))
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   const filteredTables = tables.filter((table) => {
     if (areaFilter !== "all" && table.area_id !== areaFilter) return false
@@ -345,7 +377,7 @@ function TablesTab() {
           <div className="relative">
             <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className={selectCls}>
               <option value="all">All Areas</option>
-              {DINING_AREAS.map((area) => (
+              {diningAreas.map((area) => (
                 <option key={area.id} value={area.id}>{area.name}</option>
               ))}
             </select>
@@ -426,7 +458,7 @@ function TablesTab() {
             <div className="relative">
               <select className={selectCls}>
                 <option value="">Select area...</option>
-                {DINING_AREAS.filter((a) => a.is_active).map((area) => (
+                {diningAreas.filter((a) => a.is_active).map((area) => (
                   <option key={area.id} value={area.id}>{area.name}</option>
                 ))}
               </select>

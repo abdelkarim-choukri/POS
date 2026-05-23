@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Clock,
   CheckCircle,
@@ -271,9 +272,49 @@ export default function KDSPage() {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [view, setView] = useState<"all" | "new" | "in_progress" | "ready">("all")
   const [showSettings, setShowSettings] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchKdsItems = async () => {
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/terminal/kds/items")
+      const itemsByOrder = new Map<string, KitchenOrder>()
+      for (const item of res.data) {
+        const orderId = item.table_session_id ?? item.transaction_id ?? item.id
+        if (!itemsByOrder.has(orderId)) {
+          itemsByOrder.set(orderId, {
+            id: orderId,
+            order_number: item.table_number ? `T-${item.table_number}` : `ORD-${orderId.slice(-4)}`,
+            table_number: item.table_number ? `T-${item.table_number}` : undefined,
+            order_type: item.table_number ? "dine_in" : "takeout",
+            items: [],
+            status: "new",
+            priority: "normal",
+            created_at: new Date(item.created_at ?? Date.now()),
+            customer_name: item.employee_name,
+          })
+        }
+        const order = itemsByOrder.get(orderId)!
+        const kdsStatus = item.kds_status ?? "new"
+        const itemStatus: OrderItem["status"] = kdsStatus === "ready" || kdsStatus === "served" ? "ready" : kdsStatus === "preparing" ? "preparing" : "pending"
+        order.items.push({
+          id: item.id,
+          name: item.product_name ?? "",
+          quantity: item.quantity ?? 1,
+          modifiers: item.modifiers ?? [],
+          notes: item.notes,
+          status: itemStatus,
+        })
+        if (kdsStatus === "preparing" && order.status === "new") order.status = "in_progress"
+        if (order.items.every(i => i.status === "ready")) order.status = "ready"
+      }
+      setOrders(Array.from(itemsByOrder.values()))
+    } catch {}
+  }
 
   useEffect(() => {
-    setOrders(generateMockOrders())
+    fetchKdsItems()
+    pollRef.current = setInterval(fetchKdsItems, 10000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
   const handleStart = (orderId: string) => {
@@ -286,9 +327,6 @@ export default function KDSPage() {
     setOrders(prev => prev.map(o =>
       o.id === orderId ? { ...o, status: "ready" as const, completed_at: new Date() } : o
     ))
-    if (soundEnabled) {
-      // Play notification sound
-    }
   }
 
   const handleRecall = (orderId: string) => {
@@ -297,17 +335,30 @@ export default function KDSPage() {
     ))
   }
 
-  const handleBumpItem = (orderId: string, itemId: string) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id !== orderId) return o
-      const updatedItems = o.items.map(item => {
-        if (item.id !== itemId) return item
-        if (item.status === "pending") return { ...item, status: "preparing" as const }
-        if (item.status === "preparing") return { ...item, status: "ready" as const, prepared_at: new Date() }
-        return item
+  const handleBumpItem = async (orderId: string, itemId: string) => {
+    const order = orders.find(o => o.id === orderId)
+    const item = order?.items.find(i => i.id === itemId)
+    if (!item) return
+    const nextStatus = item.status === "pending" ? "preparing" : item.status === "preparing" ? "ready" : null
+    if (!nextStatus) return
+    try {
+      await apiFetch(`/api/terminal/kds/items/${itemId}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: nextStatus }),
       })
-      return { ...o, items: updatedItems }
-    }))
+      await fetchKdsItems()
+    } catch {
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId) return o
+        const updatedItems = o.items.map(i => {
+          if (i.id !== itemId) return i
+          if (i.status === "pending") return { ...i, status: "preparing" as const }
+          if (i.status === "preparing") return { ...i, status: "ready" as const, prepared_at: new Date() }
+          return i
+        })
+        return { ...o, items: updatedItems }
+      }))
+    }
   }
 
   const filteredOrders = orders.filter(o => {

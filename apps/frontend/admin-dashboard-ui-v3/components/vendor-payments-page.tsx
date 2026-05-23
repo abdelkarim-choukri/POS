@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -290,11 +291,35 @@ export default function VendorPaymentsPage() {
     notes: "",
   })
 
-  // Simulate initial loading
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-    return () => clearTimeout(timer)
-  }, [])
+  const fetchPayments = async () => {
+    setIsLoading(true)
+    try {
+      const res = await apiFetch<{ data: any[] }>(`/api/business/vendor-payments?status=${statusFilter !== "all" ? statusFilter : ""}&vendor_id=${vendorFilter !== "all" ? vendorFilter : ""}`)
+      const mapped: VendorPayment[] = res.data.map((p: any) => ({
+        id: p.id,
+        payment_number: p.payment_number,
+        vendor_id: p.vendor_id,
+        vendor_name: p.vendor?.name ?? p.vendor_name ?? "",
+        po_id: p.purchase_order_id,
+        po_number: p.purchase_order?.po_number ?? p.po_number,
+        payment_method: p.payment_method,
+        amount: p.amount ?? 0,
+        payment_date: p.payment_date ?? "",
+        status: p.status,
+        reference_number: p.reference_number,
+        notes: p.notes,
+        confirmed_by: p.confirmed_by,
+        confirmed_at: p.confirmed_at,
+        created_at: p.created_at ?? "",
+      }))
+      setPayments(mapped)
+    } catch {
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchPayments() }, [])
 
   // Permission checks
   const canConfirmPayment = permissions.role === "manager" || permissions.role === "owner"
@@ -350,22 +375,22 @@ export default function VendorPaymentsPage() {
     setShowConfirmModal(true)
   }
 
-  const confirmPayment = () => {
+  const confirmPayment = async () => {
     if (selectedPayment) {
-      setPayments(prev => prev.map(p => 
-        p.id === selectedPayment.id 
-          ? { ...p, status: "confirmed" as PaymentStatus, confirmed_by: "Admin", confirmed_at: new Date().toISOString() }
-          : p
-      ))
+      try {
+        await apiFetch(`/api/business/vendor-payments/${selectedPayment.id}/confirm`, { method: "POST" })
+        await fetchPayments()
+      } catch {}
     }
     setShowConfirmModal(false)
     setSelectedPayment(null)
   }
 
-  const voidPayment = (paymentId: string) => {
-    setPayments(prev => prev.map(p => 
-      p.id === paymentId ? { ...p, status: "voided" as PaymentStatus } : p
-    ))
+  const voidPayment = async (paymentId: string) => {
+    try {
+      await apiFetch(`/api/business/vendor-payments/${paymentId}/void`, { method: "POST" })
+      await fetchPayments()
+    } catch {}
   }
 
   const handlePOSelect = (poId: string) => {

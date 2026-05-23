@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -140,12 +141,36 @@ function StatCard({ icon: Icon, label, value, subValue, color }: { icon: React.E
 }
 
 export default function PointsExchangePage() {
+  const [rewards, setRewards] = useState<Reward[]>(mockRewards)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"rewards" | "transactions" | "tiers" | "settings">("rewards")
   const [searchQuery, setSearchQuery] = useState("")
   const [showAddRewardModal, setShowAddRewardModal] = useState(false)
   const [showRedeemModal, setShowRedeemModal] = useState(false)
   const [selectedReward, setSelectedReward] = useState<Reward | null>(null)
   const [showDropdown, setShowDropdown] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/points-exchange-rules")
+      .then(res => {
+        const mapped: Reward[] = res.data.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          description: r.description ?? "",
+          points_required: r.points_required ?? 0,
+          category: r.reward_type ?? "discount",
+          status: r.is_active ? "active" : "inactive",
+          stock: undefined,
+          redemptions: r.total_redemptions ?? 0,
+        }))
+        setRewards(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load rewards"))
+      .finally(() => setLoading(false))
+  }, [])
 
   const categoryColors = {
     food: "indigo",
@@ -155,13 +180,16 @@ export default function PointsExchangePage() {
     experience: "yellow",
   }
 
-  const filteredRewards = mockRewards.filter(r =>
+  const filteredRewards = rewards.filter(r =>
     r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     r.description.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div>
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -516,7 +544,7 @@ export default function PointsExchangePage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Reward</label>
             <select className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
               <option value="">Choose a reward...</option>
-              {mockRewards.filter(r => r.status === "active").map(r => (
+              {rewards.filter(r => r.status === "active").map(r => (
                 <option key={r.id} value={r.id}>{r.name} ({r.points_required} pts)</option>
               ))}
             </select>

@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { Search, ArrowUp, ArrowDown, ArrowLeftRight, Package } from "lucide-react"
 
 interface StockMovement {
@@ -26,17 +27,47 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
 }
 
 export default function StockMovementsPage() {
+  const [movements, setMovements] = useState<StockMovement[]>(mockMovements)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
 
-  const filtered = mockMovements.filter(m => {
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ tables: { rows: any[] }[] }>("/api/business/reports/stock-movements?date_range=last_7days")
+      .then(res => {
+        const rows = res.tables?.[0]?.rows ?? []
+        const mapped: StockMovement[] = rows.map((r: any, i: number) => ({
+          id: r.id ?? String(i),
+          date: r.movement_date ?? "",
+          type: r.movement_type ?? "adjust",
+          product: r.product_name ?? "",
+          warehouse: r.warehouse_name ?? "",
+          qty_change: r.qty_change ?? 0,
+          unit: r.unit ?? "",
+          reference: r.reference_number,
+          performed_by: r.performed_by ?? "",
+          notes: r.notes,
+        }))
+        setMovements(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load stock movements"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = movements.filter(m => {
     const matchSearch = m.product.toLowerCase().includes(search.toLowerCase())
     const matchType = typeFilter === "all" || m.type === typeFilter
     return matchSearch && matchType
   })
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

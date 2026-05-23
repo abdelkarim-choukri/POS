@@ -1,5 +1,7 @@
 ﻿"use client"
 
+// TODO: This page uses mock data. Do not wire to API — notifications are UI-only (in-app alerts, not the communications/send history module).
+
 import { useState } from "react"
 import {
   Bell,

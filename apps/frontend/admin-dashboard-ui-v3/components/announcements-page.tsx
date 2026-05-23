@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Plus,
   Search,
@@ -163,6 +164,8 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
 // ==================== MAIN COMPONENT ====================
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState(mockAnnouncements)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -176,6 +179,34 @@ export default function AnnouncementsPage() {
     publish_date: "",
     expiry_date: "",
   })
+
+  const fetchAnnouncements = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/business/announcements")
+      const mapped: Announcement[] = res.data.map((a: any) => ({
+        id: a.id,
+        title: a.title,
+        content: a.body ?? a.content ?? "",
+        type: a.type ?? "info",
+        target_audience: a.target_roles?.length ? "employees" : "all",
+        status: a.is_active ? "published" : "draft",
+        publish_date: a.created_at ?? "",
+        expiry_date: a.display_until,
+        created_by: a.created_by ?? "",
+        created_at: a.created_at ?? "",
+        views_count: 0,
+      }))
+      setAnnouncements(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load announcements")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchAnnouncements() }, [])
 
   const filteredAnnouncements = announcements.filter(a => {
     const matchesSearch = a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -220,18 +251,24 @@ export default function AnnouncementsPage() {
     }
   }
 
-  const handleCreate = () => {
-    const newAnnouncement: Announcement = {
-      id: Date.now().toString(),
-      ...formData,
-      status: formData.publish_date ? "scheduled" : "draft",
-      created_by: "Current User",
-      created_at: new Date().toISOString().split("T")[0],
-      views_count: 0,
+  const handleCreate = async () => {
+    try {
+      await apiFetch("/api/business/announcements", {
+        method: "POST",
+        body: JSON.stringify({
+          title: formData.title,
+          body: formData.content,
+          type: formData.type,
+          target_roles: formData.target_audience === "all" ? [] : [formData.target_audience],
+          display_until: formData.expiry_date || undefined,
+        }),
+      })
+      setShowCreateModal(false)
+      setFormData({ title: "", content: "", type: "info", target_audience: "all", publish_date: "", expiry_date: "" })
+      await fetchAnnouncements()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to create announcement")
     }
-    setAnnouncements([newAnnouncement, ...announcements])
-    setShowCreateModal(false)
-    setFormData({ title: "", content: "", type: "info", target_audience: "all", publish_date: "", expiry_date: "" })
   }
 
   const handlePublish = (id: string) => {
@@ -244,8 +281,11 @@ export default function AnnouncementsPage() {
     setAnnouncements(announcements.filter(a => a.id !== id))
   }
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div>
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

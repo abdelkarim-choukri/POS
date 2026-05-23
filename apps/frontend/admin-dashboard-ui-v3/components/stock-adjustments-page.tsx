@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -126,6 +127,9 @@ function SlidePanel({ isOpen, onClose, title, children }: { isOpen: boolean; onC
 }
 
 export default function StockAdjustmentsPage() {
+  const [adjustments, setAdjustments] = useState<StockAdjustment[]>(mockAdjustments)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
@@ -142,7 +146,33 @@ export default function StockAdjustmentsPage() {
     items: [] as { product_id: string; quantity: number }[],
   })
 
-  const filteredAdjustments = mockAdjustments.filter(adj => {
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/stock-adjustments?page=1&limit=20")
+      .then(res => {
+        const mapped: StockAdjustment[] = res.data.map((a: any) => ({
+          id: a.id,
+          adjustment_number: a.adjustment_number,
+          warehouse_id: a.warehouse_id ?? "",
+          warehouse_name: a.warehouse?.name ?? "",
+          type: a.delta > 0 ? "increase" : "decrease",
+          reason: a.reason ?? "",
+          status: a.status,
+          items: a.items ?? [],
+          notes: a.notes ?? "",
+          created_at: a.created_at ?? "",
+          created_by: a.created_by_name ?? "",
+          approved_by: a.approved_by,
+          approved_at: a.approved_at,
+        }))
+        setAdjustments(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load adjustments"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filteredAdjustments = adjustments.filter(adj => {
     const matchesSearch = adj.adjustment_number.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || adj.status === statusFilter
     const matchesType = typeFilter === "all" || adj.type === typeFilter
@@ -168,8 +198,11 @@ export default function StockAdjustmentsPage() {
     }))
   }
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div>
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -190,7 +223,7 @@ export default function StockAdjustmentsPage() {
               <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockAdjustments.length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Total Adjustments</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -199,7 +232,7 @@ export default function StockAdjustmentsPage() {
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockAdjustments.filter(a => a.status === "pending").length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.filter(a => a.status === "pending").length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Pending Approval</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -208,7 +241,7 @@ export default function StockAdjustmentsPage() {
               <ArrowDown className="w-5 h-5 text-red-600 dark:text-red-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockAdjustments.filter(a => a.type === "decrease").length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.filter(a => a.type === "decrease").length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Stock Decreases</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -217,7 +250,7 @@ export default function StockAdjustmentsPage() {
               <ArrowUp className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockAdjustments.filter(a => a.type === "increase").length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.filter(a => a.type === "increase").length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Stock Increases</p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { Plus, Pencil, Trash2, X, Search, LayoutGrid, Users } from "lucide-react"
 
 interface DiningArea {
@@ -17,30 +18,70 @@ const mockAreas: DiningArea[] = [
 
 export default function DiningAreasPage() {
   const [areas, setAreas] = useState(mockAreas)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<DiningArea | null>(null)
   const [form, setForm] = useState({ name: "", description: "", capacity: 0 })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
+  const fetchAreas = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/business/dining-areas")
+      setAreas(res.data.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        table_count: a.table_count ?? 0,
+        capacity: a.capacity ?? 0,
+        is_active: a.is_active,
+      })))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load dining areas")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchAreas() }, [])
+
   const filtered = areas.filter(a => a.name.toLowerCase().includes(search.toLowerCase()))
 
   const openAdd = () => { setEditing(null); setForm({ name: "", description: "", capacity: 0 }); setShowModal(true) }
   const openEdit = (a: DiningArea) => { setEditing(a); setForm({ name: a.name, description: a.description ?? "", capacity: a.capacity }); setShowModal(true) }
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return
-    if (editing) {
-      setAreas(prev => prev.map(a => a.id === editing.id ? { ...a, ...form } : a))
-    } else {
-      setAreas(prev => [...prev, { id: `da-${Date.now()}`, ...form, table_count: 0, is_active: true }])
+    try {
+      if (editing) {
+        await apiFetch(`/api/business/dining-areas/${editing.id}`, { method: "PUT", body: JSON.stringify(form) })
+      } else {
+        await apiFetch("/api/business/dining-areas", { method: "POST", body: JSON.stringify(form) })
+      }
+      setShowModal(false)
+      await fetchAreas()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save dining area")
     }
-    setShowModal(false)
   }
   const toggle = (id: string) => setAreas(prev => prev.map(a => a.id === id ? { ...a, is_active: !a.is_active } : a))
-  const remove = (id: string) => { setAreas(prev => prev.filter(a => a.id !== id)); setConfirmDelete(null) }
+  const remove = async (id: string) => {
+    try {
+      await apiFetch(`/api/business/dining-areas/${id}`, { method: "DELETE" })
+      setAreas(prev => prev.filter(a => a.id !== id))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete dining area")
+    }
+    setConfirmDelete(null)
+  }
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   return (
     <div className="space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

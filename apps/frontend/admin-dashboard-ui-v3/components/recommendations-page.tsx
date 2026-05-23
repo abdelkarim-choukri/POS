@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -398,10 +399,27 @@ export default function RecommendationsPage() {
   // Product search for adding items
   const [productSearch, setProductSearch] = useState("")
 
-  // Simulate loading
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-    return () => clearTimeout(timer)
+    setIsLoading(true)
+    apiFetch<{ data: any[] }>("/api/business/recommendation-templates")
+      .then(res => {
+        const mapped: RecommendationTemplate[] = res.data.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          type: t.template_type ?? t.type,
+          is_active: t.is_active,
+          whole_price_tier: t.whole_price_tier,
+          start_time: t.start_time,
+          end_time: t.end_time,
+          days_of_week: t.days_of_week,
+          target_grade: t.target_grade,
+          items: t.items,
+          created_at: t.created_at ?? "",
+        }))
+        setTemplates(mapped)
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false))
   }, [])
 
   // Filtered templates

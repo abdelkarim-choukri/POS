@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -145,6 +146,9 @@ function StatusBadge({ status }: { status: StockTransfer["status"] }) {
 }
 
 export default function StockTransfersPage() {
+  const [transfers, setTransfers] = useState<StockTransfer[]>(mockTransfers)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -160,7 +164,33 @@ export default function StockTransfersPage() {
     items: [] as { product_id: string; quantity: number }[],
   })
 
-  const filteredTransfers = mockTransfers.filter(t => {
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/stock-transfers?page=1&limit=20")
+      .then(res => {
+        const mapped: StockTransfer[] = res.data.map((t: any) => ({
+          id: t.id,
+          transfer_number: t.transfer_number,
+          from_warehouse_id: t.from_warehouse?.id ?? "",
+          from_warehouse_name: t.from_warehouse?.name ?? "",
+          to_warehouse_id: t.to_warehouse?.id ?? "",
+          to_warehouse_name: t.to_warehouse?.name ?? "",
+          status: t.status,
+          items: t.items ?? [],
+          notes: t.notes ?? "",
+          created_at: t.created_at ?? "",
+          created_by: t.created_by ?? "",
+          shipped_at: t.shipped_at,
+          completed_at: t.completed_at,
+        }))
+        setTransfers(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load transfers"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filteredTransfers = transfers.filter(t => {
     const matchesSearch = t.transfer_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.from_warehouse_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.to_warehouse_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -188,8 +218,11 @@ export default function StockTransfersPage() {
     }))
   }
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div>
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -205,10 +238,10 @@ export default function StockTransfersPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Transfers", count: mockTransfers.length, color: "bg-gray-100 dark:bg-[#0F0F12]", icon: Package },
-          { label: "In Transit", count: mockTransfers.filter(t => t.status === "in_transit").length, color: "bg-blue-100 dark:bg-blue-900/30", icon: Truck },
-          { label: "Completed", count: mockTransfers.filter(t => t.status === "completed").length, color: "bg-green-100 dark:bg-green-900/30", icon: CheckCircle },
-          { label: "Draft", count: mockTransfers.filter(t => t.status === "draft").length, color: "bg-amber-100 dark:bg-amber-900/30", icon: Clock },
+          { label: "Total Transfers", count: transfers.length, color: "bg-gray-100 dark:bg-[#0F0F12]", icon: Package },
+          { label: "In Transit", count: transfers.filter(t => t.status === "in_transit").length, color: "bg-blue-100 dark:bg-blue-900/30", icon: Truck },
+          { label: "Completed", count: transfers.filter(t => t.status === "completed").length, color: "bg-green-100 dark:bg-green-900/30", icon: CheckCircle },
+          { label: "Draft", count: transfers.filter(t => t.status === "draft").length, color: "bg-amber-100 dark:bg-amber-900/30", icon: Clock },
         ].map(stat => (
           <div key={stat.label} className={`${stat.color} rounded-xl p-5`}>
             <stat.icon className="w-5 h-5 text-gray-600 dark:text-gray-400 mb-2" />

@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { Plus, Pencil, Trash2, X, Search } from "lucide-react"
 
 interface TableType {
@@ -26,25 +27,60 @@ const LOC_COLORS: Record<string, string> = {
 
 export default function TableTypesPage() {
   const [types, setTypes] = useState(mockTypes)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<TableType | null>(null)
   const [form, setForm] = useState({ name: "", default_capacity: 4, shape: "square" as TableType["shape"], location: "indoor" as TableType["location"] })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
+  const fetchTypes = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/business/table-types")
+      setTypes(res.data.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        default_capacity: t.default_capacity ?? 4,
+        shape: t.shape ?? "square",
+        location: t.location ?? "indoor",
+        is_active: t.is_active,
+      })))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load table types")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchTypes() }, [])
+
   const filtered = types.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
   const openAdd = () => { setEditing(null); setForm({ name: "", default_capacity: 4, shape: "square", location: "indoor" }); setShowModal(true) }
   const openEdit = (t: TableType) => { setEditing(t); setForm({ name: t.name, default_capacity: t.default_capacity, shape: t.shape, location: t.location }); setShowModal(true) }
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return
-    if (editing) setTypes(prev => prev.map(t => t.id === editing.id ? { ...t, ...form } : t))
-    else setTypes(prev => [...prev, { id: `tt-${Date.now()}`, ...form, is_active: true }])
+    try {
+      if (editing) {
+        setTypes(prev => prev.map(t => t.id === editing.id ? { ...t, ...form } : t))
+      } else {
+        await apiFetch("/api/business/table-types", { method: "POST", body: JSON.stringify(form) })
+        await fetchTypes()
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save table type")
+    }
     setShowModal(false)
   }
   const remove = (id: string) => { setTypes(prev => prev.filter(t => t.id !== id)); setConfirmDelete(null) }
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

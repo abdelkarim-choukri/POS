@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -329,6 +330,8 @@ const permissionGroups = [
 // ============== MAIN PAGE COMPONENT ==============
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>(mockEmployees)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<"all" | "owner" | "manager" | "cashier">("all")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
@@ -364,6 +367,29 @@ export default function EmployeesPage() {
 
   // Clock history state
   const [clockDateRange, setClockDateRange] = useState({ from: "2024-03-01", to: "2024-03-15" })
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/employees")
+      .then(res => {
+        const mapped: Employee[] = res.data.map((e: any) => ({
+          id: e.id,
+          first_name: e.first_name,
+          last_name: e.last_name,
+          email: e.email ?? "",
+          role: e.role,
+          status: e.is_active ? "active" : "inactive",
+          pin: e.pin ?? "",
+          permissions: e.permissions ?? {},
+          created_at: e.created_at ?? "",
+          last_clock_in: e.last_clock_in,
+        }))
+        setEmployees(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load employees"))
+      .finally(() => setLoading(false))
+  }, [])
 
   // Filtered employees
   const filteredEmployees = employees.filter(e => {
@@ -453,8 +479,11 @@ export default function EmployeesPage() {
   const totalHours = Math.floor(totalMinutes / 60)
   const remainingMinutes = totalMinutes % 60
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="h-full">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -255,8 +256,34 @@ export default function CommunicationsPage() {
   const [activeTab, setActiveTab] = useState<"channels" | "templates" | "send" | "history">("channels")
   const [channels, setChannels] = useState(mockChannels)
   const [templates, setTemplates] = useState(mockTemplates)
-  const [history] = useState(mockHistory)
-  
+  const [history, setHistory] = useState(mockHistory)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      setHistoryLoading(true)
+      setHistoryError(null)
+      apiFetch<{ data: any[] }>("/api/business/notifications/sends?page=1&limit=20")
+        .then(res => {
+          const mapped: SendHistory[] = res.data.map((s: any) => ({
+            id: s.id,
+            template_name: s.template_name ?? "",
+            channel: s.channel,
+            recipient: s.recipient ?? "",
+            customer_name: s.customer_name,
+            status: s.status,
+            sent_at: s.sent_at ?? s.created_at ?? "",
+            cost: s.cost,
+            error_message: s.error_message,
+          }))
+          setHistory(mapped)
+        })
+        .catch(e => setHistoryError(e.message ?? "Failed to load history"))
+        .finally(() => setHistoryLoading(false))
+    }
+  }, [activeTab])
+
   // Modal states
   const [showChannelModal, setShowChannelModal] = useState(false)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
@@ -603,6 +630,13 @@ export default function CommunicationsPage() {
 
       {activeTab === "history" && (
         <div className="space-y-4">
+          {historyError && (
+            <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{historyError}</div>
+          )}
+          {historyLoading ? (
+            <div className="py-10 text-center text-gray-400">Loading...</div>
+          ) : (
+          <>
           {/* Filters */}
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
             <div className="flex items-center gap-4">
@@ -688,6 +722,8 @@ export default function CommunicationsPage() {
               </tbody>
             </table>
           </div>
+          </>
+          )}
         </div>
       )}
 

@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { Search, AlertTriangle } from "lucide-react"
 
 interface StockBatch {
@@ -26,17 +27,46 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 export default function StockBatchesPage() {
+  const [batches, setBatches] = useState<StockBatch[]>(mockBatches)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
-  const filtered = mockBatches.filter(b => {
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[] }>("/api/business/stock-batches?page=1&limit=50")
+      .then(res => {
+        const mapped: StockBatch[] = res.data.map((b: any) => ({
+          id: b.id,
+          batch_number: b.batch_number,
+          product: b.product?.name ?? b.product ?? "",
+          warehouse: b.warehouse?.name ?? b.warehouse ?? "",
+          received_qty: b.received_qty ?? 0,
+          current_qty: b.current_qty ?? 0,
+          cost_per_unit: b.cost_per_unit ?? 0,
+          received_at: b.received_at ?? "",
+          expires_at: b.expires_at,
+          status: b.status,
+        }))
+        setBatches(mapped)
+      })
+      .catch(e => setError(e.message ?? "Failed to load stock batches"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = batches.filter(b => {
     const matchSearch = b.product.toLowerCase().includes(search.toLowerCase()) || b.batch_number.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === "all" || b.status === statusFilter
     return matchSearch && matchStatus
   })
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="space-y-6">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="flex gap-3 flex-wrap">
           <div className="relative">
