@@ -66,10 +66,15 @@ export default function OssPage() {
     if (!locationId) return;
     try {
       const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const res = await fetch(`${base}/api/public/oss?location_id=${locationId}`);
+      const url = new URL(`${base}/api/public/oss`);
+      url.searchParams.set('location_id', locationId);
+      const res = await fetch(url.toString());
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const json: OssData = await res.json();
-      setData(json);
+      const json = await res.json() as OssData;
+      setData({
+        preparing: Array.isArray(json?.preparing) ? json.preparing : [],
+        ready: Array.isArray(json?.ready) ? json.ready : [],
+      });
       setLastUpdated(new Date().toLocaleTimeString());
       setError(null);
     } catch (err) {
