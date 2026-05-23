@@ -398,7 +398,7 @@ class TerminalService {
   /**
    * Evaluate and return applicable promotions for cart
    */
-  async evaluatePromotions(items: TransactionItem[], subtotal: number): Promise<AppliedPromotion[]> {
+  async evaluatePromotions(items: TransactionItem[]): Promise<AppliedPromotion[]> {
     try {
       const data = await apiFetch<{ applicable_promotions: AppliedPromotion[] }>(
         '/api/terminal/promotions/evaluate',
@@ -416,7 +416,7 @@ class TerminalService {
   /**
    * Validate a coupon code
    */
-  async validateCoupon(code: string, items: TransactionItem[], subtotal: number): Promise<CouponValidation> {
+  async validateCoupon(code: string): Promise<CouponValidation> {
     try {
       const encoded = encodeURIComponent(code);
       const data = await apiFetch<{ valid: boolean; coupon: Coupon; discount_amount: number }>(
@@ -512,10 +512,10 @@ class TerminalService {
    */
   async getTodayTransactions(): Promise<Transaction[]> {
     try {
-      const data = await apiFetch<{ data: Transaction[] } | Transaction[]>(
+      const data = await apiFetch<{ data: Transaction[] }>(
         '/api/terminal/transactions/today',
       );
-      const serverTxns = Array.isArray(data) ? data : data.data;
+      const serverTxns = data.data ?? [];
       return [...serverTxns, ...this.offlineTransactions];
     } catch {
       return this.offlineTransactions;
