@@ -22,6 +22,7 @@ export class ApiError extends Error {
     message: string,
   ) {
     super(message);
+    this.name = 'ApiError';
   }
 }
 
@@ -30,10 +31,16 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
+  const callerHeaders: Record<string, string> =
+    options.headers instanceof Headers
+      ? Object.fromEntries(options.headers.entries())
+      : Array.isArray(options.headers)
+      ? Object.fromEntries(options.headers as string[][])
+      : ((options.headers ?? {}) as Record<string, string>);
+  const headers: Record<string, string> = { ...callerHeaders };
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -53,7 +60,7 @@ export async function apiFetch<T = unknown>(
     throw new ApiError(res.status, code, message);
   }
 
-  if (res.status === 204) return {} as T;
+  if (res.status === 204) return undefined as unknown as T;
 
   return res.json() as Promise<T>;
 }
