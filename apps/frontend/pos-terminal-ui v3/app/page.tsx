@@ -43,7 +43,6 @@ import {
   Truck,
   MoveRight,
 } from "lucide-react";
-import { setToken } from '../lib/api';
 import { terminalService } from '../lib/services/terminal.service';
 
 // ============================================================
@@ -451,15 +450,8 @@ function PinLoginScreen({ onLogin }: { onLogin: () => void }) {
     if (pin.length !== 4) return;
     setIsLoading(true);
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const res = await fetch(`${API_BASE}/api/auth/pin-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, terminal_code: terminalService.getConfig()?.terminal_code ?? 'TERM-001' }),
-      });
-      if (!res.ok) throw new Error('Invalid PIN');
-      const { token } = await res.json();
-      setToken(token);
+      const result = await terminalService.clockIn('', pin);
+      if (!result.success) throw new Error(result.error ?? 'Invalid PIN');
       onLogin();
     } catch {
       setError(true);
