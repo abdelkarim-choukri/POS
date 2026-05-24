@@ -55,3 +55,7 @@ graphify-out/cost.json
 # ---- Test artifacts ----
 *.lcov
 .nyc_output/
+
+# Graphify
+graphify-out/manifest.json
+graphify-out/cost.json
