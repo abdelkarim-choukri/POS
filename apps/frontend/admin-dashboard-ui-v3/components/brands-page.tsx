@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, X, Search, Award, ExternalLink } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface Brand {
   id: string
@@ -12,43 +13,88 @@ interface Brand {
   is_active: boolean
 }
 
-const mockBrands: Brand[] = [
-  { id: "br-1", name: "Danone", description: "Dairy and beverages", website: "danone.com", product_count: 12, is_active: true },
-  { id: "br-2", name: "Centrale Laitière", description: "Moroccan dairy leader", website: "centralelaitiere.ma", product_count: 8, is_active: true },
-  { id: "br-3", name: "Bimo", description: "Biscuits and snacks", website: "bimo.ma", product_count: 15, is_active: true },
-  { id: "br-4", name: "Coca-Cola", description: "Soft drinks", website: "coca-cola.com", product_count: 6, is_active: true },
-  { id: "br-5", name: "Lesieur", description: "Cooking oils", website: "lesieur.ma", product_count: 4, is_active: true },
-  { id: "br-6", name: "Local Brand", description: "Unbranded local products", product_count: 22, is_active: false },
-]
-
 export default function BrandsPage() {
-  const [items, setItems] = useState(mockBrands)
+  const [items, setItems] = useState<Brand[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Brand | null>(null)
-  const [form, setForm] = useState({ name: "", description: "", website: "" })
+  const [form, setForm] = useState({ name: "", description: "", website: "", logo_url: "" })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  const fetchBrands = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: Brand[] } | Brand[]>("/api/business/brands")
+      setItems(Array.isArray(res) ? res : (res as { data: Brand[] }).data)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load brands")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchBrands() }, [])
 
   const filtered = items.filter(b => b.name.toLowerCase().includes(search.toLowerCase()))
 
-  const openAdd = () => { setEditing(null); setForm({ name: "", description: "", website: "" }); setShowModal(true) }
-  const openEdit = (b: Brand) => { setEditing(b); setForm({ name: b.name, description: b.description ?? "", website: b.website ?? "" }); setShowModal(true) }
+  const openAdd = () => { setEditing(null); setForm({ name: "", description: "", website: "", logo_url: "" }); setShowModal(true) }
+  const openEdit = (b: Brand) => { setEditing(b); setForm({ name: b.name, description: b.description ?? "", website: b.website ?? "", logo_url: b.logo_url ?? "" }); setShowModal(true) }
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) return
-    if (editing) {
-      setItems(prev => prev.map(b => b.id === editing.id ? { ...b, ...form } : b))
-    } else {
-      setItems(prev => [...prev, { id: `br-${Date.now()}`, ...form, product_count: 0, is_active: true }])
+    setError(null)
+    try {
+      const body: Record<string, string> = { name: form.name }
+      if (form.description) body.description = form.description
+      if (form.website) body.website = form.website
+      if (form.logo_url) body.logo_url = form.logo_url
+      if (editing) {
+        await apiFetch(`/api/business/brands/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        await apiFetch("/api/business/brands", { method: "POST", body: JSON.stringify(body) })
+      }
+      await fetchBrands()
+      setShowModal(false)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save brand")
     }
-    setShowModal(false)
   }
 
-  const toggle = (id: string) => setItems(prev => prev.map(b => b.id === id ? { ...b, is_active: !b.is_active } : b))
-  const remove = (id: string) => { setItems(prev => prev.filter(b => b.id !== id)); setConfirmDelete(null) }
+  const toggle = async (id: string) => {
+    const brand = items.find(b => b.id === id)
+    if (!brand) return
+    setError(null)
+    try {
+      await apiFetch(`/api/business/brands/${id}`, { method: "PATCH", body: JSON.stringify({ is_active: !brand.is_active }) })
+      await fetchBrands()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update brand")
+    }
+  }
+
+  const remove = async (id: string) => {
+    setError(null)
+    try {
+      await apiFetch(`/api/business/brands/${id}`, { method: "DELETE" })
+      await fetchBrands()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete brand")
+    }
+    setConfirmDelete(null)
+  }
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading brands...</div>
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -119,6 +165,7 @@ export default function BrandsPage() {
               { label: "Name *", key: "name", placeholder: "Brand name" },
               { label: "Description", key: "description", placeholder: "Optional" },
               { label: "Website", key: "website", placeholder: "example.com" },
+              { label: "Logo URL", key: "logo_url", placeholder: "https://..." },
             ].map(f => (
               <div key={f.key}>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{f.label}</label>

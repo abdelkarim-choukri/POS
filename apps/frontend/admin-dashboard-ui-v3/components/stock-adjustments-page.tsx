@@ -24,8 +24,8 @@ interface StockAdjustment {
   warehouse_name: string
   type: "increase" | "decrease"
   reason: string
-  status: "pending" | "approved" | "rejected"
-  items: { id: string; product_name: string; sku: string; quantity: number; current_stock: number }[]
+  status: "draft" | "pending_approval" | "approved" | "posted" | "rejected"
+  items: { id: string; product_name: string; sku: string; quantity: number; quantity_delta: number; current_stock: number }[]
   notes: string
   created_at: string
   created_by: string
@@ -33,34 +33,10 @@ interface StockAdjustment {
   approved_at?: string
 }
 
-// Mock Data
-const mockAdjustments: StockAdjustment[] = [
-  {
-    id: "1", adjustment_number: "ADJ-2024001", warehouse_id: "1", warehouse_name: "Main Warehouse",
-    type: "decrease", reason: "Damaged goods", status: "approved",
-    items: [
-      { id: "1", product_name: "Tomatoes (kg)", sku: "VEG-001", quantity: 5, current_stock: 45 },
-      { id: "2", product_name: "Lettuce (head)", sku: "VEG-002", quantity: 3, current_stock: 27 },
-    ],
-    notes: "Items damaged during storage", created_at: "2024-01-18", created_by: "Ahmed Benali", approved_by: "Manager", approved_at: "2024-01-18"
-  },
-  {
-    id: "2", adjustment_number: "ADJ-2024002", warehouse_id: "2", warehouse_name: "Kitchen Storage",
-    type: "increase", reason: "Inventory count correction", status: "pending",
-    items: [
-      { id: "3", product_name: "Flour (25kg bag)", sku: "BAK-001", quantity: 2, current_stock: 10 },
-    ],
-    notes: "Found extra stock during audit", created_at: "2024-01-20", created_by: "Sara Idrissi"
-  },
-  {
-    id: "3", adjustment_number: "ADJ-2024003", warehouse_id: "1", warehouse_name: "Main Warehouse",
-    type: "decrease", reason: "Expired products", status: "approved",
-    items: [
-      { id: "4", product_name: "Milk (1L)", sku: "DAI-001", quantity: 12, current_stock: 38 },
-    ],
-    notes: "Expired milk removed from inventory", created_at: "2024-01-19", created_by: "Karim Tazi", approved_by: "Manager", approved_at: "2024-01-19"
-  },
-]
+interface Warehouse {
+  id: string
+  name: string
+}
 
 const adjustmentReasons = [
   { value: "damaged", label: "Damaged Goods" },
@@ -127,7 +103,8 @@ function SlidePanel({ isOpen, onClose, title, children }: { isOpen: boolean; onC
 }
 
 export default function StockAdjustmentsPage() {
-  const [adjustments, setAdjustments] = useState<StockAdjustment[]>(mockAdjustments)
+  const [adjustments, setAdjustments] = useState<StockAdjustment[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -136,6 +113,8 @@ export default function StockAdjustmentsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [selectedAdjustment, setSelectedAdjustment] = useState<StockAdjustment | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
+  const [actionLoading, setActionLoading] = useState(false)
 
   // Create form state
   const [newAdjustment, setNewAdjustment] = useState({
@@ -146,29 +125,47 @@ export default function StockAdjustmentsPage() {
     items: [] as { product_id: string; quantity: number }[],
   })
 
+  const mapAdjustment = (a: any): StockAdjustment => ({
+    id: a.id,
+    adjustment_number: a.adjustment_number,
+    warehouse_id: a.warehouse_id ?? "",
+    warehouse_name: a.warehouse?.name ?? "",
+    type: (a.items ?? []).some((i: any) => (i.quantity_delta ?? 0) > 0) ? "increase" : "decrease",
+    reason: a.reason ?? "",
+    status: a.status,
+    items: (a.items ?? []).map((i: any) => ({
+      id: i.id,
+      product_name: i.product?.name ?? i.product_id ?? "",
+      sku: i.product?.sku ?? "",
+      quantity: Math.abs(i.quantity_delta ?? 0),
+      quantity_delta: i.quantity_delta ?? 0,
+      current_stock: i.current_stock ?? 0,
+    })),
+    notes: a.notes ?? "",
+    created_at: a.created_at ? new Date(a.created_at).toLocaleDateString() : "",
+    created_by: a.created_by_name ?? "",
+    approved_by: a.approved_by,
+    approved_at: a.approved_at,
+  })
+
+  const fetchAdjustments = () => {
+    return apiFetch<{ data: any[]; total: number }>("/api/business/stock-adjustments?page=1&limit=50")
+      .then(res => setAdjustments((res.data ?? []).map(mapAdjustment)))
+      .catch(e => setError(e.message ?? "Failed to load adjustments"))
+  }
+
   useEffect(() => {
     setLoading(true)
     setError(null)
-    apiFetch<{ data: any[] }>("/api/business/stock-adjustments?page=1&limit=20")
-      .then(res => {
-        const mapped: StockAdjustment[] = res.data.map((a: any) => ({
-          id: a.id,
-          adjustment_number: a.adjustment_number,
-          warehouse_id: a.warehouse_id ?? "",
-          warehouse_name: a.warehouse?.name ?? "",
-          type: a.delta > 0 ? "increase" : "decrease",
-          reason: a.reason ?? "",
-          status: a.status,
-          items: a.items ?? [],
-          notes: a.notes ?? "",
-          created_at: a.created_at ?? "",
-          created_by: a.created_by_name ?? "",
-          approved_by: a.approved_by,
-          approved_at: a.approved_at,
-        }))
-        setAdjustments(mapped)
+    Promise.all([
+      apiFetch<{ data: any[]; total: number }>("/api/business/stock-adjustments?page=1&limit=50"),
+      apiFetch<{ data: any[] }>("/api/business/warehouses"),
+    ])
+      .then(([adjRes, whRes]) => {
+        setAdjustments((adjRes.data ?? []).map(mapAdjustment))
+        setWarehouses(whRes.data ?? [])
       })
-      .catch(e => setError(e.message ?? "Failed to load adjustments"))
+      .catch(e => setError(e.message ?? "Failed to load data"))
       .finally(() => setLoading(false))
   }, [])
 
@@ -180,8 +177,86 @@ export default function StockAdjustmentsPage() {
   })
 
   const handleView = (adjustment: StockAdjustment) => {
-    setSelectedAdjustment(adjustment)
     setShowDetailPanel(true)
+    setRejectReason("")
+    apiFetch<any>(`/api/business/stock-adjustments/${adjustment.id}`)
+      .then(res => setSelectedAdjustment(mapAdjustment(res)))
+      .catch(e => setError(e.message ?? "Failed to load adjustment details"))
+  }
+
+  const handleCreate = () => {
+    if (!newAdjustment.warehouse_id || !newAdjustment.reason || newAdjustment.items.length === 0) return
+    setActionLoading(true)
+    setError(null)
+    const body = {
+      warehouse_id: newAdjustment.warehouse_id,
+      reason: newAdjustment.reason,
+      notes: newAdjustment.notes || undefined,
+      items: newAdjustment.items
+        .filter(i => i.product_id)
+        .map(i => ({
+          product_id: i.product_id,
+          quantity_delta: newAdjustment.type === "decrease" ? -Math.abs(i.quantity) : Math.abs(i.quantity),
+        })),
+    }
+    apiFetch<any>("/api/business/stock-adjustments", { method: "POST", body: JSON.stringify(body) })
+      .then(() => {
+        setShowCreateModal(false)
+        setNewAdjustment({ warehouse_id: "", type: "decrease", reason: "", notes: "", items: [] })
+        return fetchAdjustments()
+      })
+      .catch(e => setError(e.message ?? "Failed to create adjustment"))
+      .finally(() => setActionLoading(false))
+  }
+
+  const handleSubmit = (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    apiFetch<any>(`/api/business/stock-adjustments/${id}/submit`, { method: "POST" })
+      .then(res => {
+        setSelectedAdjustment(mapAdjustment(res))
+        return fetchAdjustments()
+      })
+      .catch(e => setError(e.message ?? "Failed to submit adjustment"))
+      .finally(() => setActionLoading(false))
+  }
+
+  const handleApprove = (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    apiFetch<any>(`/api/business/stock-adjustments/${id}/approve`, { method: "POST" })
+      .then(res => {
+        setSelectedAdjustment(mapAdjustment(res))
+        return fetchAdjustments()
+      })
+      .catch(e => setError(e.message ?? "Failed to approve adjustment"))
+      .finally(() => setActionLoading(false))
+  }
+
+  const handlePost = (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    apiFetch<any>(`/api/business/stock-adjustments/${id}/post`, { method: "POST" })
+      .then(res => {
+        setSelectedAdjustment(mapAdjustment(res))
+        return fetchAdjustments()
+      })
+      .catch(e => setError(e.message ?? "Failed to post adjustment"))
+      .finally(() => setActionLoading(false))
+  }
+
+  const handleReject = (id: string) => {
+    if (!rejectReason.trim()) return
+    setActionLoading(true)
+    setError(null)
+    apiFetch<any>(`/api/business/stock-adjustments/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: rejectReason }) })
+      .then(res => {
+        setSelectedAdjustment(mapAdjustment(res))
+        setRejectReason("")
+        return fetchAdjustments()
+      })
+      .catch(e => setError(e.message ?? "Failed to reject adjustment"))
+      .finally(() => setActionLoading(false))
   }
 
   const addItem = () => {
@@ -232,7 +307,7 @@ export default function StockAdjustmentsPage() {
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.filter(a => a.status === "pending").length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{adjustments.filter(a => a.status === "pending_approval").length}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Pending Approval</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -355,8 +430,9 @@ export default function StockAdjustmentsPage() {
                 className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
                 <option value="">Select warehouse</option>
-                <option value="1">Main Warehouse</option>
-                <option value="2">Kitchen Storage</option>
+                {warehouses.map(wh => (
+                  <option key={wh.id} value={wh.id}>{wh.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -423,18 +499,26 @@ export default function StockAdjustmentsPage() {
                     newAdjustment.items.map((item, index) => (
                       <tr key={index}>
                         <td className="p-3">
-                          <select className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
-                            <option value="">Select product</option>
-                            <option value="1">Tomatoes (kg)</option>
-                            <option value="2">Lettuce (head)</option>
-                            <option value="3">Flour (25kg bag)</option>
-                          </select>
+                          <input
+                            type="text"
+                            placeholder="Product ID"
+                            value={item.product_id}
+                            onChange={(e) => setNewAdjustment(prev => ({
+                              ...prev,
+                              items: prev.items.map((it, i) => i === index ? { ...it, product_id: e.target.value } : it),
+                            }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+                          />
                         </td>
                         <td className="p-3">
                           <input
                             type="number"
                             min="1"
                             value={item.quantity}
+                            onChange={(e) => setNewAdjustment(prev => ({
+                              ...prev,
+                              items: prev.items.map((it, i) => i === index ? { ...it, quantity: Number(e.target.value) } : it),
+                            }))}
                             className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
                           />
                         </td>
@@ -463,7 +547,9 @@ export default function StockAdjustmentsPage() {
 
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1">Submit for Approval</Button>
+            <Button variant="primary" className="flex-1" onClick={handleCreate} disabled={actionLoading}>
+              {actionLoading ? "Creating..." : "Submit for Approval"}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -528,12 +614,41 @@ export default function StockAdjustmentsPage() {
               </div>
             )}
 
-            {selectedAdjustment.status === "pending" && (
+            {selectedAdjustment.status === "draft" && (
               <div className="p-5 border-t border-gray-200 dark:border-[#1F1F23]">
+                <Button variant="primary" className="w-full" onClick={() => handleSubmit(selectedAdjustment.id)} disabled={actionLoading}>
+                  {actionLoading ? "Submitting..." : "Submit for Approval"}
+                </Button>
+              </div>
+            )}
+
+            {selectedAdjustment.status === "pending_approval" && (
+              <div className="p-5 border-t border-gray-200 dark:border-[#1F1F23] space-y-3">
                 <div className="flex gap-3">
-                  <Button variant="danger" className="flex-1">Reject</Button>
-                  <Button variant="primary" className="flex-1">Approve</Button>
+                  <Button variant="primary" className="flex-1" onClick={() => handleApprove(selectedAdjustment.id)} disabled={actionLoading}>
+                    {actionLoading ? "..." : "Approve"}
+                  </Button>
                 </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Rejection reason (required)"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white mb-2"
+                  />
+                  <Button variant="danger" className="w-full" onClick={() => handleReject(selectedAdjustment.id)} disabled={actionLoading || !rejectReason.trim()}>
+                    {actionLoading ? "..." : "Reject"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {selectedAdjustment.status === "approved" && (
+              <div className="p-5 border-t border-gray-200 dark:border-[#1F1F23]">
+                <Button variant="primary" className="w-full" onClick={() => handlePost(selectedAdjustment.id)} disabled={actionLoading}>
+                  {actionLoading ? "Posting..." : "Post Adjustment"}
+                </Button>
               </div>
             )}
           </div>

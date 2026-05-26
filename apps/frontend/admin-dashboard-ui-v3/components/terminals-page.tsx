@@ -29,6 +29,7 @@ import {
   COMMON_LABELS,
   PERMISSION_LABELS,
 } from "@/lib/constants"
+import { apiFetch } from "@/lib/api"
 
 // ============== TYPES ==============
 interface Terminal {
@@ -57,37 +58,6 @@ interface UserPermissions {
   can_force_sync: boolean
   can_reassign_terminals: boolean
 }
-
-const mockUserPermissions: UserPermissions = {
-  role: "manager",
-  can_force_sync: true,
-  can_reassign_terminals: true,
-}
-
-// ============== MOCK DATA ==============
-const mockLocations: Location[] = [
-  { id: "loc-1", name: "Downtown Branch", address: "123 Mohammed V Blvd, Casablanca", online_count: 3, total_count: 3 },
-  { id: "loc-2", name: "Marina Mall", address: "Marina Shopping Center, Level 2", online_count: 1, total_count: 2 },
-  { id: "loc-3", name: "Airport Kiosk", address: "Terminal 1, Departure Hall", online_count: 0, total_count: 1 },
-  { id: "loc-4", name: "Rabat Central", address: "45 Avenue Hassan II, Rabat", online_count: 2, total_count: 2 },
-]
-
-const mockTerminals: Terminal[] = [
-  { id: "t1", terminal_code: "T-001-DT", name: "Main Counter", location_id: "loc-1", location_name: "Downtown Branch", last_heartbeat_at: "2024-03-15 14:32:15", firmware_version: "2.4.1", transactions_today: 67, is_assigned: true },
-  { id: "t2", terminal_code: "T-002-DT", name: "Side Counter", location_id: "loc-1", location_name: "Downtown Branch", last_heartbeat_at: "2024-03-15 14:31:42", firmware_version: "2.4.1", transactions_today: 45, is_assigned: true },
-  { id: "t3", terminal_code: "T-003-DT", name: "Drive-Through", location_id: "loc-1", location_name: "Downtown Branch", last_heartbeat_at: "2024-03-15 14:30:00", firmware_version: "2.4.0", transactions_today: 38, is_assigned: true },
-  { id: "t4", terminal_code: "T-001-MM", name: "Kiosk 1", location_id: "loc-2", location_name: "Marina Mall", last_heartbeat_at: "2024-03-15 14:28:00", firmware_version: "2.4.1", transactions_today: 28, is_assigned: true },
-  { id: "t5", terminal_code: "T-002-MM", name: "Kiosk 2", location_id: "loc-2", location_name: "Marina Mall", last_heartbeat_at: "2024-03-15 10:15:00", firmware_version: "2.3.8", transactions_today: 12, is_assigned: true },
-  { id: "t6", terminal_code: "T-001-AP", name: "Airport POS", location_id: "loc-3", location_name: "Airport Kiosk", last_heartbeat_at: "2024-03-14 18:00:00", firmware_version: "2.3.9", transactions_today: 0, is_assigned: true },
-  { id: "t7", terminal_code: "T-001-RB", name: "Main Register", location_id: "loc-4", location_name: "Rabat Central", last_heartbeat_at: "2024-03-15 14:33:00", firmware_version: "2.4.1", transactions_today: 52, is_assigned: true },
-  { id: "t8", terminal_code: "T-002-RB", name: "Takeaway", location_id: "loc-4", location_name: "Rabat Central", last_heartbeat_at: "2024-03-15 14:32:45", firmware_version: "2.4.1", transactions_today: 33, is_assigned: true },
-]
-
-const mockUnassignedTerminals: Terminal[] = [
-  { id: "t9", terminal_code: "T-SPARE-01", name: "Spare Unit 1", location_id: null, location_name: null, last_heartbeat_at: null, firmware_version: "2.4.1", transactions_today: 0, is_assigned: false },
-  { id: "t10", terminal_code: "T-SPARE-02", name: "Spare Unit 2", location_id: null, location_name: null, last_heartbeat_at: "2024-03-10 14:00:00", firmware_version: "2.4.0", transactions_today: 0, is_assigned: false },
-  { id: "t11", terminal_code: "T-NEW-001", name: "New Terminal", location_id: null, location_name: null, last_heartbeat_at: null, firmware_version: "2.4.1", transactions_today: 0, is_assigned: false },
-]
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "indigo" }) {
@@ -301,62 +271,153 @@ function PaginationControls({ currentPage, totalPages, totalItems, pageSize, onP
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function TerminalsPage() {
-  const [terminals] = useState<Terminal[]>([...mockTerminals, ...mockUnassignedTerminals])
-  const [locations] = useState<Location[]>(mockLocations)
+  const [terminals, setTerminals] = useState<Terminal[]>([])
+  const [locations, setLocations] = useState<Location[]>([])
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(true)
-  const [permissions] = useState<UserPermissions>(mockUserPermissions)
-  
+  const [error, setError] = useState<string | null>(null)
+  const [assignLoading, setAssignLoading] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
+  const [permissions] = useState<UserPermissions>({
+    role: "manager",
+    can_force_sync: true,
+    can_reassign_terminals: true,
+  })
+
   // Real-time data state
   const [lastUpdated, setLastUpdated] = useState(0)
   const [isLive, setIsLive] = useState(true)
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGINATION.defaultPageSize)
-  
+
   // Modals & Panels
   const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null)
-  
-  // Form state
-  const [assignForm, setAssignForm] = useState({ terminal_code: "", location_id: "" })
 
-  // Simulate initial loading
+  // Health status
+  const [healthStatus, setHealthStatus] = useState<Record<string, any> | null>(null)
+  const [healthLoading, setHealthLoading] = useState(false)
+  const [healthError, setHealthError] = useState<string | null>(null)
+
+  // Create terminal form
+  const [createForm, setCreateForm] = useState({ name: "", location_id: "", business_id: "" })
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  // Form state
+  const [assignForm, setAssignForm] = useState({ terminal_code: "", device_name: "", business_id: "", location_id: "" })
+
+  const fetchTerminals = useCallback(async () => {
+    try {
+      const res = await apiFetch<Terminal[] | { data: Terminal[] }>("/api/super/terminals")
+      const data = Array.isArray(res) ? res : res.data
+      setTerminals(data)
+      setIsLive(true)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load terminals")
+      setIsLive(false)
+    }
+  }, [])
+
+  const fetchLocations = useCallback(async (allTerminals: Terminal[]) => {
+    // Derive unique locations from terminals' location data
+    const locationMap = new Map<string, Location>()
+    for (const t of allTerminals) {
+      if (t.location_id && t.location_name && !locationMap.has(t.location_id)) {
+        locationMap.set(t.location_id, {
+          id: t.location_id,
+          name: t.location_name,
+          address: "",
+          online_count: 0,
+          total_count: 0,
+        })
+      }
+    }
+    // Compute online_count and total_count per location
+    for (const t of allTerminals) {
+      if (t.location_id && locationMap.has(t.location_id)) {
+        const loc = locationMap.get(t.location_id)!
+        loc.total_count += 1
+        if (getHealthStatus(t.last_heartbeat_at).status === "online") {
+          loc.online_count += 1
+        }
+      }
+    }
+    setLocations(Array.from(locationMap.values()))
+  }, [])
+
+  // Initial load
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-    return () => clearTimeout(timer)
+    let cancelled = false
+    setIsLoading(true)
+    setError(null)
+    apiFetch<Terminal[] | { data: Terminal[] }>("/api/super/terminals")
+      .then((res) => {
+        if (cancelled) return
+        const data = Array.isArray(res) ? res : res.data
+        setTerminals(data)
+        setIsLive(true)
+        // Derive locations from terminal data
+        const locationMap = new Map<string, Location>()
+        for (const t of data) {
+          if (t.location_id && t.location_name && !locationMap.has(t.location_id)) {
+            locationMap.set(t.location_id, { id: t.location_id, name: t.location_name, address: "", online_count: 0, total_count: 0 })
+          }
+        }
+        for (const t of data) {
+          if (t.location_id && locationMap.has(t.location_id)) {
+            const loc = locationMap.get(t.location_id)!
+            loc.total_count += 1
+            if (getHealthStatus(t.last_heartbeat_at).status === "online") loc.online_count += 1
+          }
+        }
+        setLocations(Array.from(locationMap.values()))
+      })
+      .catch((e: any) => {
+        if (cancelled) return
+        setError(e.message ?? "Failed to load terminals")
+        setIsLive(false)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => { cancelled = true }
   }, [])
 
   // Real-time refresh (every 30 seconds)
   useEffect(() => {
     const interval = setInterval(() => {
       setLastUpdated(0)
-      // In real app, would fetch new data here
+      fetchTerminals()
     }, 30000)
-    
+
     // Update seconds counter
     const secondsInterval = setInterval(() => {
       setLastUpdated(prev => prev + 1)
     }, 1000)
-    
+
     return () => {
       clearInterval(interval)
       clearInterval(secondsInterval)
     }
-  }, [])
+  }, [fetchTerminals])
 
   // Stats
-  const totalTerminals = mockTerminals.length
-  const onlineTerminals = mockTerminals.filter(t => getHealthStatus(t.last_heartbeat_at).status === "online").length
-  const unassignedCount = mockUnassignedTerminals.length
+  const assignedTerminals = terminals.filter(t => t.is_assigned)
+  const unassignedTerminals = terminals.filter(t => !t.is_assigned)
+  const totalTerminals = assignedTerminals.length
+  const onlineTerminals = assignedTerminals.filter(t => getHealthStatus(t.last_heartbeat_at).status === "online").length
+  const unassignedCount = unassignedTerminals.length
 
   // Filtered terminals based on selected location
-  const filteredTerminals = mockTerminals.filter(t => {
+  const filteredTerminals = assignedTerminals.filter(t => {
     const matchesLocation = !selectedLocationId || t.location_id === selectedLocationId
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.terminal_code.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesLocation && matchesSearch
@@ -373,13 +434,114 @@ export default function TerminalsPage() {
 
   const handleAssignTerminal = () => {
     setAssignForm({ terminal_code: "", location_id: "" })
+    setAssignError(null)
     setShowAssignModal(true)
   }
+
+  const handleAssignSubmit = async () => {
+    if (!assignForm.terminal_code || !assignForm.location_id) return
+    setAssignLoading(true)
+    setAssignError(null)
+    try {
+      // Find the terminal by terminal_code to get its id
+      const terminal = terminals.find(t => t.terminal_code === assignForm.terminal_code)
+      if (!terminal) throw new Error("Terminal not found")
+      await apiFetch(`/api/super/terminals/${terminal.id}/assign`, {
+        method: "PATCH",
+        body: JSON.stringify({ location_id: assignForm.location_id }),
+      })
+      setShowAssignModal(false)
+      // Refresh list
+      setIsLoading(true)
+      setError(null)
+      const res = await apiFetch<Terminal[] | { data: Terminal[] }>("/api/super/terminals")
+      const data = Array.isArray(res) ? res : res.data
+      setTerminals(data)
+      const locationMap = new Map<string, Location>()
+      for (const t of data) {
+        if (t.location_id && t.location_name && !locationMap.has(t.location_id)) {
+          locationMap.set(t.location_id, { id: t.location_id, name: t.location_name, address: "", online_count: 0, total_count: 0 })
+        }
+      }
+      for (const t of data) {
+        if (t.location_id && locationMap.has(t.location_id)) {
+          const loc = locationMap.get(t.location_id)!
+          loc.total_count += 1
+          if (getHealthStatus(t.last_heartbeat_at).status === "online") loc.online_count += 1
+        }
+      }
+      setLocations(Array.from(locationMap.values()))
+    } catch (e: any) {
+      setAssignError(e.message ?? "Failed to assign terminal")
+    } finally {
+      setAssignLoading(false)
+      setIsLoading(false)
+    }
+  }
+
+  const handleCreateTerminal = async () => {
+    if (!createForm.name || !createForm.business_id) return
+    setCreateLoading(true)
+    setCreateError(null)
+    try {
+      await apiFetch("/api/super/terminals", {
+        method: "POST",
+        body: JSON.stringify({
+          name: createForm.name,
+          ...(createForm.location_id ? { location_id: createForm.location_id } : {}),
+          business_id: createForm.business_id,
+        }),
+      })
+      setShowCreateModal(false)
+      setCreateForm({ name: "", location_id: "", business_id: "" })
+      setIsLoading(true)
+      const res = await apiFetch<Terminal[] | { data: Terminal[] }>("/api/super/terminals")
+      const data = Array.isArray(res) ? res : res.data
+      setTerminals(data)
+      const locationMap = new Map<string, Location>()
+      for (const t of data) {
+        if (t.location_id && t.location_name && !locationMap.has(t.location_id)) {
+          locationMap.set(t.location_id, { id: t.location_id, name: t.location_name, address: "", online_count: 0, total_count: 0 })
+        }
+      }
+      for (const t of data) {
+        if (t.location_id && locationMap.has(t.location_id)) {
+          const loc = locationMap.get(t.location_id)!
+          loc.total_count += 1
+          if (getHealthStatus(t.last_heartbeat_at).status === "online") loc.online_count += 1
+        }
+      }
+      setLocations(Array.from(locationMap.values()))
+    } catch (e: any) {
+      setCreateError(e.message ?? "Failed to create terminal")
+    } finally {
+      setCreateLoading(false)
+      setIsLoading(false)
+    }
+  }
+
+  const handleLoadHealth = useCallback(async () => {
+    setHealthLoading(true)
+    setHealthError(null)
+    try {
+      const res = await apiFetch<any>("/api/super/terminals/health")
+      setHealthStatus(res)
+    } catch (e: any) {
+      setHealthError(e.message ?? "Failed to load health status")
+    } finally {
+      setHealthLoading(false)
+    }
+  }, [])
 
   const handleForceSync = useCallback(() => {
     if (!permissions.can_force_sync) return
     alert("Sync requested! Job ID: SYNC-" + Date.now())
   }, [permissions.can_force_sync])
+
+  const handleRefresh = useCallback(async () => {
+    setLastUpdated(0)
+    await fetchTerminals()
+  }, [fetchTerminals])
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
@@ -394,7 +556,16 @@ export default function TerminalsPage() {
   const canReassign = permissions.role === "manager" || permissions.role === "owner"
 
   return (
-    <div className="h-full flex gap-6">
+    <div className="h-full flex flex-col gap-6">
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="p-1 hover:opacity-70"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+      <div className="flex-1 flex gap-6 min-h-0">
       {/* Left Panel - Locations */}
       <div className="w-72 flex-shrink-0">
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] sticky top-0">
@@ -481,6 +652,13 @@ export default function TerminalsPage() {
           </div>
           <div className="flex items-center gap-4">
             <LiveIndicator lastUpdated={lastUpdated} isLive={isLive} />
+            <Button variant="secondary" onClick={handleLoadHealth} disabled={healthLoading}>
+              {healthLoading ? "Loading..." : "Health Status"}
+            </Button>
+            <Button variant="secondary" onClick={() => { setCreateForm({ name: "", location_id: "", business_id: "" }); setCreateError(null); setShowCreateModal(true) }}>
+              <Plus className="w-4 h-4" />
+              New Terminal
+            </Button>
             <Button variant="primary" onClick={handleAssignTerminal}>
               <Plus className="w-4 h-4" />
               Assign Terminal
@@ -532,7 +710,7 @@ export default function TerminalsPage() {
                     <Activity className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   </div>
                 </div>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{mockTerminals.reduce((sum, t) => sum + t.transactions_today, 0)}</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">{terminals.reduce((sum, t) => sum + t.transactions_today, 0)}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Transactions Today</p>
               </div>
             </>
@@ -552,7 +730,7 @@ export default function TerminalsPage() {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               />
             </div>
-            <Button variant="secondary" onClick={() => setLastUpdated(0)}>
+            <Button variant="secondary" onClick={handleRefresh}>
               <RefreshCw className="w-4 h-4" />
               {COMMON_LABELS.refresh}
             </Button>
@@ -645,18 +823,18 @@ export default function TerminalsPage() {
 
         {/* Unassigned Terminals Section */}
         {!isLoading && !selectedLocationId && (
-          mockUnassignedTerminals.length > 0 ? (
+          unassignedTerminals.length > 0 ? (
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-amber-200 dark:border-amber-800 overflow-hidden">
             <div className="p-4 border-b border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
               <h3 className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
-                {LABELS.unassigned} Terminals ({mockUnassignedTerminals.length})
+                {LABELS.unassigned} Terminals ({unassignedTerminals.length})
               </h3>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{LABELS.unassignedWarning}</p>
             </div>
             <table className="w-full">
               <tbody className="divide-y divide-amber-100 dark:divide-amber-900/30">
-                {mockUnassignedTerminals.map(terminal => (
+                {unassignedTerminals.map(terminal => (
                   <tr key={terminal.id} className="hover:bg-amber-50 dark:hover:bg-amber-900/10">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
@@ -673,11 +851,16 @@ export default function TerminalsPage() {
                     <td className="p-4"><HealthBadge lastHeartbeat={terminal.last_heartbeat_at} /></td>
                     <td className="p-4 text-xs font-mono text-gray-500 dark:text-gray-400">v{terminal.firmware_version}</td>
                     <td className="p-4">
-                      <Button 
-                        variant="primary" 
+                      <Button
+                        variant="primary"
                         size="sm"
                         disabled={!canReassign}
                         title={!canReassign ? LABELS.permissions.reassign : undefined}
+                        onClick={() => {
+                          setAssignForm({ terminal_code: terminal.terminal_code, location_id: "" })
+                          setAssignError(null)
+                          setShowAssignModal(true)
+                        }}
                       >
                         <MapPin className="w-3 h-3" />
                         Assign to Location
@@ -698,9 +881,84 @@ export default function TerminalsPage() {
         )}
       </div>
 
+      {/* Health Status Banner */}
+      {(healthStatus || healthError) && (
+        <div className={`p-4 rounded-xl border text-sm ${healthError ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400" : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"}`}>
+          {healthError ? healthError : (
+            <div className="flex items-center gap-3">
+              <Activity className="w-4 h-4 flex-shrink-0" />
+              <span>Health: <span className="font-medium">{JSON.stringify(healthStatus)}</span></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Terminal Modal */}
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create New Terminal" size="md">
+        <div className="space-y-4">
+          {createError && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {createError}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Terminal Name *</label>
+            <input
+              type="text"
+              value={createForm.name}
+              onChange={(e) => setCreateForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Register #1"
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business ID *</label>
+            <input
+              type="text"
+              value={createForm.business_id}
+              onChange={(e) => setCreateForm(f => ({ ...f, business_id: e.target.value }))}
+              placeholder="Business UUID"
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{LABELS.location} (optional)</label>
+            <select
+              value={createForm.location_id}
+              onChange={(e) => setCreateForm(f => ({ ...f, location_id: e.target.value }))}
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+            >
+              <option value="">No location (unassigned)</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowCreateModal(false)} disabled={createLoading}>{COMMON_LABELS.close}</Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={handleCreateTerminal}
+              disabled={createLoading || !createForm.name || !createForm.business_id}
+            >
+              <Plus className="w-4 h-4" />
+              {createLoading ? "Creating..." : "Create Terminal"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Assign Terminal Modal */}
       <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign Terminal" size="md">
         <div className="space-y-4">
+          {assignError && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {assignError}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Terminal</label>
             <select
@@ -709,12 +967,12 @@ export default function TerminalsPage() {
               className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
             >
               <option value="">Select unassigned terminal...</option>
-              {mockUnassignedTerminals.map(t => (
+              {unassignedTerminals.map(t => (
                 <option key={t.id} value={t.terminal_code}>{t.terminal_code} - {t.name}</option>
               ))}
             </select>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{LABELS.location}</label>
             <select
@@ -728,12 +986,17 @@ export default function TerminalsPage() {
               ))}
             </select>
           </div>
-          
+
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAssignModal(false)}>{COMMON_LABELS.close}</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAssignModal(false)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAssignModal(false)} disabled={assignLoading}>{COMMON_LABELS.close}</Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={handleAssignSubmit}
+              disabled={assignLoading || !assignForm.terminal_code || !assignForm.location_id}
+            >
               <Check className="w-4 h-4" />
-              Assign Terminal
+              {assignLoading ? "Assigning..." : "Assign Terminal"}
             </Button>
           </div>
         </div>
@@ -835,6 +1098,7 @@ export default function TerminalsPage() {
           </div>
         )}
       </SlidePanel>
+      </div>
     </div>
   )
 }

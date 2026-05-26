@@ -1,12 +1,22 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ArrowLeft, Phone, Mail, Star, Gift, Calendar, ShoppingCart } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface CustomerProfile {
   id: string; name: string; phone: string; email?: string; address?: string
   grade: "Bronze" | "Silver" | "Gold" | "Platinum"; points: number; total_spent: number
   visit_count: number; last_visit?: string; birthday?: string; notes?: string
   labels: string[]
+  // API response fields
+  first_name?: string; last_name?: string; customer_code?: string; points_balance?: number
+  created_at?: string
+}
+
+interface CustomerAttribute {
+  attribute_id: string
+  name: string
+  value: string
 }
 interface Transaction { id: string; number: string; date: string; total: number; items: number; method: string }
 interface PointsEvent { id: string; date: string; description: string; points: number; balance_after: number }
@@ -41,11 +51,110 @@ const GRADE_COLORS: Record<string, string> = {
 const TABS = ["Profile", "Transactions", "Points History", "Labels"] as const
 
 export default function CustomerDetailPage({ id, onBack }: { id: string; onBack?: () => void }) {
-  const customer = mockCustomer
+  const [customer, setCustomer] = useState<CustomerProfile>(mockCustomer)
+  const [attributes, setAttributes] = useState<CustomerAttribute[]>([])
+  const [editingAttrs, setEditingAttrs] = useState<Record<string, string>>({})
+  const [isEditingAttrs, setIsEditingAttrs] = useState(false)
+  const [attrSaving, setAttrSaving] = useState(false)
+  const [attrError, setAttrError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<typeof TABS[number]>("Profile")
+
+  const fetchAttributes = async () => {
+    const data = await apiFetch<{ attributes: CustomerAttribute[] }>(`/api/business/customers/${id}/attributes`)
+    setAttributes(data.attributes ?? [])
+  }
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        await Promise.all([
+          (async () => {
+            const data = await apiFetch<any>(`/api/business/customers/${id}`)
+            // Normalise API response into CustomerProfile shape
+            setCustomer({
+              id: data.id,
+              name: [data.first_name, data.last_name].filter(Boolean).join(" ") || mockCustomer.name,
+              phone: data.phone ?? mockCustomer.phone,
+              email: data.email,
+              address: data.address,
+              grade: data.grade ?? mockCustomer.grade,
+              points: data.points_balance ?? data.points ?? mockCustomer.points,
+              total_spent: data.total_spent ?? mockCustomer.total_spent,
+              visit_count: data.visit_count ?? mockCustomer.visit_count,
+              last_visit: data.last_visit,
+              birthday: data.birthday,
+              notes: data.notes,
+              labels: data.labels ?? mockCustomer.labels,
+              first_name: data.first_name,
+              last_name: data.last_name,
+              customer_code: data.customer_code,
+              points_balance: data.points_balance,
+              created_at: data.created_at,
+            })
+          })(),
+          fetchAttributes(),
+        ])
+      } catch (err: any) {
+        setError(err?.message ?? "Failed to load customer data.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchAll()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const handleEditAttrs = () => {
+    const draft: Record<string, string> = {}
+    attributes.forEach(a => { draft[a.attribute_id] = a.value })
+    setEditingAttrs(draft)
+    setIsEditingAttrs(true)
+    setAttrError(null)
+  }
+
+  const handleCancelAttrs = () => {
+    setIsEditingAttrs(false)
+    setAttrError(null)
+  }
+
+  const handleSaveAttrs = async () => {
+    setAttrSaving(true)
+    setAttrError(null)
+    try {
+      await apiFetch(`/api/business/customers/${id}/attributes`, {
+        method: "PUT",
+        body: JSON.stringify({
+          attributes: Object.entries(editingAttrs).map(([attribute_id, value]) => ({ attribute_id, value })),
+        }),
+      })
+      await fetchAttributes()
+      setIsEditingAttrs(false)
+    } catch (err: any) {
+      setAttrError(err?.message ?? "Failed to save attributes.")
+    } finally {
+      setAttrSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-gray-500 dark:text-gray-400 text-sm">
+        Loading customer…
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start gap-4">
         {onBack && (
@@ -94,28 +203,94 @@ export default function CustomerDetailPage({ id, onBack }: { id: string; onBack?
       </div>
 
       {tab === "Profile" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5 space-y-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Contact Information</h3>
-            {[
-              { label: "Phone", value: customer.phone },
-              { label: "Email", value: customer.email ?? "—" },
-              { label: "Address", value: customer.address ?? "—" },
-              { label: "Birthday", value: customer.birthday ?? "—" },
-              { label: "Last Visit", value: customer.last_visit ?? "—" },
-            ].map(row => (
-              <div key={row.label} className="flex justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">{row.label}</span>
-                <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%]">{row.value}</span>
-              </div>
-            ))}
-          </div>
-          {customer.notes && (
-            <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Notes</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{customer.notes}</p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5 space-y-4">
+              <h3 className="font-semibold text-gray-900 dark:text-white">Contact Information</h3>
+              {[
+                { label: "Phone", value: customer.phone },
+                { label: "Email", value: customer.email ?? "—" },
+                { label: "Address", value: customer.address ?? "—" },
+                { label: "Birthday", value: customer.birthday ?? "—" },
+                { label: "Last Visit", value: customer.last_visit ?? "—" },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">{row.label}</span>
+                  <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%]">{row.value}</span>
+                </div>
+              ))}
             </div>
-          )}
+            {customer.notes && (
+              <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Notes</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{customer.notes}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Attributes */}
+          <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-white">Custom Attributes</h3>
+              {!isEditingAttrs && attributes.length > 0 && (
+                <button
+                  onClick={handleEditAttrs}
+                  className="text-sm px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {attrError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-2 text-sm text-red-700 dark:text-red-400">
+                {attrError}
+              </div>
+            )}
+
+            {attributes.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">No custom attributes defined.</p>
+            ) : isEditingAttrs ? (
+              <div className="space-y-3">
+                {attributes.map(attr => (
+                  <div key={attr.attribute_id} className="flex items-center gap-3 text-sm">
+                    <span className="w-40 flex-shrink-0 text-gray-500 dark:text-gray-400">{attr.name}</span>
+                    <input
+                      type="text"
+                      value={editingAttrs[attr.attribute_id] ?? ""}
+                      onChange={e => setEditingAttrs(prev => ({ ...prev, [attr.attribute_id]: e.target.value }))}
+                      className="flex-1 rounded-lg border border-gray-300 dark:border-[#1F1F23] bg-white dark:bg-[#1a1a20] px-3 py-1.5 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleSaveAttrs}
+                    disabled={attrSaving}
+                    className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {attrSaving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    onClick={handleCancelAttrs}
+                    disabled={attrSaving}
+                    className="px-4 py-1.5 rounded-lg border border-gray-300 dark:border-[#1F1F23] text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#1a1a20] disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attributes.map(attr => (
+                  <div key={attr.attribute_id} className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">{attr.name}</span>
+                    <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%]">{attr.value || "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

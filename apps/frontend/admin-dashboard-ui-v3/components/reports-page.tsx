@@ -1980,8 +1980,70 @@ export default function ReportsPage() {
   const [location, setLocation] = useState("all")
   const [selectedTransaction, setSelectedTransaction] = useState<typeof transactionsData[0] | null>(null)
   const [showRefundModal, setShowRefundModal] = useState(false)
+  const [fetchedDetail, setFetchedDetail] = useState<any>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [refundAmount, setRefundAmount] = useState("")
+  const [refundReason, setRefundReason] = useState("")
+  const [refundMethod, setRefundMethod] = useState("cash")
+  const [refundLoading, setRefundLoading] = useState(false)
 
   const canRefund = true // This would come from user permissions
+
+  useEffect(() => {
+    if (!selectedTransaction) { setFetchedDetail(null); return }
+    setDetailLoading(true)
+    setFetchedDetail(null)
+    apiFetch<any>(`/api/business/transactions/${selectedTransaction.id}`)
+      .then((data) => {
+        setFetchedDetail({
+          number: data.invoice_number ?? selectedTransaction.number,
+          date: data.created_at ?? selectedTransaction.date,
+          cashier: data.cashier
+            ? `${data.cashier.first_name ?? ""} ${data.cashier.last_name ?? ""}`.trim()
+            : selectedTransaction.cashier,
+          customer: data.customer
+            ? `${data.customer.first_name ?? ""} ${data.customer.last_name ?? ""}`.trim()
+            : undefined,
+          items: (data.transaction_items ?? []).map((i: any) => ({
+            name: i.product?.name ?? "Item",
+            qty: i.quantity ?? 1,
+            price: i.unit_price_ttc ?? i.unit_price ?? 0,
+            total: i.item_ttc ?? (i.quantity * (i.unit_price_ttc ?? i.unit_price ?? 0)),
+          })),
+          subtotal: data.total_ht ?? 0,
+          tvaBreakdown: [] as { rate: string; base: number; tva: number }[],
+          totalTVA: data.total_tva ?? 0,
+          total: data.total_ttc ?? selectedTransaction.total,
+          payment: data.payment_method ?? selectedTransaction.payment,
+          status: data.voided_at ? "voided" : "completed",
+        })
+      })
+      .catch(() => setFetchedDetail(null))
+      .finally(() => setDetailLoading(false))
+  }, [selectedTransaction])
+
+  const handleRefundConfirm = async () => {
+    if (!selectedTransaction) return
+    setRefundLoading(true)
+    try {
+      await apiFetch(`/api/business/transactions/${selectedTransaction.id}/refund`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: parseFloat(refundAmount) || (fetchedDetail?.total ?? selectedTransaction.total),
+          reason: refundReason,
+          refund_method: refundMethod,
+        }),
+      })
+      setShowRefundModal(false)
+      setSelectedTransaction(null)
+      setRefundReason("")
+      setRefundAmount("")
+    } catch (e: any) {
+      alert(e.message ?? "Refund failed")
+    } finally {
+      setRefundLoading(false)
+    }
+  }
 
   const tabs = [
     { id: "api-reports", label: "Live Reports" },
@@ -2110,116 +2172,149 @@ export default function ReportsPage() {
       {renderTabContent()}
 
       {/* Transaction Detail Panel */}
-      <SlidePanel 
-        isOpen={!!selectedTransaction} 
-        onClose={() => setSelectedTransaction(null)} 
+      <SlidePanel
+        isOpen={!!selectedTransaction}
+        onClose={() => { setSelectedTransaction(null); setFetchedDetail(null) }}
         title="Transaction Details"
       >
         {selectedTransaction && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-mono text-lg font-semibold">{transactionDetail.number}</p>
-                <p className="text-sm text-gray-500">{formatDateTime(transactionDetail.date)}</p>
-              </div>
-              <Badge color="green">{transactionDetail.status}</Badge>
-            </div>
-
-            {transactionDetail.customer && (
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-500 mb-1">Customer</p>
-                <p className="font-medium text-gray-900">{transactionDetail.customer}</p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-sm font-medium text-gray-500 mb-2">Items</p>
-              <div className="space-y-2">
-                {transactionDetail.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between py-2 border-b border-gray-100 last:border-0">
+            {detailLoading ? (
+              <div className="py-8 text-center text-gray-400 text-sm">Loading details…</div>
+            ) : (() => {
+              const d = fetchedDetail ?? transactionDetail
+              return (
+                <>
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-gray-900">{item.name}</p>
-                      <p className="text-xs text-gray-400">{item.qty} × {formatMAD(item.price)}</p>
+                      <p className="font-mono text-lg font-semibold">{d.number}</p>
+                      <p className="text-sm text-gray-500">{formatDateTime(d.date)}</p>
                     </div>
-                    <p className="font-mono text-gray-900">{formatMAD(item.total)}</p>
+                    <Badge color={d.status === "completed" ? "green" : d.status === "voided" ? "red" : "yellow"}>{d.status}</Badge>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="space-y-2 pt-4 border-t border-gray-200">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span className="font-mono">{formatMAD(transactionDetail.subtotal)}</span>
-              </div>
-              <div className="pt-2 border-t border-dashed border-gray-200">
-                <p className="text-xs text-gray-500 mb-2">TVA Breakdown</p>
-                {transactionDetail.tvaBreakdown.map((t, idx) => (
-                  <div key={idx} className="flex justify-between text-xs text-gray-500">
-                    <span>TVA {t.rate} on {formatMAD(t.base)}</span>
-                    <span className="font-mono">{formatMAD(t.tva)}</span>
+                  {d.customer && (
+                    <div className="bg-gray-50 dark:bg-[#0F0F12]/50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Customer</p>
+                      <p className="font-medium text-gray-900 dark:text-white">{d.customer}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Items</p>
+                    <div className="space-y-2">
+                      {d.items.map((item: any, idx: number) => (
+                        <div key={idx} className="flex justify-between py-2 border-b border-gray-100 dark:border-[#1F1F23] last:border-0">
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
+                            <p className="text-xs text-gray-400">{item.qty} × {formatMAD(item.price)}</p>
+                          </div>
+                          <p className="font-mono text-gray-900 dark:text-white">{formatMAD(item.total)}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Total TVA</span>
-                <span className="font-mono">{formatMAD(transactionDetail.totalTVA)}</span>
-              </div>
-              <div className="flex justify-between font-semibold text-lg pt-2 border-t border-gray-200">
-                <span>Total</span>
-                <span className="font-mono">{formatMAD(transactionDetail.total)}</span>
-              </div>
-            </div>
+                </>
+              )
+            })()}
 
-            <div className="pt-4 border-t border-gray-200 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Payment Method</span>
-                <span>{transactionDetail.payment}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Cashier</span>
-                <span>{transactionDetail.cashier}</span>
-              </div>
-            </div>
+            {!detailLoading && (() => {
+              const d = fetchedDetail ?? transactionDetail
+              return (
+                <>
+                  <div className="space-y-2 pt-4 border-t border-gray-200 dark:border-[#1F1F23]">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Subtotal</span>
+                      <span className="font-mono">{formatMAD(d.subtotal)}</span>
+                    </div>
+                    {d.tvaBreakdown.length > 0 && (
+                      <div className="pt-2 border-t border-dashed border-gray-200 dark:border-[#1F1F23]">
+                        <p className="text-xs text-gray-500 mb-2">TVA Breakdown</p>
+                        {d.tvaBreakdown.map((t: any, idx: number) => (
+                          <div key={idx} className="flex justify-between text-xs text-gray-500">
+                            <span>TVA {t.rate} on {formatMAD(t.base)}</span>
+                            <span className="font-mono">{formatMAD(t.tva)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Total TVA</span>
+                      <span className="font-mono">{formatMAD(d.totalTVA)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-lg pt-2 border-t border-gray-200 dark:border-[#1F1F23]">
+                      <span>Total</span>
+                      <span className="font-mono">{formatMAD(d.total)}</span>
+                    </div>
+                  </div>
 
-            {canRefund && selectedTransaction.status === "completed" && (
-              <Button variant="danger" className="w-full" onClick={() => setShowRefundModal(true)}>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Issue Refund
-              </Button>
-            )}
+                  <div className="pt-4 border-t border-gray-200 dark:border-[#1F1F23] space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Payment Method</span>
+                      <span>{d.payment}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Cashier</span>
+                      <span>{d.cashier}</span>
+                    </div>
+                  </div>
+
+                  {canRefund && selectedTransaction.status === "completed" && (
+                    <Button variant="danger" className="w-full" onClick={() => {
+                      setRefundAmount(String(d.total))
+                      setShowRefundModal(true)
+                    }}>
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Issue Refund
+                    </Button>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
       </SlidePanel>
 
       {/* Refund Modal */}
-      <Modal isOpen={showRefundModal} onClose={() => setShowRefundModal(false)} title="Issue Refund" size="sm">
+      <Modal isOpen={showRefundModal} onClose={() => { setShowRefundModal(false); setRefundAmount(""); setRefundReason(""); setRefundMethod("cash") }} title="Issue Refund" size="sm">
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            Transaction: <span className="font-mono font-medium">{transactionDetail.number}</span>
+            Transaction: <span className="font-mono font-medium">{(fetchedDetail ?? transactionDetail).number}</span>
           </p>
-          <Input label="Amount (MAD)" type="number" value={transactionDetail.total.toString()} />
+          <Input
+            label="Amount (MAD)"
+            type="number"
+            value={refundAmount}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRefundAmount(e.target.value)}
+            placeholder={(fetchedDetail ?? transactionDetail).total.toString()}
+          />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-            <textarea 
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full h-20 focus:outline-none focus:ring-2 focus:ring-red-500" 
-              placeholder="Enter reason for refund..." 
+            <textarea
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full h-20 focus:outline-none focus:ring-2 focus:ring-red-500"
+              placeholder="Enter reason for refund..."
+              value={refundReason}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setRefundReason(e.target.value)}
             />
           </div>
-          <Select 
-            label="Refund Method" 
+          <Select
+            label="Refund Method"
+            value={refundMethod}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setRefundMethod(e.target.value)}
             options={[
-              { value: "cash", label: "Cash" }, 
-              { value: "card_cmi", label: "Card CMI" }, 
+              { value: "cash", label: "Cash" },
+              { value: "card_cmi", label: "Card CMI" },
               { value: "card_payzone", label: "Card PayZone" }
-            ]} 
+            ]}
           />
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
             <p className="text-sm text-amber-800">This action cannot be undone</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowRefundModal(false)}>Cancel</Button>
-            <Button variant="danger" className="flex-1">Confirm Refund</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowRefundModal(false); setRefundAmount(""); setRefundReason(""); setRefundMethod("cash") }}>Cancel</Button>
+            <Button variant="danger" className="flex-1" onClick={handleRefundConfirm} disabled={refundLoading}>
+              {refundLoading ? "Processing..." : "Confirm Refund"}
+            </Button>
           </div>
         </div>
       </Modal>

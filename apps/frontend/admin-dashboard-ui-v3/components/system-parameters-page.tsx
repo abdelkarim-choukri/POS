@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Save, RotateCcw, Info, CheckCircle } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface SystemParameter {
   id: string
@@ -13,17 +14,6 @@ interface SystemParameter {
   updated_by: string
 }
 
-const mockParameters: SystemParameter[] = [
-  { id: "sp-1", key: "platform.points_earn_divisor_default", value: "10", description: "Default MAD amount per loyalty point earned when not set at business level.", data_type: "number", is_sensitive: false, updated_at: "2025-01-15", updated_by: "super_admin" },
-  { id: "sp-2", key: "platform.max_coupon_code_length", value: "12", description: "Length of auto-generated coupon codes.", data_type: "number", is_sensitive: false, updated_at: "2025-01-10", updated_by: "super_admin" },
-  { id: "sp-3", key: "platform.tva_default_rate", value: "20", description: "Default TVA rate (%) applied to new products when category has no rate.", data_type: "number", is_sensitive: false, updated_at: "2025-01-01", updated_by: "system" },
-  { id: "sp-4", key: "platform.sms_provider", value: "orange_ma", description: "Default SMS gateway provider for notification sends.", data_type: "string", is_sensitive: false, updated_at: "2025-01-05", updated_by: "super_admin" },
-  { id: "sp-5", key: "platform.maintenance_mode", value: "false", description: "When true, only super admins can log in.", data_type: "boolean", is_sensitive: false, updated_at: "2025-01-20", updated_by: "super_admin" },
-  { id: "sp-6", key: "platform.webhook_secret", value: "••••••••••••••••", description: "Shared secret for incoming webhook signature verification.", data_type: "string", is_sensitive: true, updated_at: "2025-01-01", updated_by: "system" },
-  { id: "sp-7", key: "platform.max_businesses_per_chain", value: "50", description: "Maximum number of child businesses allowed per parent chain.", data_type: "number", is_sensitive: false, updated_at: "2025-01-01", updated_by: "system" },
-  { id: "sp-8", key: "platform.session_timeout_minutes", value: "480", description: "JWT token validity in minutes (default 8 hours).", data_type: "number", is_sensitive: false, updated_at: "2025-01-12", updated_by: "super_admin" },
-]
-
 const TYPE_COLORS: Record<string, string> = {
   string: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   number: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
@@ -32,24 +22,53 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export default function SystemParametersPage() {
-  const [params, setParams] = useState(mockParameters)
+  const [params, setParams] = useState<SystemParameter[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const fetchParams = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch("/api/super/system-parameters")
+      const data = Array.isArray(res) ? res : (res.data ?? [])
+      setParams(data)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load system parameters")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchParams() }, [])
 
   const startEdit = (param: SystemParameter) => {
     if (param.is_sensitive) return
+    setSaveError(null)
     setEditingId(param.id)
     setEditValue(param.value)
   }
 
-  const cancelEdit = () => { setEditingId(null); setEditValue("") }
+  const cancelEdit = () => { setEditingId(null); setEditValue(""); setSaveError(null) }
 
-  const saveEdit = (id: string) => {
-    setParams(prev => prev.map(p => p.id === id ? { ...p, value: editValue, updated_at: "2025-01-21", updated_by: "super_admin" } : p))
-    setEditingId(null)
-    setSavedId(id)
-    setTimeout(() => setSavedId(null), 1500)
+  const saveEdit = async (id: string) => {
+    setSaveError(null)
+    try {
+      const updated: SystemParameter = await apiFetch(`/api/super/system-parameters/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ value: editValue }),
+      })
+      setParams(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p))
+      setEditingId(null)
+      setSavedId(id)
+      setTimeout(() => setSavedId(null), 1500)
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save parameter")
+    }
   }
 
   return (
@@ -61,6 +80,18 @@ export default function SystemParametersPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          {saveError}
+        </div>
+      )}
+
       <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-[#1a1a20]">
@@ -71,7 +102,20 @@ export default function SystemParametersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-[#1F1F23]">
-            {params.map(param => (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                  Loading system parameters…
+                </td>
+              </tr>
+            ) : params.length === 0 && !error ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                  No system parameters found.
+                </td>
+              </tr>
+            ) : null}
+            {!loading && params.map(param => (
               <tr key={param.id} className={`hover:bg-gray-50 dark:hover:bg-[#1a1a20] transition-colors ${param.is_sensitive ? "opacity-70" : ""}`}>
                 <td className="px-4 py-3">
                   <code className="text-xs font-mono text-indigo-700 dark:text-indigo-300">{param.key}</code>

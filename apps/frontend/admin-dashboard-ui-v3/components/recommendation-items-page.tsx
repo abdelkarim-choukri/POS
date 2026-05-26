@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ArrowLeft, Package, Plus, Trash2, Search } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface RecommendationItem {
   id: string
@@ -12,48 +13,122 @@ interface RecommendationItem {
   sort_order: number
 }
 
-const mockItems: RecommendationItem[] = [
-  { id: "ri-1", product_id: "p-1", product_name: "Café Espresso", category: "Boissons", price_ttc: 12.00, stock_qty: 999, sort_order: 1 },
-  { id: "ri-2", product_id: "p-2", product_name: "Croissant Beurre", category: "Viennoiseries", price_ttc: 8.50, stock_qty: 24, sort_order: 2 },
-  { id: "ri-3", product_id: "p-3", product_name: "Jus d'Orange", category: "Boissons", price_ttc: 18.00, stock_qty: 15, sort_order: 3 },
-  { id: "ri-4", product_id: "p-4", product_name: "Pain au Chocolat", category: "Viennoiseries", price_ttc: 9.00, stock_qty: 0, sort_order: 4 },
-  { id: "ri-5", product_id: "p-5", product_name: "Thé à la Menthe", category: "Boissons", price_ttc: 10.00, stock_qty: 999, sort_order: 5 },
-]
-
-const allProducts = [
-  { id: "p-6", name: "Sandwich Club", category: "Snacks", price_ttc: 35.00, stock_qty: 12 },
-  { id: "p-7", name: "Eau Minérale", category: "Boissons", price_ttc: 5.00, stock_qty: 48 },
-  { id: "p-8", name: "Brownie", category: "Pâtisseries", price_ttc: 12.00, stock_qty: 8 },
-]
+interface SearchProduct {
+  id: string
+  name: string
+  sku?: string
+  price?: number
+  price_ttc?: number
+  category?: string | { name?: string }
+}
 
 interface Props {
   id?: string
+  templateId?: string
   onBack?: () => void
 }
 
-export default function RecommendationItemsPage({ id, onBack }: Props) {
-  const [items, setItems] = useState(mockItems)
+export default function RecommendationItemsPage({ id, templateId, onBack }: Props) {
+  const resolvedTemplateId = templateId ?? id
+
+  const [items, setItems] = useState<RecommendationItem[]>([])
   const [search, setSearch] = useState("")
   const [showAddModal, setShowAddModal] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  // Product search state (modal)
+  const [productSearch, setProductSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchProduct[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Save state
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Debounced product search
+  useEffect(() => {
+    if (!showAddModal) return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!productSearch.trim()) {
+      setSearchResults([])
+      setSearchError(null)
+      return
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchError(null)
+      try {
+        const res = await apiFetch(`/api/business/products?search=${encodeURIComponent(productSearch.trim())}&limit=20`)
+        const raw = Array.isArray(res) ? res : (res?.data ?? [])
+        setSearchResults(raw as SearchProduct[])
+      } catch {
+        setSearchError("Failed to load products")
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 300)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [productSearch, showAddModal])
+
+  const openAddModal = () => {
+    setProductSearch("")
+    setSearchResults([])
+    setSearchError(null)
+    setShowAddModal(true)
+  }
 
   const filtered = items.filter(i =>
     i.product_name.toLowerCase().includes(search.toLowerCase()) ||
     i.category.toLowerCase().includes(search.toLowerCase())
   )
 
-  const addProduct = (product: typeof allProducts[0]) => {
+  const addProduct = (product: SearchProduct) => {
+    // Guard: don't add the same product twice
+    if (items.some(i => i.product_id === product.id)) return
+    const categoryName =
+      typeof product.category === "string"
+        ? product.category
+        : product.category?.name ?? ""
     const newItem: RecommendationItem = {
       id: `ri-${Date.now()}`,
       product_id: product.id,
       product_name: product.name,
-      category: product.category,
-      price_ttc: product.price_ttc,
-      stock_qty: product.stock_qty,
+      category: categoryName,
+      price_ttc: product.price_ttc ?? product.price ?? 0,
+      stock_qty: 0,
       sort_order: items.length + 1,
     }
     setItems(prev => [...prev, newItem])
     setShowAddModal(false)
+  }
+
+  const handleSave = async () => {
+    if (!resolvedTemplateId) {
+      setSaveError("No template ID provided")
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await apiFetch(`/api/business/recommendation-templates/${resolvedTemplateId}/items`, {
+        method: "PUT",
+        body: JSON.stringify({
+          items: items.map(item => ({
+            product_id: item.product_id,
+            sort_order: item.sort_order,
+          })),
+        }),
+      })
+    } catch {
+      setSaveError("Failed to save items. Please try again.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const removeItem = (id: string) => {
@@ -86,7 +161,7 @@ export default function RecommendationItemsPage({ id, onBack }: Props) {
           )}
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Template Items</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Template ID: {id ?? "rt-1"} · {items.length} items</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Template ID: {resolvedTemplateId ?? "—"} · {items.length} items</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -100,13 +175,26 @@ export default function RecommendationItemsPage({ id, onBack }: Props) {
             />
           </div>
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" /> Add Product
           </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
+
+      {saveError && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+          {saveError}
+        </div>
+      )}
 
       <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
         <table className="w-full text-sm">
@@ -176,19 +264,54 @@ export default function RecommendationItemsPage({ id, onBack }: Props) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] w-full max-w-md p-6 space-y-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Add Product to Template</h3>
-            <div className="space-y-2">
-              {allProducts.map(product => (
-                <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#1a1a20] transition-colors">
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white text-sm">{product.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{product.category} · {product.price_ttc.toFixed(2)} MAD</p>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                autoFocus
+                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Search products…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+            </div>
+            {searchError && (
+              <p className="text-xs text-red-500 dark:text-red-400">{searchError}</p>
+            )}
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {searchLoading && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Loading…</p>
+              )}
+              {!searchLoading && productSearch.trim() && searchResults.length === 0 && !searchError && (
+                <p className="text-sm text-gray-400 text-center py-4">No products found</p>
+              )}
+              {!searchLoading && !productSearch.trim() && (
+                <p className="text-sm text-gray-400 text-center py-4">Type to search products</p>
+              )}
+              {!searchLoading && searchResults.map(product => {
+                const alreadyAdded = items.some(i => i.product_id === product.id)
+                const categoryName =
+                  typeof product.category === "string"
+                    ? product.category
+                    : product.category?.name ?? ""
+                const price = product.price_ttc ?? product.price ?? 0
+                return (
+                  <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#1a1a20] transition-colors">
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white text-sm">{product.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {[categoryName, product.sku].filter(Boolean).join(" · ")}{categoryName || product.sku ? " · " : ""}{price.toFixed(2)} MAD
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => addProduct(product)}
+                      disabled={alreadyAdded}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      {alreadyAdded ? "Added" : "Add"}
+                    </button>
                   </div>
-                  <button onClick={() => addProduct(product)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors">
-                    Add
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
             <div className="flex justify-end pt-2">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Close</button>

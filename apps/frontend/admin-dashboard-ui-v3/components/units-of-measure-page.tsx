@@ -1,63 +1,87 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, X, Search, Ruler } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface UnitOfMeasure {
   id: string
   name: string
-  symbol: string
-  unit_type: "weight" | "volume" | "length" | "piece" | "area"
+  abbreviation: string
+  description?: string
   is_active: boolean
 }
 
-const mockUnits: UnitOfMeasure[] = [
-  { id: "u-1", name: "Kilogram", symbol: "kg", unit_type: "weight", is_active: true },
-  { id: "u-2", name: "Gram", symbol: "g", unit_type: "weight", is_active: true },
-  { id: "u-3", name: "Liter", symbol: "L", unit_type: "volume", is_active: true },
-  { id: "u-4", name: "Milliliter", symbol: "mL", unit_type: "volume", is_active: true },
-  { id: "u-5", name: "Piece", symbol: "pcs", unit_type: "piece", is_active: true },
-  { id: "u-6", name: "Box", symbol: "box", unit_type: "piece", is_active: true },
-  { id: "u-7", name: "Meter", symbol: "m", unit_type: "length", is_active: false },
-]
-
-const TYPE_COLORS: Record<string, string> = {
-  weight: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  volume: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  length: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  piece: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  area: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-}
-
 export default function UnitsOfMeasurePage() {
-  const [units, setUnits] = useState(mockUnits)
+  const [units, setUnits] = useState<UnitOfMeasure[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<UnitOfMeasure | null>(null)
-  const [form, setForm] = useState({ name: "", symbol: "", unit_type: "piece" as UnitOfMeasure["unit_type"] })
+  const [form, setForm] = useState({ name: "", abbreviation: "", description: "" })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  const filtered = units.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) || u.symbol.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const openAdd = () => { setEditing(null); setForm({ name: "", symbol: "", unit_type: "piece" }); setShowModal(true) }
-  const openEdit = (u: UnitOfMeasure) => { setEditing(u); setForm({ name: u.name, symbol: u.symbol, unit_type: u.unit_type }); setShowModal(true) }
-
-  const save = () => {
-    if (!form.name.trim() || !form.symbol.trim()) return
-    if (editing) {
-      setUnits(prev => prev.map(u => u.id === editing.id ? { ...u, ...form } : u))
-    } else {
-      setUnits(prev => [...prev, { id: `u-${Date.now()}`, ...form, is_active: true }])
+  const fetchUnits = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: UnitOfMeasure[] } | UnitOfMeasure[]>("/api/business/units-of-measure")
+      setUnits((res as any).data ?? res)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load units of measure")
+    } finally {
+      setLoading(false)
     }
-    setShowModal(false)
   }
 
-  const toggle = (id: string) => setUnits(prev => prev.map(u => u.id === id ? { ...u, is_active: !u.is_active } : u))
-  const remove = (id: string) => { setUnits(prev => prev.filter(u => u.id !== id)); setConfirmDelete(null) }
+  useEffect(() => { fetchUnits() }, [])
+
+  const filtered = units.filter(u =>
+    u.name.toLowerCase().includes(search.toLowerCase()) || u.abbreviation.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const openAdd = () => { setEditing(null); setForm({ name: "", abbreviation: "", description: "" }); setShowModal(true) }
+  const openEdit = (u: UnitOfMeasure) => { setEditing(u); setForm({ name: u.name, abbreviation: u.abbreviation, description: u.description ?? "" }); setShowModal(true) }
+
+  const save = async () => {
+    if (!form.name.trim() || !form.abbreviation.trim()) return
+    setError(null)
+    try {
+      const body: Record<string, string> = { name: form.name, abbreviation: form.abbreviation }
+      if (form.description.trim()) body.description = form.description.trim()
+      if (editing) {
+        await apiFetch(`/api/business/units-of-measure/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        await apiFetch("/api/business/units-of-measure", { method: "POST", body: JSON.stringify(body) })
+      }
+      await fetchUnits()
+      setShowModal(false)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save unit of measure")
+    }
+  }
+
+  const remove = async (id: string) => {
+    setConfirmDelete(null)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/units-of-measure/${id}`, { method: "DELETE" })
+      await fetchUnits()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete unit of measure")
+    }
+  }
+
+  if (loading) return <div className="py-20 text-center text-gray-400 text-sm">Loading...</div>
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -73,7 +97,7 @@ export default function UnitsOfMeasurePage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-[#1a1a20]">
             <tr>
-              {["Name", "Symbol", "Type", "Status", "Actions"].map(h => (
+              {["Name", "Abbreviation", "Description", "Status", "Actions"].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider last:text-right">{h}</th>
               ))}
             </tr>
@@ -88,17 +112,13 @@ export default function UnitsOfMeasurePage() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <code className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded text-xs font-mono">{u.symbol}</code>
+                  <code className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded text-xs font-mono">{u.abbreviation}</code>
                 </td>
+                <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.description ?? "—"}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${TYPE_COLORS[u.unit_type]}`}>{u.unit_type}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <button onClick={() => toggle(u.id)}>
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${u.is_active ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                      {u.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </button>
+                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${u.is_active ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                    {u.is_active ? "Active" : "Inactive"}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
@@ -139,16 +159,14 @@ export default function UnitsOfMeasurePage() {
                 value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Kilogram" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol *</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Abbreviation *</label>
               <input className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                value={form.symbol} onChange={e => setForm(p => ({ ...p, symbol: e.target.value }))} placeholder="e.g. kg" />
+                value={form.abbreviation} onChange={e => setForm(p => ({ ...p, abbreviation: e.target.value }))} placeholder="e.g. kg" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-              <select className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                value={form.unit_type} onChange={e => setForm(p => ({ ...p, unit_type: e.target.value as UnitOfMeasure["unit_type"] }))}>
-                {["weight", "volume", "length", "piece", "area"].map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
-              </select>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+              <input className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Optional description" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">Cancel</button>

@@ -9,14 +9,6 @@ interface TableType {
   location: "indoor" | "outdoor" | "both"; is_active: boolean
 }
 
-const mockTypes: TableType[] = [
-  { id: "tt-1", name: "Standard 2-Top", default_capacity: 2, shape: "square", location: "indoor", is_active: true },
-  { id: "tt-2", name: "Standard 4-Top", default_capacity: 4, shape: "square", location: "indoor", is_active: true },
-  { id: "tt-3", name: "Round 6-Top", default_capacity: 6, shape: "round", location: "indoor", is_active: true },
-  { id: "tt-4", name: "Long Banquet", default_capacity: 12, shape: "rectangle", location: "indoor", is_active: true },
-  { id: "tt-5", name: "Bar Stool", default_capacity: 1, shape: "bar", location: "indoor", is_active: true },
-  { id: "tt-6", name: "Terrace 4-Top", default_capacity: 4, shape: "round", location: "outdoor", is_active: true },
-]
 
 const SHAPE_EMOJI: Record<string, string> = { round: "⭕", square: "⬜", rectangle: "▬", bar: "🪑" }
 const LOC_COLORS: Record<string, string> = {
@@ -26,8 +18,8 @@ const LOC_COLORS: Record<string, string> = {
 }
 
 export default function TableTypesPage() {
-  const [types, setTypes] = useState(mockTypes)
-  const [loading, setLoading] = useState(false)
+  const [types, setTypes] = useState<TableType[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -62,19 +54,29 @@ export default function TableTypesPage() {
   const openEdit = (t: TableType) => { setEditing(t); setForm({ name: t.name, default_capacity: t.default_capacity, shape: t.shape, location: t.location }); setShowModal(true) }
   const save = async () => {
     if (!form.name.trim()) return
+    setError(null)
     try {
       if (editing) {
-        setTypes(prev => prev.map(t => t.id === editing.id ? { ...t, ...form } : t))
+        await apiFetch(`/api/business/table-types/${editing.id}`, { method: "PATCH", body: JSON.stringify(form) })
       } else {
         await apiFetch("/api/business/table-types", { method: "POST", body: JSON.stringify(form) })
-        await fetchTypes()
       }
+      await fetchTypes()
+      setShowModal(false)
     } catch (e: any) {
       setError(e.message ?? "Failed to save table type")
     }
-    setShowModal(false)
   }
-  const remove = (id: string) => { setTypes(prev => prev.filter(t => t.id !== id)); setConfirmDelete(null) }
+  const remove = async (id: string) => {
+    setConfirmDelete(null)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/table-types/${id}`, { method: "DELETE" })
+      await fetchTypes()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete table type")
+    }
+  }
 
   if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 

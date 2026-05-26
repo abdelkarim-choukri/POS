@@ -54,131 +54,6 @@ interface ClockEntry {
   duration_minutes?: number
 }
 
-// ============== MOCK DATA ==============
-const mockEmployees: Employee[] = [
-  {
-    id: "emp-1",
-    first_name: "Ahmed",
-    last_name: "Benali",
-    email: "ahmed@cafe.ma",
-    role: "owner",
-    status: "active",
-    pin: "1234",
-    permissions: {
-      can_void: true,
-      can_refund: true,
-      can_apply_manual_discount: true,
-      can_view_reports: true,
-      can_receive_stock: true,
-      can_approve_adjustments: true,
-      can_open_table_session: true,
-      can_transfer_table_items: true,
-      can_force_close_table: true,
-      can_redeem_points: true,
-    },
-    created_at: "2024-01-15",
-    last_clock_in: "2024-03-15 08:30",
-  },
-  {
-    id: "emp-2",
-    first_name: "Sara",
-    last_name: "Idrissi",
-    email: "sara@cafe.ma",
-    role: "manager",
-    status: "active",
-    pin: "5678",
-    permissions: {
-      can_void: true,
-      can_refund: true,
-      can_apply_manual_discount: true,
-      can_view_reports: true,
-      can_receive_stock: true,
-      can_approve_adjustments: false,
-      can_open_table_session: true,
-      can_transfer_table_items: true,
-      can_force_close_table: true,
-      can_redeem_points: true,
-    },
-    created_at: "2024-02-01",
-    last_clock_in: "2024-03-15 07:45",
-  },
-  {
-    id: "emp-3",
-    first_name: "Youssef",
-    last_name: "Amrani",
-    email: "youssef@cafe.ma",
-    role: "cashier",
-    status: "active",
-    pin: "9012",
-    permissions: {
-      can_void: true,
-      can_refund: false,
-      can_apply_manual_discount: false,
-      can_view_reports: false,
-      can_receive_stock: false,
-      can_approve_adjustments: false,
-      can_open_table_session: true,
-      can_transfer_table_items: false,
-      can_force_close_table: false,
-      can_redeem_points: true,
-    },
-    created_at: "2024-02-15",
-    last_clock_in: "2024-03-15 09:00",
-  },
-  {
-    id: "emp-4",
-    first_name: "Fatima",
-    last_name: "Zahra",
-    email: "fatima@cafe.ma",
-    role: "cashier",
-    status: "inactive",
-    pin: "3456",
-    permissions: {
-      can_void: false,
-      can_refund: false,
-      can_apply_manual_discount: false,
-      can_view_reports: false,
-      can_receive_stock: false,
-      can_approve_adjustments: false,
-      can_open_table_session: true,
-      can_transfer_table_items: false,
-      can_force_close_table: false,
-      can_redeem_points: false,
-    },
-    created_at: "2024-01-20",
-  },
-  {
-    id: "emp-5",
-    first_name: "Karim",
-    last_name: "Bennani",
-    email: "karim@cafe.ma",
-    role: "cashier",
-    status: "active",
-    pin: "7890",
-    permissions: {
-      can_void: true,
-      can_refund: false,
-      can_apply_manual_discount: false,
-      can_view_reports: false,
-      can_receive_stock: true,
-      can_approve_adjustments: false,
-      can_open_table_session: true,
-      can_transfer_table_items: true,
-      can_force_close_table: false,
-      can_redeem_points: true,
-    },
-    created_at: "2024-03-01",
-    last_clock_in: "2024-03-15 08:15",
-  },
-]
-
-const mockClockEntries: ClockEntry[] = [
-  { id: "clk-1", employee_id: "emp-2", clock_in: "2024-03-15 07:45", clock_out: "2024-03-15 16:30", duration_minutes: 525 },
-  { id: "clk-2", employee_id: "emp-2", clock_in: "2024-03-14 08:00", clock_out: "2024-03-14 17:00", duration_minutes: 540 },
-  { id: "clk-3", employee_id: "emp-2", clock_in: "2024-03-13 07:30", clock_out: "2024-03-13 16:00", duration_minutes: 510 },
-  { id: "clk-4", employee_id: "emp-2", clock_in: "2024-03-12 08:15", clock_out: "2024-03-12 17:30", duration_minutes: 555 },
-  { id: "clk-5", employee_id: "emp-2", clock_in: "2024-03-11 07:45", clock_out: "2024-03-11 16:15", duration_minutes: 510 },
-]
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "indigo" | "purple" }) {
@@ -329,19 +204,32 @@ const permissionGroups = [
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees)
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<"all" | "owner" | "manager" | "cashier">("all")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
-  
+
   // Modals
   const [showAddEmployee, setShowAddEmployee] = useState(false)
   const [showEditEmployee, setShowEditEmployee] = useState(false)
   const [showClockHistory, setShowClockHistory] = useState(false)
   const [showStatusConfirm, setShowStatusConfirm] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+
+  // Per-operation loading + error states
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [clockError, setClockError] = useState<string | null>(null)
+
+  // Clock history state
+  const [clockEntries, setClockEntries] = useState<ClockEntry[]>([])
+  const [clockLoading, setClockLoading] = useState(false)
 
   // Form state
   const [employeeForm, setEmployeeForm] = useState({
@@ -365,30 +253,33 @@ export default function EmployeesPage() {
     }
   })
 
-  // Clock history state
+  // Clock date range filter state
   const [clockDateRange, setClockDateRange] = useState({ from: "2024-03-01", to: "2024-03-15" })
 
-  useEffect(() => {
+  const mapEmployee = (e: any): Employee => ({
+    id: e.id,
+    first_name: e.first_name,
+    last_name: e.last_name,
+    email: e.email ?? "",
+    role: e.role,
+    status: e.is_active ? "active" : "inactive",
+    pin: e.pin ?? "",
+    permissions: e.permissions ?? {},
+    created_at: e.created_at ?? "",
+    last_clock_in: e.last_clock_in,
+  })
+
+  const fetchEmployees = () => {
     setLoading(true)
     setError(null)
-    apiFetch<{ data: any[] }>("/api/business/employees")
-      .then(res => {
-        const mapped: Employee[] = res.data.map((e: any) => ({
-          id: e.id,
-          first_name: e.first_name,
-          last_name: e.last_name,
-          email: e.email ?? "",
-          role: e.role,
-          status: e.is_active ? "active" : "inactive",
-          pin: e.pin ?? "",
-          permissions: e.permissions ?? {},
-          created_at: e.created_at ?? "",
-          last_clock_in: e.last_clock_in,
-        }))
-        setEmployees(mapped)
-      })
+    apiFetch<any[]>("/api/business/employees")
+      .then(res => setEmployees(res.map(mapEmployee)))
       .catch(e => setError(e.message ?? "Failed to load employees"))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchEmployees()
   }, [])
 
   // Filtered employees
@@ -409,6 +300,7 @@ export default function EmployeesPage() {
   }
 
   const handleAddEmployee = () => {
+    setAddError(null)
     setEmployeeForm({
       first_name: "",
       last_name: "",
@@ -433,6 +325,7 @@ export default function EmployeesPage() {
   }
 
   const handleEditEmployee = (employee: Employee) => {
+    setEditError(null)
     setSelectedEmployee(employee)
     setEmployeeForm({
       first_name: employee.first_name,
@@ -446,24 +339,56 @@ export default function EmployeesPage() {
     setShowEditEmployee(true)
   }
 
-  const handleViewClockHistory = (employee: Employee) => {
-    setSelectedEmployee(employee)
-    setShowClockHistory(true)
+  const fetchClockHistory = (employeeId: string, from: string, to: string) => {
+    setClockLoading(true)
+    setClockError(null)
+    apiFetch<ClockEntry[]>(`/api/business/employees/${employeeId}/clock-history?from=${from}&to=${to}`)
+      .then(res => setClockEntries(res))
+      .catch(e => setClockError(e.message ?? "Failed to load clock history"))
+      .finally(() => setClockLoading(false))
   }
 
+  const handleViewClockHistory = (employee: Employee) => {
+    setSelectedEmployee(employee)
+    setClockEntries([])
+    setClockError(null)
+    setShowClockHistory(true)
+    fetchClockHistory(employee.id, clockDateRange.from, clockDateRange.to)
+  }
+
+  // Re-fetch when date range changes while panel is open
+  useEffect(() => {
+    if (showClockHistory && selectedEmployee) {
+      fetchClockHistory(selectedEmployee.id, clockDateRange.from, clockDateRange.to)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clockDateRange.from, clockDateRange.to])
+
   const handleToggleStatus = (employee: Employee) => {
+    setStatusError(null)
     setSelectedEmployee(employee)
     setShowStatusConfirm(true)
   }
 
-  const confirmStatusToggle = () => {
-    if (selectedEmployee) {
-      setEmployees(prev => prev.map(e => 
-        e.id === selectedEmployee.id ? { ...e, status: e.status === "active" ? "inactive" : "active" } : e
-      ))
+  const confirmStatusToggle = async () => {
+    if (!selectedEmployee) return
+    const newIsActive = selectedEmployee.status !== "active"
+    setStatusLoading(true)
+    setStatusError(null)
+    try {
+      const res = await apiFetch<any>(`/api/business/employees/${selectedEmployee.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: newIsActive }),
+      })
+      const updated = mapEmployee(res)
+      setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e))
+      setShowStatusConfirm(false)
+      setSelectedEmployee(null)
+    } catch (e: any) {
+      setStatusError(e.message ?? "Failed to update employee status")
+    } finally {
+      setStatusLoading(false)
     }
-    setShowStatusConfirm(false)
-    setSelectedEmployee(null)
   }
 
   const updatePermission = (key: string, value: boolean) => {
@@ -474,8 +399,7 @@ export default function EmployeesPage() {
   }
 
   // Calculate total hours for clock history
-  const employeeClockEntries = mockClockEntries.filter(e => e.employee_id === selectedEmployee?.id)
-  const totalMinutes = employeeClockEntries.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)
+  const totalMinutes = clockEntries.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)
   const totalHours = Math.floor(totalMinutes / 60)
   const remainingMinutes = totalMinutes % 60
 
@@ -655,9 +579,32 @@ export default function EmployeesPage() {
             </div>
           </div>
 
+          {addError && <p className="text-sm text-red-500 dark:text-red-400">{addError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddEmployee(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddEmployee(false)}>Add Employee</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAddEmployee(false)} disabled={addLoading}>Cancel</Button>
+            <Button variant="primary" className="flex-1" disabled={addLoading} onClick={async () => {
+              setAddLoading(true)
+              setAddError(null)
+              try {
+                const res = await apiFetch<any>("/api/business/employees", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    first_name: employeeForm.first_name,
+                    last_name: employeeForm.last_name,
+                    email: employeeForm.email,
+                    role: employeeForm.role,
+                    pin: employeeForm.pin,
+                    permissions: employeeForm.permissions,
+                  }),
+                })
+                setEmployees(prev => [...prev, mapEmployee(res)])
+                setShowAddEmployee(false)
+              } catch (e: any) {
+                setAddError(e.message ?? "Failed to add employee")
+              } finally {
+                setAddLoading(false)
+              }
+            }}>{addLoading ? "Saving..." : "Add Employee"}</Button>
           </div>
         </div>
       </Modal>
@@ -703,9 +650,36 @@ export default function EmployeesPage() {
             </div>
           </div>
 
+          {editError && <p className="text-sm text-red-500 dark:text-red-400">{editError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowEditEmployee(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowEditEmployee(false)}>Save Changes</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditEmployee(false)} disabled={editLoading}>Cancel</Button>
+            <Button variant="primary" className="flex-1" disabled={editLoading} onClick={async () => {
+              if (!selectedEmployee) return
+              setEditLoading(true)
+              setEditError(null)
+              try {
+                const body: Record<string, unknown> = {
+                  first_name: employeeForm.first_name,
+                  last_name: employeeForm.last_name,
+                  email: employeeForm.email,
+                  role: employeeForm.role,
+                  permissions: employeeForm.permissions,
+                }
+                if (employeeForm.pin) body.pin = employeeForm.pin
+                const res = await apiFetch<any>(`/api/business/employees/${selectedEmployee.id}`, {
+                  method: "PUT",
+                  body: JSON.stringify(body),
+                })
+                const updated = mapEmployee(res)
+                setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e))
+                setShowEditEmployee(false)
+                setSelectedEmployee(null)
+              } catch (e: any) {
+                setEditError(e.message ?? "Failed to update employee")
+              } finally {
+                setEditLoading(false)
+              }
+            }}>{editLoading ? "Saving..." : "Save Changes"}</Button>
           </div>
         </div>
       </Modal>
@@ -729,6 +703,7 @@ export default function EmployeesPage() {
             />
           </div>
 
+          {clockError && <p className="text-sm text-red-500 dark:text-red-400 mb-4">{clockError}</p>}
           {/* Total Hours Summary */}
           <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-[#1F1F23] rounded-xl p-4 mb-6">
             <p className="text-sm text-indigo-700 dark:text-indigo-300">Total Hours for Period</p>
@@ -739,39 +714,45 @@ export default function EmployeesPage() {
 
           {/* Clock Entries Table */}
           <div className="border border-gray-200 dark:border-[#1F1F23] rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-[#0F0F12]/50">
-                <tr>
-                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Clock In</th>
-                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Clock Out</th>
-                  <th className="text-right p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {employeeClockEntries.map(entry => (
-                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50">
-                    <td className="p-3 text-sm text-gray-900 dark:text-white">
-                      {entry.clock_in.split(" ")[0]}
-                    </td>
-                    <td className="p-3 text-sm text-gray-600 dark:text-gray-300">
-                      {entry.clock_in.split(" ")[1]}
-                    </td>
-                    <td className="p-3 text-sm text-gray-600 dark:text-gray-300">
-                      {entry.clock_out ? entry.clock_out.split(" ")[1] : "-"}
-                    </td>
-                    <td className="p-3 text-sm text-gray-900 dark:text-white text-right font-mono">
-                      {entry.duration_minutes ? `${Math.floor(entry.duration_minutes / 60)}h ${entry.duration_minutes % 60}m` : "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {employeeClockEntries.length === 0 && (
-              <div className="text-center py-8">
-                <Clock className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">No clock entries for this period</p>
-              </div>
+            {clockLoading ? (
+              <div className="text-center py-8 text-gray-400 text-sm">Loading...</div>
+            ) : (
+              <>
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-[#0F0F12]/50">
+                    <tr>
+                      <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                      <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Clock In</th>
+                      <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Clock Out</th>
+                      <th className="text-right p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {clockEntries.map(entry => (
+                      <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50">
+                        <td className="p-3 text-sm text-gray-900 dark:text-white">
+                          {entry.clock_in.split(" ")[0]}
+                        </td>
+                        <td className="p-3 text-sm text-gray-600 dark:text-gray-300">
+                          {entry.clock_in.split(" ")[1]}
+                        </td>
+                        <td className="p-3 text-sm text-gray-600 dark:text-gray-300">
+                          {entry.clock_out ? entry.clock_out.split(" ")[1] : "-"}
+                        </td>
+                        <td className="p-3 text-sm text-gray-900 dark:text-white text-right font-mono">
+                          {entry.duration_minutes ? `${Math.floor(entry.duration_minutes / 60)}h ${entry.duration_minutes % 60}m` : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {clockEntries.length === 0 && (
+                  <div className="text-center py-8">
+                    <Clock className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No clock entries for this period</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -796,14 +777,16 @@ export default function EmployeesPage() {
               </p>
             </div>
           </div>
+          {statusError && <p className="text-sm text-red-500 dark:text-red-400">{statusError}</p>}
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowStatusConfirm(false)}>Cancel</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowStatusConfirm(false); setStatusError(null) }} disabled={statusLoading}>Cancel</Button>
             <Button
               variant={selectedEmployee?.status === "active" ? "danger" : "primary"}
               className="flex-1"
+              disabled={statusLoading}
               onClick={confirmStatusToggle}
             >
-              {selectedEmployee?.status === "active" ? "Deactivate" : "Activate"}
+              {statusLoading ? "Updating..." : selectedEmployee?.status === "active" ? "Deactivate" : "Activate"}
             </Button>
           </div>
         </div>

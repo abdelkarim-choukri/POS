@@ -1,7 +1,8 @@
 ﻿"use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useTheme } from "next-themes"
+import { apiFetch } from "@/lib/api"
 import {
   Building2,
   Users,
@@ -80,117 +81,46 @@ interface SystemStats {
   system_health: "healthy" | "degraded" | "down"
 }
 
-// ==================== MOCK DATA ====================
-const mockStats: SystemStats = {
-  total_businesses: 156,
-  active_businesses: 142,
-  total_terminals: 423,
-  online_terminals: 398,
-  total_transactions_today: 12847,
-  total_revenue_today: 1547820,
-  system_health: "healthy",
+// ==================== API TYPES ====================
+interface Terminal {
+  id: string
+  terminal_code?: string
+  business_id?: string
+  location_id?: string
+  business?: string
+  location?: string
+  status?: string
+  last_seen?: string
+  version?: string
+  transactions_today?: number
 }
 
-const mockBusinesses: Business[] = [
-  {
-    id: "1",
-    name: "Café Marrakech",
-    owner_name: "Ahmed Benali",
-    owner_email: "ahmed@cafemarrakech.ma",
-    plan: "professional",
-    status: "active",
-    locations_count: 3,
-    terminals_count: 8,
-    employees_count: 24,
-    monthly_revenue: 245000,
-    created_at: "2023-06-15",
-  },
-  {
-    id: "2",
-    name: "Restaurant La Marina",
-    owner_name: "Fatima Zahra",
-    owner_email: "fatima@lamarina.ma",
-    plan: "enterprise",
-    status: "active",
-    locations_count: 5,
-    terminals_count: 15,
-    employees_count: 56,
-    monthly_revenue: 520000,
-    created_at: "2023-03-20",
-  },
-  {
-    id: "3",
-    name: "Bakery Casablanca",
-    owner_name: "Youssef Amrani",
-    owner_email: "youssef@bakery.ma",
-    plan: "starter",
-    status: "trial",
-    locations_count: 1,
-    terminals_count: 2,
-    employees_count: 5,
-    monthly_revenue: 35000,
-    created_at: "2024-01-10",
-    trial_ends_at: "2024-02-10",
-  },
-  {
-    id: "4",
-    name: "Fast Food Express",
-    owner_name: "Sara Idrissi",
-    owner_email: "sara@ffexpress.ma",
-    plan: "professional",
-    status: "suspended",
-    locations_count: 2,
-    terminals_count: 4,
-    employees_count: 12,
-    monthly_revenue: 0,
-    created_at: "2023-09-01",
-  },
-]
+interface AuditLog {
+  id: number | string
+  action: string
+  actor?: string
+  performed_by?: string
+  target?: string
+  entity_type?: string
+  timestamp?: string
+  created_at?: string
+  ip?: string
+}
 
-// Mock data for new tabs
-const mockTerminals = [
-  { id: "T001", business: "Café Marrakech", location: "Casablanca Main", status: "online", last_seen: "2024-01-15 14:32:15", version: "2.4.1", transactions_today: 45 },
-  { id: "T002", business: "Café Marrakech", location: "Casablanca Main", status: "online", last_seen: "2024-01-15 14:31:42", version: "2.4.1", transactions_today: 38 },
-  { id: "T003", business: "Restaurant La Marina", location: "Rabat Center", status: "offline", last_seen: "2024-01-15 10:15:00", version: "2.3.8", transactions_today: 12 },
-  { id: "T004", business: "Restaurant La Marina", location: "Rabat Center", status: "online", last_seen: "2024-01-15 14:30:55", version: "2.4.1", transactions_today: 67 },
-  { id: "T005", business: "Bakery Casablanca", location: "Main Store", status: "online", last_seen: "2024-01-15 14:32:00", version: "2.4.0", transactions_today: 28 },
-]
-
-const mockBillingData = [
-  { id: "INV-001", business: "Café Marrakech", plan: "professional", amount: 499, status: "paid", date: "2024-01-01", method: "card" },
-  { id: "INV-002", business: "Restaurant La Marina", plan: "enterprise", amount: 999, status: "paid", date: "2024-01-01", method: "bank" },
-  { id: "INV-003", business: "Bakery Casablanca", plan: "starter", amount: 0, status: "trial", date: "2024-01-10", method: "-" },
-  { id: "INV-004", business: "Fast Food Express", plan: "professional", amount: 499, status: "overdue", date: "2024-01-01", method: "card" },
-]
-
-const mockTickets = [
-  { id: "TKT-001", business: "Café Marrakech", subject: "Terminal not printing receipts", priority: "high", status: "open", created: "2024-01-15 10:00", assignee: "Support Team A" },
-  { id: "TKT-002", business: "Restaurant La Marina", subject: "Need help with inventory setup", priority: "medium", status: "in_progress", created: "2024-01-14 15:30", assignee: "Support Team B" },
-  { id: "TKT-003", business: "Bakery Casablanca", subject: "Questions about pricing tiers", priority: "low", status: "resolved", created: "2024-01-13 09:00", assignee: "Sales Team" },
-  { id: "TKT-004", business: "Fast Food Express", subject: "Account suspension appeal", priority: "high", status: "escalated", created: "2024-01-12 14:00", assignee: "Management" },
-]
-
-const mockAuditLogs = [
-  { id: 1, action: "business_suspended", actor: "admin@rts.ma", target: "Fast Food Express", timestamp: "2024-01-15 14:00:00", ip: "196.200.x.x" },
-  { id: 2, action: "plan_changed", actor: "billing@rts.ma", target: "Restaurant La Marina", timestamp: "2024-01-14 11:30:00", ip: "196.200.x.x" },
-  { id: 3, action: "terminal_registered", actor: "system", target: "T005 - Bakery Casablanca", timestamp: "2024-01-13 09:15:00", ip: "auto" },
-  { id: 4, action: "user_login", actor: "admin@rts.ma", target: "Super Admin Portal", timestamp: "2024-01-15 08:00:00", ip: "196.200.x.x" },
-  { id: 5, action: "config_changed", actor: "admin@rts.ma", target: "Global Settings", timestamp: "2024-01-12 16:45:00", ip: "196.200.x.x" },
-]
-
-const mockVersionLogs = [
-  { version: "2.4.1", date: "2024-01-10", type: "patch", notes: "Bug fixes for receipt printing", deployed: true },
-  { version: "2.4.0", date: "2024-01-05", type: "minor", notes: "Added multi-currency support", deployed: true },
-  { version: "2.3.8", date: "2023-12-20", type: "patch", notes: "Performance improvements", deployed: true },
-  { version: "2.3.7", date: "2023-12-15", type: "patch", notes: "Security updates", deployed: true },
-  { version: "2.3.0", date: "2023-12-01", type: "minor", notes: "New inventory management features", deployed: true },
-]
-
-const mockAdminAnnouncements = [
-  { id: 1, title: "Scheduled Maintenance", message: "System will be down for maintenance on Jan 20th from 2-4 AM", status: "scheduled", target: "all", created: "2024-01-15" },
-  { id: 2, title: "New Feature: Multi-Currency", message: "You can now accept payments in multiple currencies!", status: "sent", target: "enterprise", created: "2024-01-10" },
-  { id: 3, title: "Holiday Hours Reminder", message: "Don't forget to update your business hours for the holidays", status: "sent", target: "all", created: "2024-01-05" },
-]
+interface Announcement {
+  id: string | number
+  title: string
+  body?: string
+  message?: string
+  type?: string
+  status?: string
+  target?: string
+  target_business_types?: string[]
+  starts_at?: string
+  ends_at?: string
+  created_at?: string
+  created?: string
+}
 
 // ============== CONFIG TAB MOCK DATA ==============
 interface BusinessType {
@@ -239,178 +169,7 @@ interface SystemParameter {
   updated_at: string
 }
 
-const mockBusinessTypes: BusinessType[] = [
-  {
-    id: "retail",
-    name: "Retail",
-    description: "General retail stores, supermarkets, convenience stores",
-    business_count: 45,
-    features: {
-      loyalty_points: true,
-      promotions_campaigns: true,
-      coupons_vouchers: true,
-      inventory_management: true,
-      restaurant_operations: false,
-      kitchen_display_system: false,
-      chain_multi_store: true,
-      recommendations_engine: true,
-    }
-  },
-  {
-    id: "restaurant",
-    name: "Restaurant / Café",
-    description: "Restaurants, cafés, fast food, food trucks",
-    business_count: 72,
-    features: {
-      loyalty_points: true,
-      promotions_campaigns: true,
-      coupons_vouchers: true,
-      inventory_management: true,
-      restaurant_operations: true,
-      kitchen_display_system: true,
-      chain_multi_store: true,
-      recommendations_engine: true,
-    }
-  },
-  {
-    id: "pharmacy",
-    name: "Pharmacy",
-    description: "Pharmacies and medical supply stores",
-    business_count: 18,
-    features: {
-      loyalty_points: true,
-      promotions_campaigns: false,
-      coupons_vouchers: false,
-      inventory_management: true,
-      restaurant_operations: false,
-      kitchen_display_system: false,
-      chain_multi_store: true,
-      recommendations_engine: false,
-    }
-  },
-  {
-    id: "salon",
-    name: "Salon / Spa",
-    description: "Hair salons, beauty spas, nail salons",
-    business_count: 12,
-    features: {
-      loyalty_points: true,
-      promotions_campaigns: true,
-      coupons_vouchers: true,
-      inventory_management: false,
-      restaurant_operations: false,
-      kitchen_display_system: false,
-      chain_multi_store: false,
-      recommendations_engine: false,
-    }
-  },
-  {
-    id: "hotel",
-    name: "Hotel",
-    description: "Hotels, riads, guesthouses",
-    business_count: 9,
-    features: {
-      loyalty_points: true,
-      promotions_campaigns: true,
-      coupons_vouchers: true,
-      inventory_management: false,
-      restaurant_operations: true,
-      kitchen_display_system: true,
-      chain_multi_store: true,
-      recommendations_engine: false,
-    }
-  },
-]
-
-const mockTradeCategories: TradeCategory[] = [
-  {
-    id: "food",
-    name_fr: "Alimentation",
-    name_ar: "غذاء",
-    icon_name: "UtensilsCrossed",
-    sort_order: 1,
-    parent_id: null,
-    business_count: 0,
-    children: [
-      { id: "restaurant", name_fr: "Restaurant", name_ar: "مطعم", icon_name: "ChefHat", sort_order: 1, parent_id: "food", business_count: 45 },
-      { id: "cafe", name_fr: "Café", name_ar: "مقهى", icon_name: "Coffee", sort_order: 2, parent_id: "food", business_count: 28 },
-      { id: "bakery", name_fr: "Boulangerie", name_ar: "مخبز", icon_name: "Croissant", sort_order: 3, parent_id: "food", business_count: 15 },
-    ]
-  },
-  {
-    id: "retail",
-    name_fr: "Commerce de détail",
-    name_ar: "تجارة التجزئة",
-    icon_name: "ShoppingBag",
-    sort_order: 2,
-    parent_id: null,
-    business_count: 0,
-    children: [
-      { id: "grocery", name_fr: "Épicerie", name_ar: "بقالة", icon_name: "ShoppingCart", sort_order: 1, parent_id: "retail", business_count: 32 },
-      { id: "clothing", name_fr: "Vêtements", name_ar: "ملابس", icon_name: "Shirt", sort_order: 2, parent_id: "retail", business_count: 18 },
-    ]
-  },
-  {
-    id: "health",
-    name_fr: "Santé & Beauté",
-    name_ar: "صحة وجمال",
-    icon_name: "Heart",
-    sort_order: 3,
-    parent_id: null,
-    business_count: 0,
-    children: [
-      { id: "pharmacy", name_fr: "Pharmacie", name_ar: "صيدلية", icon_name: "Pill", sort_order: 1, parent_id: "health", business_count: 18 },
-      { id: "salon", name_fr: "Salon de coiffure", name_ar: "صالون", icon_name: "Scissors", sort_order: 2, parent_id: "health", business_count: 12 },
-    ]
-  },
-]
-
-const mockCouriers: Courier[] = [
-  {
-    id: "1",
-    name: "Glovo Morocco",
-    phone: "+212 5 22 123 456",
-    email: "partners@glovo.ma",
-    website: "https://glovoapp.com",
-    notes: "Main delivery partner for Casablanca region",
-    is_active: true,
-    linked_businesses: [
-      { id: "1", name: "Café Marrakech" },
-      { id: "2", name: "Restaurant La Marina" },
-      { id: "5", name: "Bakery Casablanca" },
-    ]
-  },
-  {
-    id: "2",
-    name: "Jumia Food",
-    phone: "+212 5 22 789 012",
-    email: "business@jumia.ma",
-    website: "https://food.jumia.ma",
-    is_active: true,
-    linked_businesses: [
-      { id: "1", name: "Café Marrakech" },
-    ]
-  },
-  {
-    id: "3",
-    name: "Local Express",
-    phone: "+212 6 61 234 567",
-    email: "contact@localexpress.ma",
-    is_active: false,
-    linked_businesses: []
-  },
-]
-
-const mockSystemParameters: SystemParameter[] = [
-  { key: "max_terminals_per_location", value: "10", description: "Maximum number of terminals allowed per business location", updated_at: "2024-01-10 14:30" },
-  { key: "default_tva_rate", value: "20", description: "Default TVA rate (%) applied to new products", updated_at: "2024-01-05 09:15" },
-  { key: "points_expiry_months", value: "12", description: "Number of months before loyalty points expire", updated_at: "2024-01-08 11:00" },
-  { key: "invoice_prefix", value: "INV", description: "Prefix used for invoice numbering", updated_at: "2023-12-20 16:45" },
-  { key: "support_email", value: "support@rts.ma", description: "Primary support email address", updated_at: "2024-01-12 10:00" },
-  { key: "platform_currency", value: "MAD", description: "Platform default currency code", updated_at: "2023-11-15 08:30" },
-]
-
-// ============== SUBSCRIPTIONS MOCK DATA ==============
+// ============== SUBSCRIPTIONS TYPES ==============
 type SubscriptionPlan = "free" | "starter" | "professional" | "enterprise"
 type SubscriptionStatus = "active" | "trial" | "expired" | "cancelled"
 
@@ -428,115 +187,6 @@ interface Subscription {
   notes?: string
 }
 
-const mockSubscriptions: Subscription[] = [
-  {
-    id: "SUB001",
-    business_id: "1",
-    business_name: "Café Marrakech",
-    owner_email: "hassan@cafemarrakech.ma",
-    plan: "professional",
-    status: "active",
-    started_at: "2024-01-01",
-    expires_at: "2025-01-01",
-    amount_paid: 499,
-    created_by: "admin@rts.ma",
-  },
-  {
-    id: "SUB002",
-    business_id: "2",
-    business_name: "Restaurant La Marina",
-    owner_email: "fatima@lamarina.ma",
-    plan: "enterprise",
-    status: "active",
-    started_at: "2023-11-15",
-    expires_at: "2024-11-15",
-    amount_paid: 999,
-    created_by: "admin@rts.ma",
-  },
-  {
-    id: "SUB003",
-    business_id: "3",
-    business_name: "Superette Centrale",
-    owner_email: "karim@superette.ma",
-    plan: "starter",
-    status: "trial",
-    started_at: "2024-01-10",
-    expires_at: "2024-02-10",
-    amount_paid: 0,
-    created_by: "system",
-    notes: "30-day trial started via website signup",
-  },
-  {
-    id: "SUB004",
-    business_id: "4",
-    business_name: "Pharmacie Ibn Sina",
-    owner_email: "dr.alami@ibnsina.ma",
-    plan: "professional",
-    status: "expired",
-    started_at: "2023-06-01",
-    expires_at: "2024-01-01",
-    amount_paid: 499,
-    created_by: "billing@rts.ma",
-  },
-  {
-    id: "SUB005",
-    business_id: "5",
-    business_name: "Bakery Casablanca",
-    owner_email: "youssef@bakery.ma",
-    plan: "starter",
-    status: "active",
-    started_at: "2024-01-05",
-    expires_at: "2025-01-05",
-    amount_paid: 199,
-    created_by: "admin@rts.ma",
-  },
-  {
-    id: "SUB006",
-    business_id: "6",
-    business_name: "Fast Food Express",
-    owner_email: "omar@fastfood.ma",
-    plan: "professional",
-    status: "cancelled",
-    started_at: "2023-09-01",
-    expires_at: "2024-03-01",
-    amount_paid: 499,
-    created_by: "admin@rts.ma",
-    notes: "Customer requested cancellation - migrating to competitor",
-  },
-  {
-    id: "SUB007",
-    business_id: "7",
-    business_name: "Salon Beauté Plus",
-    owner_email: "sara@beauteplus.ma",
-    plan: "free",
-    status: "active",
-    started_at: "2024-01-12",
-    expires_at: null,
-    amount_paid: 0,
-    created_by: "system",
-  },
-  {
-    id: "SUB008",
-    business_id: "8",
-    business_name: "Hotel Riad Fes",
-    owner_email: "manager@riadfes.ma",
-    plan: "enterprise",
-    status: "trial",
-    started_at: "2024-01-08",
-    expires_at: "2024-02-08",
-    amount_paid: 0,
-    created_by: "sales@rts.ma",
-    notes: "Enterprise trial - potential big client",
-  },
-]
-
-const mockBusinessesForDropdown = [
-  { id: "1", name: "Café Marrakech", email: "hassan@cafemarrakech.ma" },
-  { id: "2", name: "Restaurant La Marina", email: "fatima@lamarina.ma" },
-  { id: "3", name: "Superette Centrale", email: "karim@superette.ma" },
-  { id: "9", name: "Pizzeria Napoli", email: "marco@napoli.ma" },
-  { id: "10", name: "Gym Fitness Pro", email: "coach@fitnesspro.ma" },
-]
 
 // ==================== REUSABLE COMPONENTS ====================
 function Badge({ children, color, className = "" }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "purple" | "indigo"; className?: string }) {
@@ -595,18 +245,22 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
 // ============== CONFIG TAB COMPONENT ==============
 function ConfigTab() {
   const [activeConfigSection, setActiveConfigSection] = useState<"business_types" | "trade_categories" | "couriers" | "system_params">("business_types")
-  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>(mockBusinessTypes)
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([])
   const [expandedBusinessType, setExpandedBusinessType] = useState<string | null>(null)
-  const [tradeCategories] = useState<TradeCategory[]>(mockTradeCategories)
+  const [tradeCategories, setTradeCategories] = useState<TradeCategory[]>([])
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
-  const [couriers, setCouriers] = useState<Courier[]>(mockCouriers)
+  const [couriers, setCouriers] = useState<Courier[]>([])
   const [expandedCourier, setExpandedCourier] = useState<string | null>(null)
-  const [systemParams, setSystemParams] = useState<SystemParameter[]>(mockSystemParameters)
+  const [systemParams, setSystemParams] = useState<SystemParameter[]>([])
   const [editingParamKey, setEditingParamKey] = useState<string | null>(null)
   const [editingParamValue, setEditingParamValue] = useState<string>("")
   const [savedParamKey, setSavedParamKey] = useState<string | null>(null)
-  
+  const [configError, setConfigError] = useState<string | null>(null)
+  const [configLoading, setConfigLoading] = useState(false)
+
   // Modals
+  const [showBusinessTypeModal, setShowBusinessTypeModal] = useState(false)
+  const [businessTypeForm, setBusinessTypeForm] = useState({ name: "", features: [] as string[] })
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [showCourierModal, setShowCourierModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState<TradeCategory | null>(null)
@@ -614,23 +268,119 @@ function ConfigTab() {
   const [categoryForm, setCategoryForm] = useState({ name_fr: "", name_ar: "", parent_id: "", icon_name: "", sort_order: 0 })
   const [courierForm, setCourierForm] = useState({ name: "", phone: "", email: "", website: "", notes: "" })
 
+  // Fetch data when section changes
+  useEffect(() => {
+    setConfigError(null)
+    if (activeConfigSection === "business_types") {
+      setConfigLoading(true)
+      apiFetch<BusinessType[]>("/api/super/business-types")
+        .then(data => setBusinessTypes(data))
+        .catch((e: any) => setConfigError(e.message ?? "Failed to load business types"))
+        .finally(() => setConfigLoading(false))
+    } else if (activeConfigSection === "trade_categories") {
+      setConfigLoading(true)
+      apiFetch<{ data: TradeCategory[] } | TradeCategory[]>("/api/super/trade-categories/tree")
+        .then(data => setTradeCategories(Array.isArray(data) ? data : (data as any).data ?? []))
+        .catch((e: any) => setConfigError(e.message ?? "Failed to load trade categories"))
+        .finally(() => setConfigLoading(false))
+    } else if (activeConfigSection === "couriers") {
+      setConfigLoading(true)
+      apiFetch<{ data: Courier[] } | Courier[]>("/api/super/couriers")
+        .then(data => setCouriers(Array.isArray(data) ? data : (data as any).data ?? []))
+        .catch((e: any) => setConfigError(e.message ?? "Failed to load couriers"))
+        .finally(() => setConfigLoading(false))
+    } else if (activeConfigSection === "system_params") {
+      setConfigLoading(true)
+      apiFetch<{ data: SystemParameter[] } | SystemParameter[]>("/api/super/system-parameters")
+        .then(data => setSystemParams(Array.isArray(data) ? data : (data as any).data ?? []))
+        .catch((e: any) => setConfigError(e.message ?? "Failed to load system parameters"))
+        .finally(() => setConfigLoading(false))
+    }
+  }, [activeConfigSection])
+
   const handleToggleFeature = (typeId: string, feature: keyof BusinessType["features"]) => {
-    setBusinessTypes(prev => prev.map(bt => 
-      bt.id === typeId 
-        ? { ...bt, features: { ...bt.features, [feature]: !bt.features[feature] } }
-        : bt
+    const bt = businessTypes.find(b => b.id === typeId)
+    if (!bt) return
+    const updatedFeatures = { ...bt.features, [feature]: !bt.features[feature] }
+    // Optimistic update
+    setBusinessTypes(prev => prev.map(b =>
+      b.id === typeId ? { ...b, features: updatedFeatures } : b
     ))
+    apiFetch<BusinessType>(`/api/super/business-types/${typeId}/features`, {
+      method: "PUT",
+      body: JSON.stringify({ features: Object.entries(updatedFeatures).filter(([, v]) => v).map(([k]) => k) }),
+    }).catch((e: any) => {
+      // Revert on error
+      setBusinessTypes(prev => prev.map(b =>
+        b.id === typeId ? { ...b, features: bt.features } : b
+      ))
+      setConfigError(e.message ?? "Failed to update features")
+    })
+  }
+
+  const handleSaveBusinessTypeFeatures = (typeId: string) => {
+    const bt = businessTypes.find(b => b.id === typeId)
+    if (!bt) return
+    const featuresArr = Object.entries(bt.features).filter(([, v]) => v).map(([k]) => k)
+    apiFetch<BusinessType>(`/api/super/business-types/${typeId}/features`, {
+      method: "PUT",
+      body: JSON.stringify({ features: featuresArr }),
+    }).catch((e: any) => setConfigError(e.message ?? "Failed to save features"))
   }
 
   const handleSaveParam = (key: string) => {
-    setSystemParams(prev => prev.map(p => 
-      p.key === key 
-        ? { ...p, value: editingParamValue, updated_at: "just now" }
-        : p
-    ))
-    setSavedParamKey(key)
-    setEditingParamKey(null)
-    setTimeout(() => setSavedParamKey(null), 2000)
+    apiFetch<SystemParameter>(`/api/super/system-parameters/${key}`, {
+      method: "PUT",
+      body: JSON.stringify({ value: editingParamValue }),
+    })
+      .then(updated => {
+        setSystemParams(prev => prev.map(p => p.key === key ? { ...p, value: editingParamValue, updated_at: updated.updated_at ?? "just now" } : p))
+        setSavedParamKey(key)
+        setEditingParamKey(null)
+        setTimeout(() => setSavedParamKey(null), 2000)
+      })
+      .catch((e: any) => setConfigError(e.message ?? "Failed to save parameter"))
+  }
+
+  const handleCreateBusinessType = () => {
+    if (!businessTypeForm.name.trim()) return
+    apiFetch<BusinessType>("/api/super/business-types", {
+      method: "POST",
+      body: JSON.stringify({ name: businessTypeForm.name, features: businessTypeForm.features }),
+    })
+      .then(() => {
+        setShowBusinessTypeModal(false)
+        setBusinessTypeForm({ name: "", features: [] })
+        return apiFetch<BusinessType[]>("/api/super/business-types")
+      })
+      .then(data => setBusinessTypes(Array.isArray(data) ? data : (data as any).data ?? []))
+      .catch((e: any) => setConfigError(e.message ?? "Failed to create business type"))
+  }
+
+  const handleSaveCategory = () => {
+    const isEdit = !!editingCategory
+    const method = isEdit ? "PATCH" : "POST"
+    const url = isEdit ? `/api/super/trade-categories/${editingCategory!.id}` : "/api/super/trade-categories"
+    apiFetch<TradeCategory>(url, { method, body: JSON.stringify(categoryForm) })
+      .then(() => {
+        setShowCategoryModal(false)
+        return apiFetch<{ data: TradeCategory[] } | TradeCategory[]>("/api/super/trade-categories/tree")
+      })
+      .then(data => setTradeCategories(Array.isArray(data) ? data : (data as any).data ?? []))
+      .catch((e: any) => setConfigError(e.message ?? "Failed to save category"))
+  }
+
+  const handleSaveCourier = () => {
+    const isEdit = !!editingCourier
+    const method = isEdit ? "PUT" : "POST"
+    const url = isEdit ? `/api/super/couriers/${editingCourier!.id}` : "/api/super/couriers"
+    apiFetch<Courier>(url, { method, body: JSON.stringify(courierForm) })
+      .then(() => {
+        setShowCourierModal(false)
+        return apiFetch<{ data: Courier[] } | Courier[]>("/api/super/couriers")
+      })
+      .then(data => setCouriers(Array.isArray(data) ? data : (data as any).data ?? []))
+      .catch((e: any) => setConfigError(e.message ?? "Failed to save courier"))
   }
 
   const configSections = [
@@ -642,6 +392,14 @@ function ConfigTab() {
 
   return (
     <div className="space-y-6">
+      {configError && (
+        <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
+          {configError}
+        </div>
+      )}
+      {configLoading && (
+        <div className="text-sm text-gray-500 dark:text-gray-400 py-2">Loading...</div>
+      )}
       {/* Inner Tab Navigation */}
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 pb-4">
         {configSections.map(section => (
@@ -663,9 +421,18 @@ function ConfigTab() {
       {/* Business Types Section */}
       {activeConfigSection === "business_types" && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Business Types & Feature Flags</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Configure which features are available for each business type</p>
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Business Types & Feature Flags</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Configure which features are available for each business type</p>
+            </div>
+            <Button variant="primary" size="sm" onClick={() => {
+              setBusinessTypeForm({ name: "", features: [] })
+              setShowBusinessTypeModal(true)
+            }}>
+              <Plus className="w-4 h-4" />
+              Add Type
+            </Button>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {businessTypes.map(bt => (
@@ -725,7 +492,7 @@ function ConfigTab() {
                       ))}
                     </div>
                     <div className="mt-4 flex justify-end">
-                      <Button variant="primary" size="sm">
+                      <Button variant="primary" size="sm" onClick={() => handleSaveBusinessTypeFeatures(bt.id)}>
                         <Check className="w-4 h-4" />
                         Save Features
                       </Button>
@@ -1044,6 +811,68 @@ function ConfigTab() {
         </div>
       )}
 
+      {/* Business Type Create Modal */}
+      {showBusinessTypeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Add Business Type</h3>
+              <button onClick={() => setShowBusinessTypeModal(false)} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={businessTypeForm.name}
+                  onChange={(e) => setBusinessTypeForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Pharmacy"
+                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">Features</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: "loyalty_points", label: "Loyalty & Points" },
+                    { key: "promotions_campaigns", label: "Promotions" },
+                    { key: "coupons_vouchers", label: "Coupons" },
+                    { key: "inventory_management", label: "Inventory" },
+                    { key: "restaurant_operations", label: "Restaurant Ops" },
+                    { key: "kitchen_display_system", label: "KDS" },
+                    { key: "chain_multi_store", label: "Chain / Multi-Store" },
+                    { key: "recommendations_engine", label: "Recommendations" },
+                  ].map(f => (
+                    <label key={f.key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={businessTypeForm.features.includes(f.key)}
+                        onChange={(e) => setBusinessTypeForm(prev => ({
+                          ...prev,
+                          features: e.target.checked
+                            ? [...prev.features, f.key]
+                            : prev.features.filter(k => k !== f.key),
+                        }))}
+                        className="rounded"
+                      />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button variant="secondary" className="flex-1" onClick={() => setShowBusinessTypeModal(false)}>Cancel</Button>
+              <Button variant="primary" className="flex-1" onClick={handleCreateBusinessType}>Create Type</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Category Modal */}
       {showCategoryModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1102,7 +931,7 @@ function ConfigTab() {
             </div>
             <div className="flex gap-3 mt-6">
               <Button variant="secondary" className="flex-1" onClick={() => setShowCategoryModal(false)}>Cancel</Button>
-              <Button variant="primary" className="flex-1">Save Category</Button>
+              <Button variant="primary" className="flex-1" onClick={handleSaveCategory}>Save Category</Button>
             </div>
           </div>
         </div>
@@ -1178,7 +1007,7 @@ function ConfigTab() {
             </div>
             <div className="flex gap-3 mt-6">
               <Button variant="secondary" className="flex-1" onClick={() => setShowCourierModal(false)}>Cancel</Button>
-              <Button variant="primary" className="flex-1">{editingCourier ? "Save Changes" : "Add Courier"}</Button>
+              <Button variant="primary" className="flex-1" onClick={handleSaveCourier}>{editingCourier ? "Save Changes" : "Add Courier"}</Button>
             </div>
           </div>
         </div>
@@ -1189,22 +1018,25 @@ function ConfigTab() {
 
 // ============== SUBSCRIPTIONS TAB COMPONENT ==============
 function SubscriptionsTab() {
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>(mockSubscriptions)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [businessesForDropdown, setBusinessesForDropdown] = useState<Business[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [planFilter, setPlanFilter] = useState<"all" | SubscriptionPlan>("all")
   const [statusFilter, setStatusFilter] = useState<"all" | SubscriptionStatus>("all")
   const [dateRange, setDateRange] = useState({ start: "", end: "" })
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 20
-  
+
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null)
-  
+
   // Form state
   const [formData, setFormData] = useState({
     business_id: "",
@@ -1215,6 +1047,23 @@ function SubscriptionsTab() {
     amount_paid: 0,
     notes: "",
   })
+
+  const fetchSubscriptions = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: Subscription[]; total: number } | Subscription[]>("/api/super/subscriptions")
+      .then(res => setSubscriptions(Array.isArray(res) ? res : res.data))
+      .catch((e: any) => setError(e.message ?? "Failed to load subscriptions"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetchSubscriptions()
+    // Also load businesses for the dropdown
+    apiFetch<{ data: Business[]; total: number } | Business[]>("/api/super/businesses?limit=200")
+      .then(res => setBusinessesForDropdown(Array.isArray(res) ? res : res.data))
+      .catch(() => {})
+  }, [fetchSubscriptions])
 
   // Calculate stats
   const activeCount = subscriptions.filter(s => s.status === "active").length
@@ -1291,18 +1140,62 @@ function SubscriptionsTab() {
     setShowEditModal(true)
   }
 
+  const handleCreateSubscription = () => {
+    setError(null)
+    apiFetch<Subscription>("/api/super/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({
+        business_id: formData.business_id,
+        plan: formData.plan,
+        starts_at: formData.started_at,
+        ends_at: formData.expires_at || undefined,
+      }),
+    })
+      .then(() => { setShowCreateModal(false); fetchSubscriptions() })
+      .catch((e: any) => setError(e.message ?? "Failed to create subscription"))
+  }
+
+  const handleEditSubscription = () => {
+    if (!selectedSubscription) return
+    setError(null)
+    apiFetch<Subscription>(`/api/super/subscriptions/${selectedSubscription.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        business_id: formData.business_id,
+        plan: formData.plan,
+        starts_at: formData.started_at,
+        ends_at: formData.expires_at || undefined,
+      }),
+    })
+      .then(() => { setShowEditModal(false); fetchSubscriptions() })
+      .catch((e: any) => setError(e.message ?? "Failed to update subscription"))
+  }
+
   const handleCancelSubscription = () => {
-    if (selectedSubscription) {
-      setSubscriptions(prev => prev.map(s => 
-        s.id === selectedSubscription.id ? { ...s, status: "cancelled" as SubscriptionStatus } : s
-      ))
-      setShowCancelConfirm(false)
-      setShowEditModal(false)
-    }
+    if (!selectedSubscription) return
+    setError(null)
+    apiFetch<Subscription>(`/api/super/subscriptions/${selectedSubscription.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        business_id: selectedSubscription.business_id,
+        plan: selectedSubscription.plan,
+        starts_at: selectedSubscription.started_at,
+        ends_at: selectedSubscription.expires_at || undefined,
+        status: "cancelled",
+      }),
+    })
+      .then(() => { setShowCancelConfirm(false); setShowEditModal(false); fetchSubscriptions() })
+      .catch((e: any) => setError(e.message ?? "Failed to cancel subscription"))
   }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
+      {loading && <div className="text-sm text-gray-500 dark:text-gray-400 py-2">Loading...</div>}
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
@@ -1518,8 +1411,8 @@ function SubscriptionsTab() {
                   disabled={showEditModal}
                 >
                   <option value="">Select a business...</option>
-                  {mockBusinessesForDropdown.map(biz => (
-                    <option key={biz.id} value={biz.id}>{biz.name} — {biz.email}</option>
+                  {businessesForDropdown.map(biz => (
+                    <option key={biz.id} value={biz.id}>{biz.name} — {biz.owner_email}</option>
                   ))}
                 </select>
               </div>
@@ -1617,7 +1510,7 @@ function SubscriptionsTab() {
               <Button variant="secondary" onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}>
                 Cancel
               </Button>
-              <Button variant="primary">
+              <Button variant="primary" onClick={showCreateModal ? handleCreateSubscription : handleEditSubscription}>
                 {showCreateModal ? "Create" : "Save Changes"}
               </Button>
             </div>
@@ -1659,17 +1552,109 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
-  const [businesses, setBusinesses] = useState(mockBusinesses)
+  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [stats, setStats] = useState<SystemStats | null>(null)
+  const [terminals, setTerminals] = useState<Terminal[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditPage, setAuditPage] = useState(1)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [planFilter, setPlanFilter] = useState<string>("all")
   const [showBusinessModal, setShowBusinessModal] = useState(false)
+  const [showCreateBusinessModal, setShowCreateBusinessModal] = useState(false)
+  const [showEditBusinessModal, setShowEditBusinessModal] = useState(false)
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null)
+  const [businessForm, setBusinessForm] = useState({ name: "", business_type_id: "", owner_name: "", owner_email: "", owner_phone: "", ice: "", trade_register: "" })
+  const [businessTypes, setBusinessTypes] = useState<{ id: string; name: string }[]>([])
   const [activeTab, setActiveTab] = useState<"overview" | "businesses" | "terminals" | "billing" | "support" | "analytics" | "audit" | "config" | "versions" | "announcements" | "system">("overview")
 
+  // Announcement form state
+  const [annForm, setAnnForm] = useState({ title: "", body: "", type: "info", target_business_types: [] as string[], starts_at: "", ends_at: "" })
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null)
+  const [showAnnModal, setShowAnnModal] = useState(false)
+
+  // Fetch business types for create form dropdown (load once on mount)
+  useEffect(() => {
+    apiFetch<{ data: { id: string; name: string }[] } | { id: string; name: string }[]>("/api/super/business-types")
+      .then(res => setBusinessTypes(Array.isArray(res) ? res : (res as any).data ?? []))
+      .catch(() => {})
+  }, [])
+
+  // Fetch overview stats
+  const fetchStats = useCallback(() => {
+    apiFetch<SystemStats>("/api/super/dashboard/stats")
+      .then(data => setStats(data))
+      .catch(() => {})
+  }, [])
+
+  // Fetch businesses (with client-side filter applied to cached list)
+  const fetchBusinesses = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    const params = new URLSearchParams({ page: "1", limit: "200" })
+    if (searchQuery) params.set("search", searchQuery)
+    apiFetch<{ data: Business[]; total: number } | Business[]>(`/api/super/businesses?${params}`)
+      .then(res => setBusinesses(Array.isArray(res) ? res : res.data))
+      .catch((e: any) => setError(e.message ?? "Failed to load businesses"))
+      .finally(() => setLoading(false))
+  }, [searchQuery])
+
+  // Fetch terminals
+  const fetchTerminals = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: Terminal[] } | Terminal[]>("/api/super/terminals")
+      .then(res => setTerminals(Array.isArray(res) ? res : res.data))
+      .catch((e: any) => setError(e.message ?? "Failed to load terminals"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Fetch audit logs
+  const fetchAuditLogs = useCallback((page = 1) => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: AuditLog[]; total: number }>(`/api/super/audit-logs?page=${page}&limit=20`)
+      .then(res => { setAuditLogs(res.data); setAuditTotal(res.total); setAuditPage(page) })
+      .catch((e: any) => setError(e.message ?? "Failed to load audit logs"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Fetch announcements
+  const fetchAnnouncements = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: Announcement[]; total: number } | Announcement[]>("/api/super/announcements")
+      .then(res => setAnnouncements(Array.isArray(res) ? res : res.data))
+      .catch((e: any) => setError(e.message ?? "Failed to load announcements"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Load data when active tab changes
+  useEffect(() => {
+    setError(null)
+    if (activeTab === "overview") {
+      fetchStats()
+      fetchBusinesses()
+    } else if (activeTab === "businesses") {
+      fetchBusinesses()
+    } else if (activeTab === "terminals") {
+      fetchTerminals()
+    } else if (activeTab === "audit") {
+      fetchAuditLogs(1)
+    } else if (activeTab === "announcements") {
+      fetchAnnouncements()
+    }
+  }, [activeTab])  // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredBusinesses = businesses.filter(b => {
-    const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          b.owner_email.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesSearch = !searchQuery ||
+      b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (b.owner_email ?? "").toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || b.status === statusFilter
     const matchesPlan = planFilter === "all" || b.plan === planFilter
     return matchesSearch && matchesStatus && matchesPlan
@@ -1692,10 +1677,101 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
   }
 
   const handleSuspend = (id: string) => {
-    setBusinesses(businesses.map(b => 
-      b.id === id ? { ...b, status: b.status === "suspended" ? "active" as const : "suspended" as const } : b
-    ))
+    const biz = businesses.find(b => b.id === id)
+    if (!biz) return
+    const newStatus = biz.status === "suspended" ? "active" : "suspended"
+    apiFetch(`/api/super/businesses/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: newStatus }),
+    })
+      .then(() => setBusinesses(prev => prev.map(b => b.id === id ? { ...b, status: newStatus as Business["status"] } : b)))
+      .catch((e: any) => setError(e.message ?? "Failed to update status"))
   }
+
+  const handleCreateBusiness = () => {
+    setError(null)
+    apiFetch<Business>("/api/super/businesses", {
+      method: "POST",
+      body: JSON.stringify({
+        name: businessForm.name,
+        business_type_id: businessForm.business_type_id || undefined,
+        owner_name: businessForm.owner_name,
+        owner_email: businessForm.owner_email,
+        owner_phone: businessForm.owner_phone || undefined,
+        ice: businessForm.ice || undefined,
+        trade_register: businessForm.trade_register || undefined,
+      }),
+    })
+      .then(() => { setShowCreateBusinessModal(false); fetchBusinesses() })
+      .catch((e: any) => setError(e.message ?? "Failed to create business"))
+  }
+
+  const handleEditBusiness = () => {
+    if (!selectedBusiness) return
+    setError(null)
+    apiFetch<Business>(`/api/super/businesses/${selectedBusiness.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: businessForm.name,
+        business_type_id: businessForm.business_type_id || undefined,
+        owner_name: businessForm.owner_name,
+        owner_email: businessForm.owner_email,
+        owner_phone: businessForm.owner_phone || undefined,
+        ice: businessForm.ice || undefined,
+        trade_register: businessForm.trade_register || undefined,
+      }),
+    })
+      .then(() => { setShowEditBusinessModal(false); fetchBusinesses() })
+      .catch((e: any) => setError(e.message ?? "Failed to update business"))
+  }
+
+  const handleCreateAnnouncement = () => {
+    setError(null)
+    apiFetch<Announcement>("/api/super/announcements", {
+      method: "POST",
+      body: JSON.stringify(annForm),
+    })
+      .then(() => {
+        setAnnForm({ title: "", body: "", type: "info", target_business_types: [], starts_at: "", ends_at: "" })
+        fetchAnnouncements()
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to create announcement"))
+  }
+
+  const handleEditAnnouncement = (ann: Announcement) => {
+    setEditingAnnouncement(ann)
+    setAnnForm({
+      title: ann.title,
+      body: ann.body ?? ann.message ?? "",
+      type: ann.type ?? "info",
+      target_business_types: ann.target_business_types ?? [],
+      starts_at: ann.starts_at ?? "",
+      ends_at: ann.ends_at ?? "",
+    })
+    setShowAnnModal(true)
+  }
+
+  const handleSaveAnnouncement = () => {
+    if (!editingAnnouncement) return
+    setError(null)
+    apiFetch<Announcement>(`/api/super/announcements/${editingAnnouncement.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(annForm),
+    })
+      .then(() => { setShowAnnModal(false); setEditingAnnouncement(null); fetchAnnouncements() })
+      .catch((e: any) => setError(e.message ?? "Failed to update announcement"))
+  }
+
+  const handleDeleteAnnouncement = (id: string | number) => {
+    setError(null)
+    apiFetch(`/api/super/announcements/${id}`, { method: "DELETE" })
+      .then(() => fetchAnnouncements())
+      .catch((e: any) => setError(e.message ?? "Failed to delete announcement"))
+  }
+
+  // Support and Versions tabs: no backend endpoints provided — kept as empty state
+  const tickets: { id: string; business: string; subject: string; priority: string; status: string; assignee: string; created: string }[] = []
+  const versionLogs: { version: string; date: string; type: string; notes: string; deployed: boolean }[] = []
 
   const navItems = [
     { id: "overview", label: "Overview", icon: BarChart3 },
@@ -1757,12 +1833,12 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
         {/* Bottom: health + back */}
         <div className="p-3 border-t border-gray-200 dark:border-[#1F1F23] space-y-2">
           <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium ${
-            mockStats.system_health === "healthy" ? "bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400" :
-            mockStats.system_health === "degraded" ? "bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" :
+            (stats?.system_health ?? "healthy") === "healthy" ? "bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400" :
+            stats?.system_health === "degraded" ? "bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400" :
             "bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400"
           }`}>
             <Activity className="w-4 h-4" />
-            <span className="capitalize">{mockStats.system_health}</span>
+            <span className="capitalize">{stats?.system_health ?? "..."}</span>
           </div>
           {onBack && (
             <button
@@ -1802,6 +1878,15 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
 
 
         <div className="p-6 flex-1">
+        {/* Global error/loading banner */}
+        {error && activeTab !== "businesses" && activeTab !== "announcements" && (
+          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
+            {error}
+          </div>
+        )}
+        {loading && activeTab !== "billing" && activeTab !== "announcements" && (
+          <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading...</div>
+        )}
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <div className="space-y-6">
@@ -1813,9 +1898,9 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                     <Building2 className="w-5 h-5 text-blue-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockStats.total_businesses}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats?.total_businesses ?? "—"}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Total Businesses</p>
-                <p className="text-xs text-emerald-400 mt-1">{mockStats.active_businesses} active</p>
+                <p className="text-xs text-emerald-400 mt-1">{stats?.active_businesses ?? "—"} active</p>
               </div>
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
                 <div className="flex items-center gap-3 mb-3">
@@ -1823,9 +1908,9 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                     <Monitor className="w-5 h-5 text-purple-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockStats.total_terminals}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats?.total_terminals ?? "—"}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Total Terminals</p>
-                <p className="text-xs text-emerald-400 mt-1">{mockStats.online_terminals} online</p>
+                <p className="text-xs text-emerald-400 mt-1">{stats?.online_terminals ?? "—"} online</p>
               </div>
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
                 <div className="flex items-center gap-3 mb-3">
@@ -1833,7 +1918,7 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                     <Zap className="w-5 h-5 text-emerald-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockStats.total_transactions_today.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats?.total_transactions_today?.toLocaleString() ?? "—"}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Transactions Today</p>
                 <p className="text-xs text-gray-500 mt-1">Across all businesses</p>
               </div>
@@ -1843,7 +1928,7 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                     <DollarSign className="w-5 h-5 text-indigo-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{(mockStats.total_revenue_today / 1000).toFixed(0)}K MAD</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats ? `${(stats.total_revenue_today / 1000).toFixed(0)}K MAD` : "—"}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Revenue Today</p>
                 <p className="text-xs text-emerald-400 mt-1">+12% vs yesterday</p>
               </div>
@@ -1902,6 +1987,10 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
         {/* Businesses Tab */}
         {activeTab === "businesses" && (
           <div className="space-y-6">
+            {error && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">{error}</div>
+            )}
+            {loading && <div className="text-sm text-gray-500 dark:text-gray-400">Loading...</div>}
             {/* Filters */}
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
               <div className="flex items-center gap-4">
@@ -1935,7 +2024,10 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   <option value="professional">Professional</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
-                <Button variant="primary">
+                <Button variant="primary" onClick={() => {
+                  setBusinessForm({ name: "", type: "", email: "", phone: "", address: "", ice: "", if_number: "" })
+                  setShowCreateBusinessModal(true)
+                }}>
                   <Plus className="w-4 h-4" />
                   Add Business
                 </Button>
@@ -1980,12 +2072,47 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                       <td className="p-4">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => { setSelectedBusiness(business); setShowBusinessModal(true) }}
+                            onClick={() => {
+                              apiFetch<Business>(`/api/super/businesses/${business.id}`)
+                                .then(detail => { setSelectedBusiness(detail); setShowBusinessModal(true) })
+                                .catch(() => { setSelectedBusiness(business); setShowBusinessModal(true) })
+                            }}
                             className="p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button className="p-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 rounded-lg">
+                          <button
+                            className="p-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 rounded-lg"
+                            onClick={() => {
+                              apiFetch<Business & { business_type_id?: string; owner_name?: string; owner_phone?: string; trade_register?: string }>(`/api/super/businesses/${business.id}`)
+                                .then(detail => {
+                                  setSelectedBusiness(detail)
+                                  setBusinessForm({
+                                    name: detail.name,
+                                    business_type_id: (detail as any).business_type_id ?? "",
+                                    owner_name: detail.owner_name ?? "",
+                                    owner_email: detail.owner_email ?? "",
+                                    owner_phone: (detail as any).owner_phone ?? "",
+                                    ice: (detail as any).ice ?? "",
+                                    trade_register: (detail as any).trade_register ?? "",
+                                  })
+                                  setShowEditBusinessModal(true)
+                                })
+                                .catch(() => {
+                                  setSelectedBusiness(business)
+                                  setBusinessForm({
+                                    name: business.name,
+                                    business_type_id: (business as any).business_type_id ?? "",
+                                    owner_name: business.owner_name ?? "",
+                                    owner_email: business.owner_email ?? "",
+                                    owner_phone: (business as any).owner_phone ?? "",
+                                    ice: (business as any).ice ?? "",
+                                    trade_register: (business as any).trade_register ?? "",
+                                  })
+                                  setShowEditBusinessModal(true)
+                                })
+                            }}
+                          >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
@@ -2014,15 +2141,15 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
             {/* Terminal Stats */}
             <div className="grid grid-cols-4 gap-4">
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockStats.total_terminals}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{terminals.length}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Total Terminals</p>
               </div>
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-                <p className="text-2xl font-bold text-emerald-400">{mockStats.online_terminals}</p>
+                <p className="text-2xl font-bold text-emerald-400">{terminals.filter(t => t.status === "online").length}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Online Now</p>
               </div>
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-                <p className="text-2xl font-bold text-red-400">{mockStats.total_terminals - mockStats.online_terminals}</p>
+                <p className="text-2xl font-bold text-red-400">{terminals.filter(t => t.status !== "online").length}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Offline</p>
               </div>
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
@@ -2069,11 +2196,11 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {mockTerminals.map((terminal) => (
+                  {terminals.map((terminal) => (
                     <tr key={terminal.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="p-4 font-mono text-sm text-gray-900 dark:text-white">{terminal.id}</td>
-                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{terminal.business}</td>
-                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{terminal.location}</td>
+                      <td className="p-4 font-mono text-sm text-gray-900 dark:text-white">{terminal.terminal_code ?? terminal.id}</td>
+                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{terminal.business ?? terminal.business_id}</td>
+                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{terminal.location ?? terminal.location_id}</td>
                       <td className="p-4">
                         <Badge color={terminal.status === "online" ? "green" : "red"}>{terminal.status}</Badge>
                       </td>
@@ -2155,7 +2282,10 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {mockTickets.map((ticket) => (
+                  {tickets.length === 0 && (
+                    <tr><td colSpan={7} className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No tickets data available.</td></tr>
+                  )}
+                  {tickets.map((ticket) => (
                     <tr key={ticket.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="p-4 font-mono text-sm text-blue-400">{ticket.id}</td>
                       <td className="p-4 text-sm text-white">{ticket.business}</td>
@@ -2317,9 +2447,9 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {mockAuditLogs.map((log) => (
+                  {auditLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="p-4 font-mono text-xs text-gray-500 dark:text-gray-400">{log.timestamp}</td>
+                      <td className="p-4 font-mono text-xs text-gray-500 dark:text-gray-400">{log.timestamp ?? log.created_at}</td>
                       <td className="p-4">
                         <Badge color={
                           log.action.includes("suspended") ? "red" :
@@ -2329,20 +2459,22 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                           {log.action.replace(/_/g, " ")}
                         </Badge>
                       </td>
-                      <td className="p-4 text-sm text-white">{log.actor}</td>
-                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{log.target}</td>
+                      <td className="p-4 text-sm text-white">{log.actor ?? log.performed_by}</td>
+                      <td className="p-4 text-sm text-gray-600 dark:text-gray-300">{log.target ?? log.entity_type}</td>
                       <td className="p-4 font-mono text-xs text-gray-500">{log.ip}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Showing 1-5 of 1,234 entries</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Showing {(auditPage - 1) * 20 + 1}–{Math.min(auditPage * 20, auditTotal)} of {auditTotal} entries
+                </p>
                 <div className="flex gap-2">
-                  <Button variant="secondary" className="!py-1.5 !px-3">
+                  <Button variant="secondary" className="!py-1.5 !px-3" disabled={auditPage <= 1} onClick={() => fetchAuditLogs(auditPage - 1)}>
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
-                  <Button variant="secondary" className="!py-1.5 !px-3">
+                  <Button variant="secondary" className="!py-1.5 !px-3" disabled={auditPage * 20 >= auditTotal} onClick={() => fetchAuditLogs(auditPage + 1)}>
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
@@ -2400,7 +2532,10 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {mockVersionLogs.map((version) => (
+                  {versionLogs.length === 0 && (
+                    <tr><td colSpan={6} className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No version log entries available.</td></tr>
+                  )}
+                  {versionLogs.map((version) => (
                     <tr key={version.version} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="p-4 font-mono font-semibold text-gray-900 dark:text-white">{version.version}</td>
                       <td className="p-4">
@@ -2454,6 +2589,9 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
         {/* Announcements Tab */}
         {activeTab === "announcements" && (
           <div className="space-y-6">
+            {error && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">{error}</div>
+            )}
             {/* Create Announcement */}
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create Announcement</h3>
@@ -2463,6 +2601,8 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   <input
                     type="text"
                     placeholder="Announcement title..."
+                    value={annForm.title}
+                    onChange={(e) => setAnnForm(prev => ({ ...prev, title: e.target.value }))}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -2471,30 +2611,37 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                   <textarea
                     placeholder="Write your announcement..."
                     rows={3}
+                    value={annForm.body}
+                    onChange={(e) => setAnnForm(prev => ({ ...prev, body: e.target.value }))}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Target Audience</label>
-                    <select className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white">
-                      <option value="all">All Businesses</option>
-                      <option value="starter">Starter Plan Only</option>
-                      <option value="professional">Professional Plan Only</option>
-                      <option value="enterprise">Enterprise Plan Only</option>
+                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Type</label>
+                    <select
+                      value={annForm.type}
+                      onChange={(e) => setAnnForm(prev => ({ ...prev, type: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
+                    >
+                      <option value="info">Info</option>
+                      <option value="warning">Warning</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="feature">New Feature</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Schedule</label>
+                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Starts At</label>
                     <input
                       type="datetime-local"
+                      value={annForm.starts_at}
+                      onChange={(e) => setAnnForm(prev => ({ ...prev, starts_at: e.target.value }))}
                       className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
                     />
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <Button variant="secondary">Save as Draft</Button>
-                  <Button variant="primary">
+                  <Button variant="primary" onClick={handleCreateAnnouncement}>
                     <Send className="w-4 h-4" />
                     Send Now
                   </Button>
@@ -2508,30 +2655,35 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
                 <h3 className="font-semibold text-gray-900 dark:text-white">Previous Announcements</h3>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {mockAdminAnnouncements.map((announcement) => (
+                {loading && <p className="text-sm text-gray-500 p-4">Loading...</p>}
+                {!loading && announcements.length === 0 && <p className="text-sm text-gray-500 p-4">No announcements yet.</p>}
+                {announcements.map((announcement) => (
                   <div key={announcement.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium text-gray-900 dark:text-white">{announcement.title}</h4>
-                          <Badge color={announcement.status === "sent" ? "green" : "yellow"}>
-                            {announcement.status}
-                          </Badge>
-                          <Badge color="gray">
-                            {announcement.target === "all" ? "All" : announcement.target}
-                          </Badge>
+                          {announcement.status && (
+                            <Badge color={announcement.status === "active" ? "green" : "yellow"}>
+                              {announcement.status}
+                            </Badge>
+                          )}
+                          {announcement.type && <Badge color="gray">{announcement.type}</Badge>}
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{announcement.message}</p>
-                        <p className="text-xs text-gray-500 mt-2">Created: {announcement.created}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{announcement.body ?? announcement.message}</p>
+                        <p className="text-xs text-gray-500 mt-2">Created: {announcement.created_at ?? announcement.created}</p>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button className="p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 rounded-lg">
+                        <button
+                          className="p-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 rounded-lg"
+                          onClick={() => handleEditAnnouncement(announcement)}
+                        >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg">
+                        <button
+                          className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg"
+                          onClick={() => handleDeleteAnnouncement(announcement.id)}
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -2705,6 +2857,148 @@ export default function SuperAdminPage({ onBack }: { onBack?: () => void } = {})
           </div>
         )}
       </Modal>
+
+      {/* Create Business Modal */}
+      <Modal isOpen={showCreateBusinessModal} onClose={() => setShowCreateBusinessModal(false)} title="Add Business" size="md">
+        <div className="space-y-4">
+          {error && <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg text-sm text-red-700 dark:text-red-400">{error}</div>}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Business Name <span className="text-red-500">*</span></label>
+            <input type="text" value={businessForm.name} onChange={(e) => setBusinessForm(prev => ({ ...prev, name: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Business Type</label>
+            <select value={businessForm.business_type_id} onChange={(e) => setBusinessForm(prev => ({ ...prev, business_type_id: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white">
+              <option value="">Select a type...</option>
+              {businessTypes.map(bt => <option key={bt.id} value={bt.id}>{bt.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Name <span className="text-red-500">*</span></label>
+            <input type="text" value={businessForm.owner_name} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_name: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Email <span className="text-red-500">*</span></label>
+            <input type="email" value={businessForm.owner_email} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_email: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Phone</label>
+            <input type="text" value={businessForm.owner_phone} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_phone: e.target.value }))}
+              placeholder="+212 6 ..."
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">ICE</label>
+              <input type="text" value={businessForm.ice} onChange={(e) => setBusinessForm(prev => ({ ...prev, ice: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Trade Register</label>
+              <input type="text" value={businessForm.trade_register} onChange={(e) => setBusinessForm(prev => ({ ...prev, trade_register: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowCreateBusinessModal(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleCreateBusiness}>Create Business</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Business Modal */}
+      <Modal isOpen={showEditBusinessModal} onClose={() => setShowEditBusinessModal(false)} title="Edit Business" size="md">
+        <div className="space-y-4">
+          {error && <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg text-sm text-red-700 dark:text-red-400">{error}</div>}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Business Name</label>
+            <input type="text" value={businessForm.name} onChange={(e) => setBusinessForm(prev => ({ ...prev, name: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Business Type</label>
+            <select value={businessForm.business_type_id} onChange={(e) => setBusinessForm(prev => ({ ...prev, business_type_id: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white">
+              <option value="">Select a type...</option>
+              {businessTypes.map(bt => <option key={bt.id} value={bt.id}>{bt.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Name</label>
+            <input type="text" value={businessForm.owner_name} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_name: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Email</label>
+            <input type="email" value={businessForm.owner_email} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_email: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Owner Phone</label>
+            <input type="text" value={businessForm.owner_phone} onChange={(e) => setBusinessForm(prev => ({ ...prev, owner_phone: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">ICE</label>
+              <input type="text" value={businessForm.ice} onChange={(e) => setBusinessForm(prev => ({ ...prev, ice: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Trade Register</label>
+              <input type="text" value={businessForm.trade_register} onChange={(e) => setBusinessForm(prev => ({ ...prev, trade_register: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditBusinessModal(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleEditBusiness}>Save Changes</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Announcement Modal */}
+      <Modal isOpen={showAnnModal} onClose={() => { setShowAnnModal(false); setEditingAnnouncement(null) }} title="Edit Announcement" size="md">
+        <div className="space-y-4">
+          {error && <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg text-sm text-red-700 dark:text-red-400">{error}</div>}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Title</label>
+            <input type="text" value={annForm.title} onChange={(e) => setAnnForm(prev => ({ ...prev, title: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Body</label>
+            <textarea rows={3} value={annForm.body} onChange={(e) => setAnnForm(prev => ({ ...prev, body: e.target.value }))}
+              className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white resize-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Type</label>
+              <select value={annForm.type} onChange={(e) => setAnnForm(prev => ({ ...prev, type: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white">
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="feature">New Feature</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Starts At</label>
+              <input type="datetime-local" value={annForm.starts_at} onChange={(e) => setAnnForm(prev => ({ ...prev, starts_at: e.target.value }))}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowAnnModal(false); setEditingAnnouncement(null) }}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSaveAnnouncement}>Save Changes</Button>
+          </div>
+        </div>
+      </Modal>
+
       </div>
     </div>
   )

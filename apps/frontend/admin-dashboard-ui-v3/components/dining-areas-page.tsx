@@ -56,7 +56,7 @@ export default function DiningAreasPage() {
     if (!form.name.trim()) return
     try {
       if (editing) {
-        await apiFetch(`/api/business/dining-areas/${editing.id}`, { method: "PUT", body: JSON.stringify(form) })
+        await apiFetch(`/api/business/dining-areas/${editing.id}`, { method: "PATCH", body: JSON.stringify(form) })
       } else {
         await apiFetch("/api/business/dining-areas", { method: "POST", body: JSON.stringify(form) })
       }

@@ -42,42 +42,6 @@ interface StockTransfer {
   completed_at?: string
 }
 
-// Mock Data
-const mockTransfers: StockTransfer[] = [
-  {
-    id: "1", transfer_number: "TRF-2024001", from_warehouse_id: "1", from_warehouse_name: "Main Warehouse",
-    to_warehouse_id: "2", to_warehouse_name: "Kitchen Storage", status: "completed",
-    items: [
-      { id: "1", product_name: "Tomatoes (kg)", sku: "VEG-001", quantity: 20, received_quantity: 20 },
-      { id: "2", product_name: "Onions (kg)", sku: "VEG-003", quantity: 15, received_quantity: 15 },
-    ],
-    notes: "Weekly kitchen restock", created_at: "2024-01-15", created_by: "Ahmed Benali", shipped_at: "2024-01-15", completed_at: "2024-01-15"
-  },
-  {
-    id: "2", transfer_number: "TRF-2024002", from_warehouse_id: "1", from_warehouse_name: "Main Warehouse",
-    to_warehouse_id: "3", to_warehouse_name: "Branch Storage", status: "in_transit",
-    items: [
-      { id: "3", product_name: "Flour (25kg bag)", sku: "BAK-001", quantity: 5 },
-      { id: "4", product_name: "Sugar (10kg bag)", sku: "BAK-002", quantity: 3 },
-    ],
-    notes: "Branch restocking", created_at: "2024-01-18", created_by: "Sara Idrissi", shipped_at: "2024-01-19"
-  },
-  {
-    id: "3", transfer_number: "TRF-2024003", from_warehouse_id: "2", from_warehouse_name: "Kitchen Storage",
-    to_warehouse_id: "1", to_warehouse_name: "Main Warehouse", status: "draft",
-    items: [
-      { id: "5", product_name: "Olive Oil (5L)", sku: "OIL-001", quantity: 10 },
-    ],
-    notes: "Excess stock return", created_at: "2024-01-20", created_by: "Karim Tazi"
-  },
-]
-
-const mockWarehouses = [
-  { id: "1", name: "Main Warehouse" },
-  { id: "2", name: "Kitchen Storage" },
-  { id: "3", name: "Branch Storage" },
-]
-
 // Components
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "blue" | "yellow" | "gray" }) {
   const colors = {
@@ -145,8 +109,14 @@ function StatusBadge({ status }: { status: StockTransfer["status"] }) {
   return <Badge color={color}><Icon className="w-3 h-3" />{label}</Badge>
 }
 
+interface Warehouse {
+  id: string
+  name: string
+}
+
 export default function StockTransfersPage() {
-  const [transfers, setTransfers] = useState<StockTransfer[]>(mockTransfers)
+  const [transfers, setTransfers] = useState<StockTransfer[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -161,32 +131,46 @@ export default function StockTransfersPage() {
     from_warehouse_id: "",
     to_warehouse_id: "",
     notes: "",
-    items: [] as { product_id: string; quantity: number }[],
+    items: [] as { batch_id: string; quantity: number }[],
   })
+
+  const mapTransfer = (t: any): StockTransfer => ({
+    id: t.id,
+    transfer_number: t.transfer_number,
+    from_warehouse_id: t.from_warehouse?.id ?? "",
+    from_warehouse_name: t.from_warehouse?.name ?? "",
+    to_warehouse_id: t.to_warehouse?.id ?? "",
+    to_warehouse_name: t.to_warehouse?.name ?? "",
+    status: t.status,
+    items: t.items ?? [],
+    notes: t.notes ?? "",
+    created_at: t.created_at ?? "",
+    created_by: t.created_by ?? "",
+    shipped_at: t.shipped_at,
+    completed_at: t.completed_at,
+  })
+
+  const fetchTransfers = () => {
+    setLoading(true)
+    setError(null)
+    apiFetch<{ data: any[]; total: number }>("/api/business/stock-transfers?page=1&limit=50")
+      .then(res => setTransfers(res.data.map(mapTransfer)))
+      .catch(e => setError(e.message ?? "Failed to load transfers"))
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
     setLoading(true)
     setError(null)
-    apiFetch<{ data: any[] }>("/api/business/stock-transfers?page=1&limit=20")
-      .then(res => {
-        const mapped: StockTransfer[] = res.data.map((t: any) => ({
-          id: t.id,
-          transfer_number: t.transfer_number,
-          from_warehouse_id: t.from_warehouse?.id ?? "",
-          from_warehouse_name: t.from_warehouse?.name ?? "",
-          to_warehouse_id: t.to_warehouse?.id ?? "",
-          to_warehouse_name: t.to_warehouse?.name ?? "",
-          status: t.status,
-          items: t.items ?? [],
-          notes: t.notes ?? "",
-          created_at: t.created_at ?? "",
-          created_by: t.created_by ?? "",
-          shipped_at: t.shipped_at,
-          completed_at: t.completed_at,
-        }))
-        setTransfers(mapped)
+    Promise.all([
+      apiFetch<{ data: any[]; total: number }>("/api/business/stock-transfers?page=1&limit=50"),
+      apiFetch<{ data: any[] }>("/api/business/warehouses"),
+    ])
+      .then(([transfersRes, warehousesRes]) => {
+        setTransfers(transfersRes.data.map(mapTransfer))
+        setWarehouses(warehousesRes.data.map((w: any) => ({ id: w.id, name: w.name })))
       })
-      .catch(e => setError(e.message ?? "Failed to load transfers"))
+      .catch(e => setError(e.message ?? "Failed to load data"))
       .finally(() => setLoading(false))
   }, [])
 
@@ -199,15 +183,69 @@ export default function StockTransfersPage() {
   })
 
   const handleView = (transfer: StockTransfer) => {
-    setSelectedTransfer(transfer)
-    setShowDetailPanel(true)
     setShowDropdown(null)
+    setError(null)
+    apiFetch<any>(`/api/business/stock-transfers/${transfer.id}`)
+      .then(res => {
+        setSelectedTransfer(mapTransfer(res))
+        setShowDetailPanel(true)
+      })
+      .catch(e => setError(e.message ?? "Failed to load transfer details"))
+  }
+
+  const handlePost = (id: string) => {
+    setError(null)
+    apiFetch<any>(`/api/business/stock-transfers/${id}/post`, { method: "POST" })
+      .then(() => {
+        setShowDetailPanel(false)
+        fetchTransfers()
+      })
+      .catch(e => setError(e.message ?? "Failed to post transfer"))
+  }
+
+  const handleCancel = (id: string) => {
+    setError(null)
+    apiFetch<any>(`/api/business/stock-transfers/${id}/cancel`, { method: "POST" })
+      .then(() => {
+        setShowDetailPanel(false)
+        fetchTransfers()
+      })
+      .catch(e => setError(e.message ?? "Failed to cancel transfer"))
+  }
+
+  const handleDelete = (id: string) => {
+    setError(null)
+    apiFetch<void>(`/api/business/stock-transfers/${id}`, { method: "DELETE" })
+      .then(() => {
+        setShowDropdown(null)
+        fetchTransfers()
+      })
+      .catch(e => setError(e.message ?? "Failed to delete transfer"))
+  }
+
+  const handleCreate = () => {
+    setError(null)
+    apiFetch<any>("/api/business/stock-transfers", {
+      method: "POST",
+      body: JSON.stringify({
+        from_warehouse_id: newTransfer.from_warehouse_id,
+        to_warehouse_id: newTransfer.to_warehouse_id,
+        notes: newTransfer.notes || undefined,
+        items: newTransfer.items,
+      }),
+    })
+      .then(() => {
+        setShowCreateModal(false)
+        setNewTransfer({ from_warehouse_id: "", to_warehouse_id: "", notes: "", items: [] })
+        fetchTransfers()
+      })
+      .catch(e => setError(e.message ?? "Failed to create transfer"))
   }
 
   const addItem = () => {
     setNewTransfer(prev => ({
       ...prev,
-      items: [...prev.items, { product_id: "", quantity: 1 }]
+      items: [...prev.items, { batch_id: "", quantity: 1 }]
     }))
   }
 
@@ -333,9 +371,17 @@ export default function StockTransfersPage() {
                             <Eye className="w-4 h-4" /> View
                           </button>
                           {transfer.status === "draft" && (
-                            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
-                              <Pencil className="w-4 h-4" /> Edit
-                            </button>
+                            <>
+                              <button onClick={() => handlePost(transfer.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
+                                <Truck className="w-4 h-4" /> Post
+                              </button>
+                              <button onClick={() => handleCancel(transfer.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
+                                <X className="w-4 h-4" /> Cancel
+                              </button>
+                              <button onClick={() => handleDelete(transfer.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                <X className="w-4 h-4" /> Delete
+                              </button>
+                            </>
                           )}
                         </div>
                       </>
@@ -360,7 +406,7 @@ export default function StockTransfersPage() {
                 className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
                 <option value="">Select source</option>
-                {mockWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             </div>
             <ArrowRight className="w-6 h-6 text-indigo-500 mt-6" />
@@ -372,7 +418,7 @@ export default function StockTransfersPage() {
                 className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
                 <option value="">Select destination</option>
-                {mockWarehouses.filter(w => w.id !== newTransfer.from_warehouse_id).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {warehouses.filter(w => w.id !== newTransfer.from_warehouse_id).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             </div>
           </div>
@@ -403,19 +449,27 @@ export default function StockTransfersPage() {
                     newTransfer.items.map((item, index) => (
                       <tr key={index}>
                         <td className="p-3">
-                          <select className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
-                            <option value="">Select product</option>
-                            <option value="1">Tomatoes (kg)</option>
-                            <option value="2">Onions (kg)</option>
-                            <option value="3">Flour (25kg bag)</option>
-                          </select>
+                          <input
+                            type="text"
+                            placeholder="Batch ID"
+                            value={item.batch_id}
+                            onChange={(e) => setNewTransfer(prev => ({
+                              ...prev,
+                              items: prev.items.map((it, i) => i === index ? { ...it, batch_id: e.target.value } : it)
+                            }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+                          />
                         </td>
-                        <td className="p-3 text-gray-500 dark:text-gray-400">50</td>
+                        <td className="p-3 text-gray-500 dark:text-gray-400">—</td>
                         <td className="p-3">
                           <input
                             type="number"
                             min="1"
                             value={item.quantity}
+                            onChange={(e) => setNewTransfer(prev => ({
+                              ...prev,
+                              items: prev.items.map((it, i) => i === index ? { ...it, quantity: Number(e.target.value) } : it)
+                            }))}
                             className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
                           />
                         </td>
@@ -444,8 +498,8 @@ export default function StockTransfersPage() {
 
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button variant="secondary" className="flex-1">Save as Draft</Button>
-            <Button variant="primary" className="flex-1"><Truck className="w-4 h-4" /> Create & Ship</Button>
+            <Button variant="secondary" className="flex-1" onClick={handleCreate}>Save as Draft</Button>
+            <Button variant="primary" className="flex-1" onClick={handleCreate}><Truck className="w-4 h-4" /> Create & Ship</Button>
           </div>
         </div>
       </Modal>
@@ -545,12 +599,9 @@ export default function StockTransfersPage() {
             <div className="p-5 border-t border-gray-200 dark:border-[#1F1F23]">
               {selectedTransfer.status === "draft" && (
                 <div className="flex gap-3">
-                  <Button variant="secondary" className="flex-1"><Pencil className="w-4 h-4" /> Edit</Button>
-                  <Button variant="primary" className="flex-1"><Truck className="w-4 h-4" /> Ship Transfer</Button>
+                  <Button variant="danger" className="flex-1" onClick={() => handleCancel(selectedTransfer.id)}><X className="w-4 h-4" /> Cancel</Button>
+                  <Button variant="primary" className="flex-1" onClick={() => handlePost(selectedTransfer.id)}><Truck className="w-4 h-4" /> Post Transfer</Button>
                 </div>
-              )}
-              {selectedTransfer.status === "in_transit" && (
-                <Button variant="primary" className="w-full"><CheckCircle className="w-4 h-4" /> Mark as Received</Button>
               )}
             </div>
           </div>

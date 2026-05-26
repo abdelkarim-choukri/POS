@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Search, Building2, Shield, CheckCircle, X } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface FeatureFlag {
   key: string
@@ -33,24 +34,66 @@ interface BusinessAuthority {
   overrides: Record<string, boolean | null>
 }
 
-const mockBusinesses: BusinessAuthority[] = [
-  { business_id: "b-1", business_name: "Café Atlas", business_type: "restaurant", overrides: { restaurant_tables: true, kds: true, loyalty_program: true, notifications_sms: true, notifications_whatsapp: false } },
-  { business_id: "b-2", business_name: "Pharmacie Centrale", business_type: "pharmacy", overrides: { inventory_tracking: true, purchase_orders: true, loyalty_program: false } },
-  { business_id: "b-3", business_name: "Atlas Fashion", business_type: "retail", overrides: { promotions: true, coupons: true, recommendations: true, chain_operations: true } },
-  { business_id: "b-4", business_name: "Hôtel Kenzi", business_type: "hotel", overrides: { restaurant_tables: true, kds: true, notifications_email: true } },
-]
+interface BusinessListItem {
+  id: string
+  name: string
+  business_type: string
+}
 
 const CATEGORIES = Array.from(new Set(FEATURES.map(f => f.category)))
 
 export default function CustomAuthorityPage() {
-  const [businesses, setBusinesses] = useState(mockBusinesses)
+  const [businesses, setBusinesses] = useState<BusinessListItem[]>([])
+  const [bizLoading, setBizLoading] = useState(true)
+  const [bizError, setBizError] = useState<string | null>(null)
+
   const [search, setSearch] = useState("")
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessAuthority | null>(null)
+  const [overrideLoading, setOverrideLoading] = useState(false)
+  const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
 
+  // Fetch business list on mount
+  useEffect(() => {
+    setBizLoading(true)
+    setBizError(null)
+    apiFetch<{ data: BusinessListItem[] } | BusinessListItem[]>("/api/super/businesses")
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res as { data: BusinessListItem[] }).data ?? []
+        setBusinesses(list)
+      })
+      .catch(err => setBizError(err.message ?? "Failed to load businesses"))
+      .finally(() => setBizLoading(false))
+  }, [])
+
+  // Fetch custom authority when a business is selected
+  const selectBusiness = (biz: BusinessListItem) => {
+    setOverrideLoading(true)
+    setOverrideError(null)
+    setSaveError(null)
+    apiFetch<{ features: Record<string, boolean> }>(`/api/super/businesses/${biz.id}/custom-authority`)
+      .then(res => {
+        // Backend returns true/false only — map to the local shape (no nulls from API, null = "not set")
+        const overrides: Record<string, boolean | null> = {}
+        for (const [k, v] of Object.entries(res.features ?? {})) {
+          overrides[k] = v
+        }
+        setSelectedBusiness({
+          business_id: biz.id,
+          business_name: biz.name,
+          business_type: biz.business_type,
+          overrides,
+        })
+      })
+      .catch(err => setOverrideError(err.message ?? "Failed to load feature overrides"))
+      .finally(() => setOverrideLoading(false))
+  }
+
   const filtered = businesses.filter(b =>
-    b.business_name.toLowerCase().includes(search.toLowerCase()) ||
-    b.business_type.toLowerCase().includes(search.toLowerCase())
+    (b.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (b.business_type ?? "").toLowerCase().includes(search.toLowerCase())
   )
 
   const getOverride = (biz: BusinessAuthority, key: string): boolean | null =>
@@ -67,14 +110,33 @@ export default function CustomAuthorityPage() {
     })
   }
 
-  const saveOverrides = () => {
+  const saveOverrides = async () => {
     if (!selectedBusiness) return
-    setBusinesses(prev => prev.map(b => b.business_id === selectedBusiness.business_id ? selectedBusiness : b))
-    setSavedId(selectedBusiness.business_id)
-    setTimeout(() => setSavedId(null), 1500)
+    setSaving(true)
+    setSaveError(null)
+    try {
+      // Strip null values — backend expects Record<string, boolean> (only explicit overrides)
+      const features: Record<string, boolean> = {}
+      for (const [k, v] of Object.entries(selectedBusiness.overrides)) {
+        if (v !== null) features[k] = v as boolean
+      }
+      await apiFetch(`/api/super/businesses/${selectedBusiness.business_id}/custom-authority`, {
+        method: "PUT",
+        body: JSON.stringify({ features }),
+      })
+      setSavedId(selectedBusiness.business_id)
+      setTimeout(() => setSavedId(null), 1500)
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save overrides")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const overrideCount = (biz: BusinessAuthority) => Object.keys(biz.overrides).length
+  const overrideCount = (biz: BusinessListItem) =>
+    selectedBusiness?.business_id === biz.id
+      ? Object.keys(selectedBusiness.overrides).filter(k => selectedBusiness.overrides[k] !== null).length
+      : 0
 
   return (
     <div className="space-y-6">
@@ -98,17 +160,27 @@ export default function CustomAuthorityPage() {
             />
           </div>
 
-          {filtered.map(biz => (
-            <button key={biz.business_id} onClick={() => setSelectedBusiness(biz)}
+          {bizLoading && (
+            <p className="text-sm text-gray-400 dark:text-gray-600 text-center py-4">Loading businesses…</p>
+          )}
+          {bizError && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+              <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-xs text-red-700 dark:text-red-300">{bizError}</p>
+            </div>
+          )}
+
+          {!bizLoading && !bizError && filtered.map(biz => (
+            <button key={biz.id} onClick={() => selectBusiness(biz)}
               className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                selectedBusiness?.business_id === biz.business_id
+                selectedBusiness?.business_id === biz.id
                   ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20"
                   : "border-gray-200 dark:border-[#1F1F23] bg-white dark:bg-[#0F0F12] hover:border-indigo-300"
               }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-indigo-500" />
-                  <p className="font-medium text-gray-900 dark:text-white text-sm">{biz.business_name}</p>
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">{biz.name}</p>
                 </div>
                 {overrideCount(biz) > 0 && (
                   <span className="text-xs px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full font-medium">
@@ -123,24 +195,41 @@ export default function CustomAuthorityPage() {
 
         {/* Feature flags editor */}
         <div className="lg:col-span-2">
-          {selectedBusiness ? (
+          {overrideLoading && (
+            <div className="h-full min-h-[400px] bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] flex items-center justify-center">
+              <p className="text-sm text-gray-400">Loading overrides…</p>
+            </div>
+          )}
+          {overrideError && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+              <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-xs text-red-700 dark:text-red-300">{overrideError}</p>
+            </div>
+          )}
+          {!overrideLoading && selectedBusiness && (
             <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">{selectedBusiness.business_name}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">{selectedBusiness.business_type}</p>
                 </div>
-                <button onClick={saveOverrides}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                <button onClick={saveOverrides} disabled={saving}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-60 ${
                     savedId === selectedBusiness.business_id
                       ? "bg-green-500 text-white"
                       : "bg-indigo-600 hover:bg-indigo-700 text-white"
                   }`}>
                   {savedId === selectedBusiness.business_id ? (
                     <><CheckCircle className="w-4 h-4" /> Saved!</>
-                  ) : "Save Overrides"}
+                  ) : saving ? "Saving…" : "Save Overrides"}
                 </button>
               </div>
+              {saveError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                  <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <p className="text-xs text-red-700 dark:text-red-300">{saveError}</p>
+                </div>
+              )}
 
               {CATEGORIES.map(category => (
                 <div key={category} className="space-y-2">
@@ -179,7 +268,8 @@ export default function CustomAuthorityPage() {
                 </div>
               ))}
             </div>
-          ) : (
+          )}
+          {!overrideLoading && !selectedBusiness && (
             <div className="h-full min-h-[400px] bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] flex items-center justify-center">
               <div className="text-center space-y-2">
                 <Shield className="w-10 h-10 text-gray-300 dark:text-gray-700 mx-auto" />

@@ -204,6 +204,73 @@ export interface Transaction {
   synced_at?: string;
 }
 
+// ── Restaurant / Table Session types ─────────────────────────────────────────
+
+export interface FloorPlanTableSession {
+  id: string;
+  opened_at: string;
+  guest_count: number | null;
+  customer_name: string | null;
+  item_count: number;
+  current_total_ttc: number;
+  server_name: string | null;
+}
+
+export interface FloorPlanTable {
+  id: string;
+  table_number: string;
+  capacity: number;
+  area_id: string;
+  area_name: string;
+  position_x: number | null;
+  position_y: number | null;
+  session_status: 'available' | 'occupied' | 'awaiting_payment';
+  current_session: FloorPlanTableSession | null;
+}
+
+export interface FloorPlanResponse {
+  tables: FloorPlanTable[];
+}
+
+export interface OpenedSession {
+  id: string;
+  table_id: string;
+  table_number: string;
+  status: 'open' | 'awaiting_payment';
+  opened_at: string;
+  guest_count: number | null;
+  customer_id: string | null;
+  items: SessionItem[];
+}
+
+export interface SessionItem {
+  id: string;
+  product_id: string;
+  product_name: string | null;
+  variant_id?: string | null;
+  quantity: number;
+  unit_price_ttc: number;
+  kds_status: 'new' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  notes?: string | null;
+  modifiers_json?: { modifiers?: { name: string; price: number }[] } | null;
+  customer_id?: string | null;
+}
+
+export interface AddSessionItemPayload {
+  product_id: string;
+  quantity: number;
+  variant_id?: string;
+  notes?: string;
+  customer_id?: string;
+}
+
+export interface AddItemsResponse {
+  added_items: SessionItem[];
+  session_total_ttc: number;
+}
+
+// ── End restaurant types ──────────────────────────────────────────────────────
+
 export interface SyncStatus {
   pending_transactions: number;
   pending_clock_events: number;
@@ -523,6 +590,173 @@ class TerminalService {
   }
 
   // ============================================================
+  // RESTAURANT — TABLE SESSIONS (Phase 10)
+  // ============================================================
+
+  /**
+   * RST-030: Fetch the live floor plan (all tables + their active session summaries)
+   */
+  async getFloorPlan(locationId?: string): Promise<FloorPlanResponse> {
+    const qs = locationId ? `?location_id=${encodeURIComponent(locationId)}` : '';
+    return apiFetch<FloorPlanResponse>(`/api/terminal/tables/floor-plan${qs}`);
+  }
+
+  /**
+   * RST-031: Open a table session
+   */
+  async openTable(
+    tableId: string,
+    guestCount?: number,
+    customerId?: string,
+  ): Promise<{ success: boolean; session?: OpenedSession; error?: string }> {
+    try {
+      const body: Record<string, unknown> = {};
+      if (guestCount !== undefined) body.guest_count = guestCount;
+      if (customerId) body.customer_id = customerId;
+      const data = await apiFetch<OpenedSession>(`/api/terminal/tables/${tableId}/open`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return { success: true, session: data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to open table';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-032: Add items to an open table session
+   */
+  async addSessionItems(
+    sessionId: string,
+    items: AddSessionItemPayload[],
+  ): Promise<{ success: boolean; data?: AddItemsResponse; error?: string }> {
+    try {
+      const data = await apiFetch<AddItemsResponse>(`/api/terminal/table-sessions/${sessionId}/items`, {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      });
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add items';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-033: Modify a table session item (quantity / notes / customer_id)
+   */
+  async modifySessionItem(
+    itemId: string,
+    patch: { quantity?: number; notes?: string; customer_id?: string | null },
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await apiFetch(`/api/terminal/table-session-items/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to modify item';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-034: Remove (soft-delete) a table session item
+   */
+  async removeSessionItem(itemId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await apiFetch(`/api/terminal/table-session-items/${itemId}`, { method: 'DELETE' });
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to remove item';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-037: Transfer items between sessions
+   */
+  async transferSessionItems(
+    itemIds: string[],
+    targetSessionId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await apiFetch('/api/terminal/table-session-items/transfer', {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds, target_table_session_id: targetSessionId }),
+      });
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to transfer items';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-035: Close table → single checkout payload
+   */
+  async closeTable(sessionId: string): Promise<{ success: boolean; data?: unknown; error?: string }> {
+    try {
+      const data = await apiFetch(`/api/terminal/table-sessions/${sessionId}/close`, { method: 'POST' });
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to close table';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-036: Split bill
+   */
+  async splitBill(
+    sessionId: string,
+    splitType: 'even' | 'by_item' | 'custom',
+    count?: number,
+    splits?: { label: string; item_ids?: string[] }[],
+  ): Promise<{ success: boolean; data?: unknown; error?: string }> {
+    try {
+      const body: Record<string, unknown> = { split_type: splitType };
+      if (splitType === 'even' && count !== undefined) {
+        body.splits = Array.from({ length: count }, (_, i) => ({ label: `Guest ${i + 1}` }));
+      } else if (splits) {
+        body.splits = splits;
+      }
+      const data = await apiFetch(`/api/terminal/table-sessions/${sessionId}/split`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return { success: true, data };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to split bill';
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * RST-038: Cancel / force-close a session
+   */
+  async cancelSession(
+    sessionId: string,
+    reason: string,
+    forceClosePartial?: boolean,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const body: Record<string, unknown> = { reason };
+      if (forceClosePartial !== undefined) body.force_close_partial = forceClosePartial;
+      await apiFetch(`/api/terminal/table-sessions/${sessionId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to cancel session';
+      return { success: false, error: message };
+    }
+  }
+
+  // ============================================================
   // SYNC
   // ============================================================
 
@@ -535,20 +769,49 @@ class TerminalService {
         return { success: false, synced_count: 0, error: 'No network connection' };
       }
 
-      const syncedCount = this.offlineTransactions.length + this.offlineClockEvents.length;
+      const payload = {
+        offline_transactions: this.offlineTransactions,
+        offline_clock_events: this.offlineClockEvents,
+      };
 
-      // Clear offline data after successful sync
+      const result = await apiFetch<{ synced_count?: number }>('/api/terminal/sync', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      // Clear offline data after successful server sync
       this.offlineTransactions = [];
       this.offlineClockEvents = [];
 
-      return { success: true, synced_count: syncedCount };
-    } catch {
-      return { success: false, synced_count: 0, error: 'Sync failed' };
+      return { success: true, synced_count: result?.synced_count ?? 0 };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
+      return { success: false, synced_count: 0, error: message };
     }
   }
 
   /**
-   * Get current sync status
+   * Get current sync status from server
+   */
+  async fetchSyncStatus(): Promise<SyncStatus> {
+    try {
+      const data = await apiFetch<{ last_sync_at?: string; is_syncing: boolean; last_error?: string }>(
+        '/api/terminal/sync/status',
+      );
+      return {
+        pending_transactions: this.offlineTransactions.length,
+        pending_clock_events: this.offlineClockEvents.length,
+        last_sync_at: data.last_sync_at,
+        is_syncing: data.is_syncing,
+        last_error: data.last_error,
+      };
+    } catch {
+      return this.getSyncStatus();
+    }
+  }
+
+  /**
+   * Get local sync status without a server round-trip
    */
   getSyncStatus(): SyncStatus {
     return {
@@ -557,6 +820,20 @@ class TerminalService {
       last_sync_at: undefined,
       is_syncing: false,
     };
+  }
+
+  /**
+   * Fetch resolved items for a recommendation template (cross-sell / upsell)
+   */
+  async getRecommendationItems(templateId: string): Promise<Product[]> {
+    try {
+      const data = await apiFetch<{ items?: Product[] } | Product[]>(
+        `/api/terminal/recommendation-templates/${templateId}/items`,
+      );
+      return Array.isArray(data) ? data : (data.items ?? []);
+    } catch {
+      return [];
+    }
   }
 
   // ============================================================

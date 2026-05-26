@@ -50,61 +50,9 @@ interface PurchaseOrder {
   created_by: string
 }
 
-// Mock Data
-const mockPurchaseOrders: PurchaseOrder[] = [
-  {
-    id: "1", po_number: "PO-2024001", vendor_id: "1", vendor_name: "Fresh Farms Produce", warehouse_id: "1", warehouse_name: "Main Warehouse",
-    status: "received", items: [
-      { id: "1", product_name: "Tomatoes (kg)", sku: "VEG-001", quantity: 50, unit_price: 12, total: 600 },
-      { id: "2", product_name: "Lettuce (head)", sku: "VEG-002", quantity: 30, unit_price: 8, total: 240 },
-    ],
-    subtotal: 840, tax: 168, total: 1008, expected_date: "2024-01-20", notes: "Fresh produce delivery", created_at: "2024-01-15", created_by: "Admin"
-  },
-  {
-    id: "2", po_number: "PO-2024002", vendor_id: "2", vendor_name: "Ocean Seafood Co.", warehouse_id: "1", warehouse_name: "Main Warehouse",
-    status: "sent", items: [
-      { id: "3", product_name: "Salmon Fillet (kg)", sku: "SEA-001", quantity: 20, unit_price: 120, total: 2400 },
-      { id: "4", product_name: "Shrimp (kg)", sku: "SEA-002", quantity: 15, unit_price: 95, total: 1425 },
-    ],
-    subtotal: 3825, tax: 765, total: 4590, expected_date: "2024-01-22", notes: "Weekly seafood order", created_at: "2024-01-18", created_by: "Admin"
-  },
-  {
-    id: "3", po_number: "PO-2024003", vendor_id: "3", vendor_name: "Bakery Supplies Ltd", warehouse_id: "2", warehouse_name: "Kitchen Storage",
-    status: "partial", items: [
-      { id: "5", product_name: "Flour (25kg bag)", sku: "BAK-001", quantity: 10, unit_price: 150, total: 1500 },
-      { id: "6", product_name: "Sugar (10kg bag)", sku: "BAK-002", quantity: 8, unit_price: 80, total: 640 },
-    ],
-    subtotal: 2140, tax: 428, total: 2568, expected_date: "2024-01-19", notes: "Bakery supplies restock", created_at: "2024-01-16", created_by: "Manager"
-  },
-  {
-    id: "4", po_number: "PO-2024004", vendor_id: "1", vendor_name: "Fresh Farms Produce", warehouse_id: "1", warehouse_name: "Main Warehouse",
-    status: "draft", items: [
-      { id: "7", product_name: "Onions (kg)", sku: "VEG-003", quantity: 40, unit_price: 10, total: 400 },
-    ],
-    subtotal: 400, tax: 80, total: 480, expected_date: "2024-01-25", notes: "", created_at: "2024-01-20", created_by: "Admin"
-  },
-]
-
-const mockVendors = [
-  { id: "1", name: "Fresh Farms Produce" },
-  { id: "2", name: "Ocean Seafood Co." },
-  { id: "3", name: "Bakery Supplies Ltd" },
-]
-
-const mockWarehouses = [
-  { id: "1", name: "Main Warehouse" },
-  { id: "2", name: "Kitchen Storage" },
-]
-
-const mockProducts = [
-  { id: "1", name: "Tomatoes (kg)", sku: "VEG-001", price: 12 },
-  { id: "2", name: "Lettuce (head)", sku: "VEG-002", price: 8 },
-  { id: "3", name: "Onions (kg)", sku: "VEG-003", price: 10 },
-  { id: "4", name: "Salmon Fillet (kg)", sku: "SEA-001", price: 120 },
-  { id: "5", name: "Shrimp (kg)", sku: "SEA-002", price: 95 },
-  { id: "6", name: "Flour (25kg bag)", sku: "BAK-001", price: 150 },
-  { id: "7", name: "Sugar (10kg bag)", sku: "BAK-002", price: 80 },
-]
+// Vendor / Warehouse types (minimal shape needed for dropdowns)
+interface Vendor { id: string; name: string }
+interface Warehouse { id: string; name: string }
 
 // Components
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "blue" | "yellow" | "gray" | "purple" }) {
@@ -175,17 +123,22 @@ function StatusBadge({ status }: { status: PurchaseOrder["status"] }) {
 }
 
 export default function PurchaseOrdersPage() {
-  const [orders, setOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders)
+  const [orders, setOrders] = useState<PurchaseOrder[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [vendorFilter, setVendorFilter] = useState("all")
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showReceiveModal, setShowReceiveModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [expandedRows, setExpandedRows] = useState<string[]>([])
   const [showDropdown, setShowDropdown] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   // Create PO form state
   const [newPO, setNewPO] = useState({
@@ -193,10 +146,67 @@ export default function PurchaseOrdersPage() {
     warehouse_id: "",
     expected_date: "",
     notes: "",
-    items: [] as { product_id: string; quantity: number; unit_price: number }[],
+    items: [] as { product_id: string; quantity: number; unit_cost_ht: number; tva_rate: number }[],
   })
 
-  // Fetch purchase orders from API
+  // Edit PO form state (draft only)
+  const [editPO, setEditPO] = useState({
+    vendor_id: "",
+    warehouse_id: "",
+    expected_date: "",
+    notes: "",
+    items: [] as { id?: string; product_id: string; quantity: number; unit_cost_ht: number; tva_rate: number }[],
+  })
+
+  // Receive form state
+  const [receiveItems, setReceiveItems] = useState<{ purchase_order_item_id: string; quantity_received: number; batch_notes: string }[]>([])
+
+  // Helper: map raw API PO to local PurchaseOrder shape
+  const mapPO = (po: any): PurchaseOrder => ({
+    id: po.id,
+    po_number: po.po_number,
+    vendor_id: po.vendor_id,
+    vendor_name: po.vendor?.name ?? "",
+    warehouse_id: po.warehouse_id ?? "",
+    warehouse_name: po.warehouse?.name ?? "",
+    status: po.status,
+    items: (po.items ?? []).map((item: any) => ({
+      id: item.id,
+      product_name: item.product?.name ?? "",
+      sku: item.product?.sku ?? "",
+      quantity: item.quantity,
+      unit_price: Number(item.unit_cost_ht ?? item.unit_price_ht ?? 0),
+      total: Number(item.quantity ?? 0) * Number(item.unit_cost_ht ?? item.unit_price_ht ?? 0),
+    })),
+    subtotal: Number(po.total_ht ?? 0),
+    tax: Number(po.total_tva ?? 0),
+    total: Number(po.total_ttc ?? 0),
+    expected_date: po.expected_delivery_date ? po.expected_delivery_date.split("T")[0] : "",
+    notes: po.notes ?? "",
+    created_at: po.created_at ? po.created_at.split("T")[0] : "",
+    created_by: "",
+  })
+
+  // Fetch PO list (also called after mutations)
+  const fetchOrders = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "50" })
+      if (statusFilter !== "all") params.set("status", statusFilter)
+      if (vendorFilter !== "all") params.set("vendor_id", vendorFilter)
+      const res = await apiFetch<{ data: any[]; total: number }>(
+        `/api/business/purchase-orders?${params}`
+      )
+      setOrders(res.data.map(mapPO))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load purchase orders")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // On mount: fetch POs + vendors + warehouses in parallel; re-fetch when filters change
   useEffect(() => {
     const timer = setTimeout(async () => {
       setLoading(true)
@@ -205,34 +215,14 @@ export default function PurchaseOrdersPage() {
         const params = new URLSearchParams({ page: "1", limit: "50" })
         if (statusFilter !== "all") params.set("status", statusFilter)
         if (vendorFilter !== "all") params.set("vendor_id", vendorFilter)
-        const res = await apiFetch<{ data: any[]; total: number }>(
-          `/api/business/inventory/purchase-orders?${params}`
-        )
-        const mapped: PurchaseOrder[] = res.data.map((po: any) => ({
-          id: po.id,
-          po_number: po.po_number,
-          vendor_id: po.vendor_id,
-          vendor_name: po.vendor?.name ?? "",
-          warehouse_id: po.warehouse_id ?? "",
-          warehouse_name: po.warehouse?.name ?? "",
-          status: po.status,
-          items: (po.items ?? []).map((item: any) => ({
-            id: item.id,
-            product_name: item.product?.name ?? "",
-            sku: item.product?.sku ?? "",
-            quantity: item.quantity,
-            unit_price: Number(item.unit_price_ht ?? 0),
-            total: Number(item.quantity ?? 0) * Number(item.unit_price_ht ?? 0),
-          })),
-          subtotal: Number(po.total_ht ?? 0),
-          tax: Number(po.total_tva ?? 0),
-          total: Number(po.total_ttc ?? 0),
-          expected_date: po.expected_delivery_date ? po.expected_delivery_date.split("T")[0] : "",
-          notes: po.notes ?? "",
-          created_at: po.created_at ? po.created_at.split("T")[0] : "",
-          created_by: "",
-        }))
-        setOrders(mapped)
+        const [poRes, vendorRes, warehouseRes] = await Promise.all([
+          apiFetch<{ data: any[]; total: number }>(`/api/business/purchase-orders?${params}`),
+          apiFetch<{ data: any[] }>(`/api/business/vendors`),
+          apiFetch<{ data: any[] }>(`/api/business/warehouses`),
+        ])
+        setOrders(poRes.data.map(mapPO))
+        setVendors((vendorRes.data ?? []).map((v: any) => ({ id: v.id, name: v.name })))
+        setWarehouses((warehouseRes.data ?? []).map((w: any) => ({ id: w.id, name: w.name })))
       } catch (e: any) {
         setError(e.message ?? "Failed to load purchase orders")
       } finally {
@@ -251,16 +241,162 @@ export default function PurchaseOrdersPage() {
     setExpandedRows(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id])
   }
 
-  const handleViewPO = (po: PurchaseOrder) => {
-    setSelectedPO(po)
+  // View PO: fetch full detail from API
+  const handleViewPO = async (po: PurchaseOrder) => {
+    setShowDropdown(null)
+    setError(null)
+    try {
+      const full = await apiFetch<any>(`/api/business/purchase-orders/${po.id}`)
+      setSelectedPO(mapPO(full))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load purchase order details")
+      setSelectedPO(po) // fall back to list-level data
+    }
     setShowDetailPanel(true)
+  }
+
+  // Send PO to vendor
+  const handleSend = async (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/purchase-orders/${id}/send`, { method: "POST" })
+      await fetchOrders()
+      // Refresh detail panel if open
+      if (selectedPO?.id === id) {
+        const full = await apiFetch<any>(`/api/business/purchase-orders/${id}`)
+        setSelectedPO(mapPO(full))
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to send purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Confirm PO
+  const handleConfirm = async (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/purchase-orders/${id}/confirm`, { method: "POST" })
+      await fetchOrders()
+      if (selectedPO?.id === id) {
+        const full = await apiFetch<any>(`/api/business/purchase-orders/${id}`)
+        setSelectedPO(mapPO(full))
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to confirm purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Cancel PO
+  const handleCancel = async (id: string) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/purchase-orders/${id}/cancel`, { method: "POST" })
+      await fetchOrders()
+      if (selectedPO?.id === id) {
+        const full = await apiFetch<any>(`/api/business/purchase-orders/${id}`)
+        setSelectedPO(mapPO(full))
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to cancel purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Open receive modal
+  const handleOpenReceive = (po: PurchaseOrder) => {
+    setReceiveItems(po.items.map(item => ({
+      purchase_order_item_id: item.id,
+      quantity_received: item.quantity,
+      batch_notes: "",
+    })))
+    setShowReceiveModal(true)
+  }
+
+  // Submit receive
+  const handleReceive = async () => {
+    if (!selectedPO) return
+    setActionLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/purchase-orders/${selectedPO.id}/receive`, {
+        method: "POST",
+        body: JSON.stringify({ items: receiveItems }),
+      })
+      setShowReceiveModal(false)
+      await fetchOrders()
+      const full = await apiFetch<any>(`/api/business/purchase-orders/${selectedPO.id}`)
+      setSelectedPO(mapPO(full))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to receive purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Open edit modal (draft only)
+  const handleOpenEdit = (po: PurchaseOrder) => {
+    setEditPO({
+      vendor_id: po.vendor_id,
+      warehouse_id: po.warehouse_id,
+      expected_date: po.expected_date,
+      notes: po.notes,
+      items: po.items.map(item => ({
+        id: item.id,
+        product_id: "", // product_id not stored in local PurchaseOrderItem; user must re-select
+        quantity: item.quantity,
+        unit_cost_ht: item.unit_price,
+        tva_rate: 20,
+      })),
+    })
+    setShowEditModal(true)
     setShowDropdown(null)
   }
 
+  // Submit edit
+  const handleUpdate = async () => {
+    if (!selectedPO) return
+    setActionLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/purchase-orders/${selectedPO.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          vendor_id: editPO.vendor_id,
+          warehouse_id: editPO.warehouse_id || undefined,
+          expected_delivery_date: editPO.expected_date || undefined,
+          notes: editPO.notes || undefined,
+          items: editPO.items.filter(i => i.product_id).map(i => ({
+            product_id: i.product_id,
+            quantity: i.quantity,
+            unit_cost_ht: i.unit_cost_ht,
+            tva_rate: i.tva_rate,
+          })),
+        }),
+      })
+      setShowEditModal(false)
+      await fetchOrders()
+      const full = await apiFetch<any>(`/api/business/purchase-orders/${selectedPO.id}`)
+      setSelectedPO(mapPO(full))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Create PO helpers
   const addItem = () => {
     setNewPO(prev => ({
       ...prev,
-      items: [...prev.items, { product_id: "", quantity: 1, unit_price: 0 }]
+      items: [...prev.items, { product_id: "", quantity: 1, unit_cost_ht: 0, tva_rate: 20 }]
     }))
   }
 
@@ -274,20 +410,47 @@ export default function PurchaseOrdersPage() {
   const updateItem = (index: number, field: string, value: string | number) => {
     setNewPO(prev => ({
       ...prev,
-      items: prev.items.map((item, i) => {
-        if (i !== index) return item
-        if (field === "product_id") {
-          const product = mockProducts.find(p => p.id === value)
-          return { ...item, product_id: value as string, unit_price: product?.price || 0 }
-        }
-        return { ...item, [field]: value }
-      })
+      items: prev.items.map((item, i) => i !== index ? item : { ...item, [field]: value })
     }))
   }
 
+  // Submit create PO (draft)
+  const handleCreatePO = async (sendToVendor: boolean) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      const body: any = {
+        vendor_id: newPO.vendor_id,
+        items: newPO.items.filter(i => i.product_id).map(i => ({
+          product_id: i.product_id,
+          quantity: i.quantity,
+          unit_cost_ht: i.unit_cost_ht,
+          tva_rate: i.tva_rate,
+        })),
+      }
+      if (newPO.warehouse_id) body.warehouse_id = newPO.warehouse_id
+      if (newPO.expected_date) body.expected_delivery_date = newPO.expected_date
+      if (newPO.notes) body.notes = newPO.notes
+      const created = await apiFetch<any>(`/api/business/purchase-orders`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+      if (sendToVendor) {
+        await apiFetch(`/api/business/purchase-orders/${created.id}/send`, { method: "POST" })
+      }
+      setShowCreateModal(false)
+      setNewPO({ vendor_id: "", warehouse_id: "", expected_date: "", notes: "", items: [] })
+      await fetchOrders()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to create purchase order")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const calculateTotal = () => {
-    const subtotal = newPO.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
-    const tax = subtotal * 0.2
+    const subtotal = newPO.items.reduce((acc, item) => acc + (item.quantity * item.unit_cost_ht), 0)
+    const tax = newPO.items.reduce((acc, item) => acc + (item.quantity * item.unit_cost_ht * (item.tva_rate / 100)), 0)
     return { subtotal, tax, total: subtotal + tax }
   }
 
@@ -359,7 +522,7 @@ export default function PurchaseOrdersPage() {
             className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
           >
             <option value="all">All Vendors</option>
-            {mockVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </div>
       </div>
@@ -410,9 +573,11 @@ export default function PurchaseOrdersPage() {
                             <button onClick={() => handleViewPO(po)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
                               <Eye className="w-4 h-4" /> View
                             </button>
-                            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
-                              <Pencil className="w-4 h-4" /> Edit
-                            </button>
+                            {po.status === "draft" && (
+                              <button onClick={async () => { await handleViewPO(po); handleOpenEdit(po) }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
+                                <Pencil className="w-4 h-4" /> Edit
+                              </button>
+                            )}
                             <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
                               <Printer className="w-4 h-4" /> Print
                             </button>
@@ -471,7 +636,7 @@ export default function PurchaseOrdersPage() {
                 className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
                 <option value="">Select vendor</option>
-                {mockVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </div>
             <div>
@@ -482,7 +647,7 @@ export default function PurchaseOrdersPage() {
                 className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
                 <option value="">Select warehouse</option>
-                {mockWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             </div>
           </div>
@@ -524,14 +689,13 @@ export default function PurchaseOrdersPage() {
                     newPO.items.map((item, index) => (
                       <tr key={index}>
                         <td className="p-3">
-                          <select
+                          <input
+                            type="text"
+                            placeholder="Product ID"
                             value={item.product_id}
                             onChange={(e) => updateItem(index, "product_id", e.target.value)}
                             className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-                          >
-                            <option value="">Select product</option>
-                            {mockProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
+                          />
                         </td>
                         <td className="p-3">
                           <input
@@ -542,8 +706,17 @@ export default function PurchaseOrdersPage() {
                             className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
                           />
                         </td>
-                        <td className="p-3 font-mono text-gray-600 dark:text-gray-300">{item.unit_price.toFixed(2)} MAD</td>
-                        <td className="p-3 text-right font-mono text-gray-900 dark:text-white">{(item.quantity * item.unit_price).toFixed(2)} MAD</td>
+                        <td className="p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unit_cost_ht}
+                            onChange={(e) => updateItem(index, "unit_cost_ht", parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+                          />
+                        </td>
+                        <td className="p-3 text-right font-mono text-gray-900 dark:text-white">{(item.quantity * item.unit_cost_ht).toFixed(2)} MAD</td>
                         <td className="p-3">
                           <button onClick={() => removeItem(index)} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
                             <X className="w-4 h-4" />
@@ -586,8 +759,8 @@ export default function PurchaseOrdersPage() {
 
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button variant="secondary" className="flex-1">Save as Draft</Button>
-            <Button variant="primary" className="flex-1">Create & Send</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => handleCreatePO(false)} disabled={actionLoading || !newPO.vendor_id}>Save as Draft</Button>
+            <Button variant="primary" className="flex-1" onClick={() => handleCreatePO(true)} disabled={actionLoading || !newPO.vendor_id}>Create & Send</Button>
           </div>
         </div>
       </Modal>
@@ -660,18 +833,23 @@ export default function PurchaseOrdersPage() {
             )}
 
             <div className="p-5 border-t border-gray-200 dark:border-[#1F1F23]">
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 {selectedPO.status === "draft" && (
                   <>
-                    <Button variant="secondary" className="flex-1"><Pencil className="w-4 h-4" /> Edit</Button>
-                    <Button variant="primary" className="flex-1"><Truck className="w-4 h-4" /> Send to Vendor</Button>
+                    <Button variant="secondary" className="flex-1" onClick={() => handleOpenEdit(selectedPO)} disabled={actionLoading}><Pencil className="w-4 h-4" /> Edit</Button>
+                    <Button variant="primary" className="flex-1" onClick={() => handleSend(selectedPO.id)} disabled={actionLoading}><Truck className="w-4 h-4" /> Send to Vendor</Button>
+                    <Button variant="danger" className="flex-1" onClick={() => handleCancel(selectedPO.id)} disabled={actionLoading}>Cancel PO</Button>
                   </>
                 )}
                 {selectedPO.status === "sent" && (
-                  <Button variant="primary" className="flex-1"><CheckCircle className="w-4 h-4" /> Mark as Received</Button>
+                  <>
+                    <Button variant="secondary" className="flex-1" onClick={() => handleConfirm(selectedPO.id)} disabled={actionLoading}><CheckCircle className="w-4 h-4" /> Confirm</Button>
+                    <Button variant="primary" className="flex-1" onClick={() => handleOpenReceive(selectedPO)} disabled={actionLoading}><Package className="w-4 h-4" /> Receive</Button>
+                    <Button variant="danger" className="flex-1" onClick={() => handleCancel(selectedPO.id)} disabled={actionLoading}>Cancel PO</Button>
+                  </>
                 )}
-                {selectedPO.status === "partial" && (
-                  <Button variant="primary" className="flex-1"><Package className="w-4 h-4" /> Record Delivery</Button>
+                {(selectedPO.status === "partial" || selectedPO.status === "received") && (
+                  <Button variant="primary" className="flex-1" onClick={() => handleOpenReceive(selectedPO)} disabled={actionLoading || selectedPO.status === "received"}><Package className="w-4 h-4" /> Record Delivery</Button>
                 )}
                 <Button variant="secondary"><Printer className="w-4 h-4" /> Print</Button>
               </div>
@@ -679,6 +857,151 @@ export default function PurchaseOrdersPage() {
           </div>
         )}
       </SlidePanel>
+
+      {/* Edit PO Modal (draft only) */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Purchase Order" size="xl">
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vendor</label>
+              <select
+                value={editPO.vendor_id}
+                onChange={(e) => setEditPO(prev => ({ ...prev, vendor_id: e.target.value }))}
+                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+              >
+                <option value="">Select vendor</option>
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Destination Warehouse</label>
+              <select
+                value={editPO.warehouse_id}
+                onChange={(e) => setEditPO(prev => ({ ...prev, warehouse_id: e.target.value }))}
+                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+              >
+                <option value="">Select warehouse</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Delivery Date</label>
+            <input
+              type="date"
+              value={editPO.expected_date}
+              onChange={(e) => setEditPO(prev => ({ ...prev, expected_date: e.target.value }))}
+              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Items</label>
+              <Button variant="ghost" onClick={() => setEditPO(prev => ({ ...prev, items: [...prev.items, { product_id: "", quantity: 1, unit_cost_ht: 0, tva_rate: 20 }] }))}><Plus className="w-4 h-4" /> Add Item</Button>
+            </div>
+            <div className="border border-gray-200 dark:border-[#1F1F23] rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-[#0F0F12]/50">
+                  <tr>
+                    <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Product ID</th>
+                    <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Qty</th>
+                    <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 w-32">Unit Cost HT</th>
+                    <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 w-20">TVA %</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {editPO.items.length === 0 ? (
+                    <tr><td colSpan={5} className="p-8 text-center text-gray-500 dark:text-gray-400">No items. Click "Add Item" to start.</td></tr>
+                  ) : (
+                    editPO.items.map((item, index) => (
+                      <tr key={index}>
+                        <td className="p-3">
+                          <input type="text" placeholder="Product ID" value={item.product_id}
+                            onChange={(e) => setEditPO(prev => ({ ...prev, items: prev.items.map((it, i) => i !== index ? it : { ...it, product_id: e.target.value }) }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                        </td>
+                        <td className="p-3">
+                          <input type="number" min="1" value={item.quantity}
+                            onChange={(e) => setEditPO(prev => ({ ...prev, items: prev.items.map((it, i) => i !== index ? it : { ...it, quantity: parseInt(e.target.value) || 1 }) }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                        </td>
+                        <td className="p-3">
+                          <input type="number" min="0" step="0.01" value={item.unit_cost_ht}
+                            onChange={(e) => setEditPO(prev => ({ ...prev, items: prev.items.map((it, i) => i !== index ? it : { ...it, unit_cost_ht: parseFloat(e.target.value) || 0 }) }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                        </td>
+                        <td className="p-3">
+                          <input type="number" min="0" step="1" value={item.tva_rate}
+                            onChange={(e) => setEditPO(prev => ({ ...prev, items: prev.items.map((it, i) => i !== index ? it : { ...it, tva_rate: parseFloat(e.target.value) || 0 }) }))}
+                            className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                        </td>
+                        <td className="p-3">
+                          <button onClick={() => setEditPO(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea
+              value={editPO.notes}
+              onChange={(e) => setEditPO(prev => ({ ...prev, notes: e.target.value }))}
+              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm h-20 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+              placeholder="Additional notes..."
+            />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditModal(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleUpdate} disabled={actionLoading || !editPO.vendor_id}>Save Changes</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Receive PO Modal */}
+      <Modal isOpen={showReceiveModal} onClose={() => setShowReceiveModal(false)} title="Record Delivery" size="lg">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Enter the quantity received for each item.</p>
+          <div className="border border-gray-200 dark:border-[#1F1F23] rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-[#0F0F12]/50">
+                <tr>
+                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Item ID</th>
+                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Qty Received</th>
+                  <th className="text-left p-3 text-xs font-semibold text-gray-500 dark:text-gray-400">Batch Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {receiveItems.map((item, index) => (
+                  <tr key={item.purchase_order_item_id}>
+                    <td className="p-3 font-mono text-xs text-gray-500 dark:text-gray-400">{item.purchase_order_item_id}</td>
+                    <td className="p-3">
+                      <input type="number" min="0" value={item.quantity_received}
+                        onChange={(e) => setReceiveItems(prev => prev.map((it, i) => i !== index ? it : { ...it, quantity_received: parseInt(e.target.value) || 0 }))}
+                        className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                    </td>
+                    <td className="p-3">
+                      <input type="text" placeholder="Optional notes" value={item.batch_notes}
+                        onChange={(e) => setReceiveItems(prev => prev.map((it, i) => i !== index ? it : { ...it, batch_notes: e.target.value }))}
+                        className="w-full border border-gray-300 dark:border-[#1F1F23] rounded px-2 py-1 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowReceiveModal(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleReceive} disabled={actionLoading}>Confirm Receipt</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

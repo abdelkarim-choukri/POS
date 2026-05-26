@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, X, ChevronRight, ChevronDown, Tag } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface TradeCategory {
   id: string
@@ -13,34 +14,49 @@ interface TradeCategory {
   is_active: boolean
 }
 
-const mockCategories: TradeCategory[] = [
-  {
-    id: "tc-1", name: "Retail", name_ar: "تجارة التجزئة", code: "RETAIL", parent_id: null, business_count: 42, is_active: true,
-    children: [
-      { id: "tc-1-1", name: "Grocery", name_ar: "بقالة", code: "GROCERY", parent_id: "tc-1", business_count: 18, is_active: true },
-      { id: "tc-1-2", name: "Electronics", name_ar: "إلكترونيات", code: "ELECTRONICS", parent_id: "tc-1", business_count: 12, is_active: true },
-      { id: "tc-1-3", name: "Clothing", name_ar: "ملابس", code: "CLOTHING", parent_id: "tc-1", business_count: 12, is_active: false },
-    ]
-  },
-  {
-    id: "tc-2", name: "Restaurant", name_ar: "مطعم", code: "RESTAURANT", parent_id: null, business_count: 31, is_active: true,
-    children: [
-      { id: "tc-2-1", name: "Café", name_ar: "مقهى", code: "CAFE", parent_id: "tc-2", business_count: 15, is_active: true },
-      { id: "tc-2-2", name: "Fast Food", name_ar: "وجبات سريعة", code: "FASTFOOD", parent_id: "tc-2", business_count: 16, is_active: true },
-    ]
-  },
-  { id: "tc-3", name: "Pharmacy", name_ar: "صيدلية", code: "PHARMACY", parent_id: null, business_count: 14, is_active: true, children: [] },
-  { id: "tc-4", name: "Salon & Spa", name_ar: "صالون وسبا", code: "SALON", parent_id: null, business_count: 9, is_active: true, children: [] },
-  { id: "tc-5", name: "Hotel", name_ar: "فندق", code: "HOTEL", parent_id: null, business_count: 5, is_active: true, children: [] },
-]
+interface TradeCategoryOption {
+  id: string
+  name: string
+  code: string
+}
 
 export default function TradeCategoriesPage() {
-  const [categories, setCategories] = useState(mockCategories)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(["tc-1", "tc-2"]))
+  const [categories, setCategories] = useState<TradeCategory[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<TradeCategoryOption[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<TradeCategory | null>(null)
   const [form, setForm] = useState({ name: "", name_ar: "", code: "", parent_id: "" })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  const fetchCategories = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<TradeCategory[] | { data: TradeCategory[] }>("/api/super/trade-categories/tree")
+      setCategories(Array.isArray(res) ? res : res.data)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load trade categories")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchCategoryOptions = async () => {
+    try {
+      const res = await apiFetch<TradeCategoryOption[] | { data: TradeCategoryOption[] }>("/api/super/trade-categories/options")
+      setCategoryOptions(Array.isArray(res) ? res : (res as { data: TradeCategoryOption[] }).data)
+    } catch {
+      // options are non-critical; fall back to tree-derived list
+    }
+  }
+
+  useEffect(() => {
+    fetchCategories()
+    fetchCategoryOptions()
+  }, [])
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
@@ -62,27 +78,39 @@ export default function TradeCategoriesPage() {
     setShowModal(true)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim() || !form.code.trim()) return
-    if (editing) {
-      setCategories(prev => prev.map(c => {
-        if (c.id === editing.id) return { ...c, ...form, parent_id: form.parent_id || null }
-        return {
-          ...c,
-          children: c.children?.map(ch => ch.id === editing.id ? { ...ch, ...form, parent_id: form.parent_id || null } : ch)
-        }
-      }))
-    } else {
-      const newCat: TradeCategory = { id: `tc-${Date.now()}`, ...form, parent_id: form.parent_id || null, business_count: 0, is_active: true }
-      if (form.parent_id) {
-        setCategories(prev => prev.map(c =>
-          c.id === form.parent_id ? { ...c, children: [...(c.children ?? []), newCat] } : c
-        ))
-      } else {
-        setCategories(prev => [...prev, { ...newCat, children: [] }])
+    setError(null)
+    try {
+      const body: Record<string, string | undefined> = {
+        name: form.name,
+        code: form.code,
+        name_ar: form.name_ar || undefined,
+        parent_id: form.parent_id || undefined,
       }
+      if (editing) {
+        await apiFetch(`/api/super/trade-categories/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        await apiFetch("/api/super/trade-categories", { method: "POST", body: JSON.stringify(body) })
+      }
+      await fetchCategories()
+      await fetchCategoryOptions()
+      setShowModal(false)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save category")
     }
-    setShowModal(false)
+  }
+
+  const remove = async (id: string) => {
+    setError(null)
+    try {
+      await apiFetch(`/api/super/trade-categories/${id}`, { method: "DELETE" })
+      setConfirmDelete(null)
+      await fetchCategories()
+      await fetchCategoryOptions()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete category")
+    }
   }
 
   const renderCategory = (cat: TradeCategory, depth = 0) => {
@@ -124,6 +152,7 @@ export default function TradeCategoriesPage() {
             </button>
             {confirmDelete === cat.id ? (
               <div className="flex gap-1 items-center">
+                <button onClick={() => remove(cat.id)} className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded">Confirm</button>
                 <button onClick={() => setConfirmDelete(null)} className="px-2 py-1 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 text-xs rounded">Cancel</button>
               </div>
             ) : (
@@ -142,8 +171,17 @@ export default function TradeCategoriesPage() {
     )
   }
 
+  if (loading) {
+    return <div className="flex items-center justify-center py-16 text-gray-500 dark:text-gray-400 text-sm">Loading...</div>
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500 dark:text-gray-400">Manage trade categories used to classify businesses.</p>
         <button onClick={() => openAdd()} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors">
@@ -185,7 +223,9 @@ export default function TradeCategoriesPage() {
                 <select className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={form.parent_id} onChange={e => setForm(p => ({ ...p, parent_id: e.target.value }))}>
                   <option value="">None (top level)</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {(categoryOptions.length > 0 ? categoryOptions : categories).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}{(c as TradeCategoryOption).code ? ` (${(c as TradeCategoryOption).code})` : ""}</option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -251,16 +251,118 @@ function ChannelIcon({ type }: { type: "sms" | "email" | "whatsapp" }) {
   return <Icon className="w-5 h-5" />
 }
 
+// ==================== TYPES (API shapes) ====================
+interface ApiChannel {
+  channel: "sms" | "email" | "whatsapp"
+  is_enabled: boolean
+  config: Record<string, string>
+}
+
+interface ApiTemplate {
+  id: string
+  name: string
+  channel: "sms" | "email" | "whatsapp"
+  subject?: string
+  body_template: string
+  placeholders?: string[]
+  is_active?: boolean
+  created_at: string
+  updated_at: string
+}
+
+interface SmsBalance {
+  balance: number
+  currency: string
+  last_updated: string
+}
+
 // ==================== MAIN COMPONENT ====================
 export default function CommunicationsPage() {
   const [activeTab, setActiveTab] = useState<"channels" | "templates" | "send" | "history">("channels")
-  const [channels, setChannels] = useState(mockChannels)
-  const [templates, setTemplates] = useState(mockTemplates)
+  const [channels, setChannels] = useState<Channel[]>(mockChannels)
+  const [channelsLoading, setChannelsLoading] = useState(false)
+  const [channelsError, setChannelsError] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<Template[]>(mockTemplates)
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [history, setHistory] = useState(mockHistory)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
 
+  // SMS balance state
+  const [smsBalance, setSmsBalance] = useState<SmsBalance | null>(null)
+  const [smsBalanceLoading, setSmsBalanceLoading] = useState(false)
+
+  // Send tab feedback
+  const [sendLoading, setSendLoading] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sendSuccess, setSendSuccess] = useState<string | null>(null)
+  const [campaignLoading, setCampaignLoading] = useState(false)
+  const [campaignError, setCampaignError] = useState<string | null>(null)
+  const [campaignSuccess, setCampaignSuccess] = useState<string | null>(null)
+
+  // ---- data loaders ----
+  const loadChannels = () => {
+    setChannelsLoading(true)
+    setChannelsError(null)
+    apiFetch<ApiChannel[]>("/api/business/notifications/channels")
+      .then(res => {
+        const mapped: Channel[] = res.map((c: ApiChannel) => ({
+          id: c.channel,
+          type: c.channel,
+          name: c.channel === "sms" ? "SMS Gateway" : c.channel === "email" ? "Email Service" : "WhatsApp Business",
+          is_active: c.is_enabled,
+          credentials: {
+            api_key: c.config?.api_key,
+            sender_id: c.config?.sender_id,
+            from_email: c.config?.from_email,
+            phone_number: c.config?.phone_number,
+          },
+        }))
+        setChannels(mapped)
+      })
+      .catch(e => setChannelsError(e.message ?? "Failed to load channels"))
+      .finally(() => setChannelsLoading(false))
+  }
+
+  const loadSmsBalance = () => {
+    setSmsBalanceLoading(true)
+    apiFetch<SmsBalance>("/api/business/notifications/sms/balance")
+      .then(res => setSmsBalance(res))
+      .catch(() => {/* silently ignore — balance section just won't show */})
+      .finally(() => setSmsBalanceLoading(false))
+  }
+
+  const loadTemplates = () => {
+    setTemplatesLoading(true)
+    setTemplatesError(null)
+    apiFetch<ApiTemplate[]>("/api/business/notifications/templates")
+      .then(res => {
+        const mapped: Template[] = res.map((t: ApiTemplate) => ({
+          id: t.id,
+          name: t.name,
+          channel: t.channel,
+          subject: t.subject,
+          body: t.body_template,
+          placeholders: t.placeholders ?? [],
+          is_active: t.is_active ?? true,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+        }))
+        setTemplates(mapped)
+      })
+      .catch(e => setTemplatesError(e.message ?? "Failed to load templates"))
+      .finally(() => setTemplatesLoading(false))
+  }
+
   useEffect(() => {
+    if (activeTab === "channels") {
+      loadChannels()
+      loadSmsBalance()
+    }
+    if (activeTab === "templates") {
+      loadTemplates()
+    }
     if (activeTab === "history") {
       setHistoryLoading(true)
       setHistoryError(null)
@@ -288,19 +390,36 @@ export default function CommunicationsPage() {
   const [showChannelModal, setShowChannelModal] = useState(false)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
-  
+
+  // Channel modal form state
+  const [channelForm, setChannelForm] = useState<{ api_key: string; sender_id: string; from_email: string; phone_number: string }>({ api_key: "", sender_id: "", from_email: "", phone_number: "" })
+  const [channelSaving, setChannelSaving] = useState(false)
+  const [channelSaveError, setChannelSaveError] = useState<string | null>(null)
+  const [channelTesting, setChannelTesting] = useState(false)
+  const [channelTestResult, setChannelTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [channelTestRecipient, setChannelTestRecipient] = useState("")
+
+  // Template modal form state
+  const [templateForm, setTemplateForm] = useState({ name: "", channel: "sms" as "sms" | "email" | "whatsapp", subject: "", body: "" })
+  const [templateSaving, setTemplateSaving] = useState(false)
+  const [templateSaveError, setTemplateSaveError] = useState<string | null>(null)
+  const [previewResult, setPreviewResult] = useState<{ rendered_body: string; rendered_subject?: string } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
   // Filter states
   const [historyFilter, setHistoryFilter] = useState({ channel: "all", status: "all", search: "" })
   const [templateSearch, setTemplateSearch] = useState("")
-  
+
   // Send form state
   const [sendForm, setSendForm] = useState({
     type: "single" as "single" | "campaign",
     template_id: "",
+    customer_id: "",
     recipient: "",
-    segment: "all",
+    segment: "all" as "all" | "grade" | "label" | "specific",
   })
 
   const tabs = [
@@ -325,16 +444,142 @@ export default function CommunicationsPage() {
   )
 
   const handleTestChannel = (channel: Channel) => {
-    // Mock test
-    alert(`Testing ${channel.name}... Success!`)
+    if (!channelTestRecipient) {
+      setChannelTestResult({ success: false, message: "Enter a test recipient first." })
+      return
+    }
+    setChannelTesting(true)
+    setChannelTestResult(null)
+    apiFetch<{ success: boolean; message: string }>("/api/business/notifications/channels/test", {
+      method: "POST",
+      body: JSON.stringify({ channel: channel.type, test_recipient: channelTestRecipient }),
+    })
+      .then(res => setChannelTestResult(res))
+      .catch(e => setChannelTestResult({ success: false, message: e.message ?? "Test failed" }))
+      .finally(() => setChannelTesting(false))
+  }
+
+  const handleSaveChannel = () => {
+    if (!selectedChannel) return
+    setChannelSaving(true)
+    setChannelSaveError(null)
+    const config: Record<string, string> = {}
+    if (channelForm.api_key) config.api_key = channelForm.api_key
+    if (channelForm.sender_id) config.sender_id = channelForm.sender_id
+    if (channelForm.from_email) config.from_email = channelForm.from_email
+    if (channelForm.phone_number) config.phone_number = channelForm.phone_number
+    apiFetch("/api/business/notifications/channels", {
+      method: "PUT",
+      body: JSON.stringify({ channel: selectedChannel.type, is_enabled: selectedChannel.is_active, config }),
+    })
+      .then(() => { setShowChannelModal(false); loadChannels() })
+      .catch(e => setChannelSaveError(e.message ?? "Failed to save channel"))
+      .finally(() => setChannelSaving(false))
   }
 
   const handleToggleChannel = (id: string) => {
-    setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active: !c.is_active } : c))
+    const ch = channels.find(c => c.id === id)
+    if (!ch) return
+    const newEnabled = !ch.is_active
+    setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active: newEnabled } : c))
+    apiFetch("/api/business/notifications/channels", {
+      method: "PUT",
+      body: JSON.stringify({ channel: ch.type, is_enabled: newEnabled, config: {} }),
+    }).catch(() => {
+      // revert on error
+      setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active: !newEnabled } : c))
+    })
+  }
+
+  const handleRefreshSmsBalance = () => {
+    setSmsBalanceLoading(true)
+    apiFetch<SmsBalance>("/api/business/notifications/sms/refresh-balance", { method: "POST" })
+      .then(res => setSmsBalance(res))
+      .catch(() => {/* ignore */})
+      .finally(() => setSmsBalanceLoading(false))
   }
 
   const handleToggleTemplate = (id: string) => {
     setTemplates(prev => prev.map(t => t.id === id ? { ...t, is_active: !t.is_active } : t))
+  }
+
+  const handleDeleteTemplate = (id: string) => {
+    apiFetch(`/api/business/notifications/templates/${id}`, { method: "DELETE" })
+      .then(() => loadTemplates())
+      .catch(e => setTemplatesError(e.message ?? "Failed to delete template"))
+  }
+
+  const handleSaveTemplate = () => {
+    setTemplateSaving(true)
+    setTemplateSaveError(null)
+    const isEdit = !!selectedTemplate
+    const url = isEdit
+      ? `/api/business/notifications/templates/${selectedTemplate!.id}`
+      : "/api/business/notifications/templates"
+    const method = isEdit ? "PATCH" : "POST"
+    apiFetch(url, {
+      method,
+      body: JSON.stringify({
+        name: templateForm.name,
+        channel: templateForm.channel,
+        subject: templateForm.subject || undefined,
+        body_template: templateForm.body,
+      }),
+    })
+      .then(() => { setShowTemplateModal(false); loadTemplates() })
+      .catch(e => setTemplateSaveError(e.message ?? "Failed to save template"))
+      .finally(() => setTemplateSaving(false))
+  }
+
+  const handlePreviewTemplate = () => {
+    if (!selectedTemplate) return
+    setPreviewLoading(true)
+    setPreviewResult(null)
+    apiFetch<{ rendered_body: string; rendered_subject?: string }>(
+      `/api/business/notifications/templates/${selectedTemplate.id}/preview`,
+      { method: "POST", body: JSON.stringify({}) }
+    )
+      .then(res => { setPreviewResult(res); setShowPreviewModal(true) })
+      .catch(e => setTemplateSaveError(e.message ?? "Preview failed"))
+      .finally(() => setPreviewLoading(false))
+  }
+
+  const handleSingleSend = () => {
+    if (!sendForm.template_id) return
+    setSendLoading(true)
+    setSendError(null)
+    setSendSuccess(null)
+    const selectedTpl = templates.find(t => t.id === sendForm.template_id)
+    apiFetch<{ send_id: string; status: string }>("/api/business/notifications/send", {
+      method: "POST",
+      body: JSON.stringify({
+        template_id: sendForm.template_id,
+        channel: selectedTpl?.channel ?? "sms",
+        customer_id: sendForm.customer_id || undefined,
+      }),
+    })
+      .then(res => setSendSuccess(`Message queued (ID: ${res.send_id}, status: ${res.status})`))
+      .catch(e => setSendError(e.message ?? "Failed to send message"))
+      .finally(() => setSendLoading(false))
+  }
+
+  const handleCampaignSend = () => {
+    if (!sendForm.template_id) return
+    setCampaignLoading(true)
+    setCampaignError(null)
+    setCampaignSuccess(null)
+    const selectedTpl = templates.find(t => t.id === sendForm.template_id)
+    apiFetch<{ job_id: string; estimated_recipients: number }>("/api/business/notifications/send-to-segment", {
+      method: "POST",
+      body: JSON.stringify({
+        template_id: sendForm.template_id,
+        channel: selectedTpl?.channel ?? "sms",
+        segment: sendForm.segment,
+      }),
+    })
+      .then(res => setCampaignSuccess(`Campaign started — job ${res.job_id}, ~${res.estimated_recipients} recipients`))
+      .catch(e => setCampaignError(e.message ?? "Failed to start campaign"))
+      .finally(() => setCampaignLoading(false))
   }
 
   const getStatusBadge = (status: SendHistory["status"]) => {
@@ -354,10 +599,6 @@ export default function CommunicationsPage() {
     }
     return <Badge color={colors[channel]}><ChannelIcon type={channel} /> {channel.toUpperCase()}</Badge>
   }
-
-  // Calculate estimated recipients and cost for campaign
-  const estimatedRecipients = sendForm.segment === "all" ? 1250 : sendForm.segment === "active" ? 890 : 360
-  const estimatedCost = sendForm.template_id ? estimatedRecipients * 0.25 : 0
 
   return (
     <div className="h-full">
@@ -393,6 +634,30 @@ export default function CommunicationsPage() {
       {/* Tab Content */}
       {activeTab === "channels" && (
         <div className="space-y-4">
+          {channelsError && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{channelsError}</div>
+          )}
+          {/* SMS Balance Card */}
+          {smsBalance && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium uppercase">SMS Account Balance</p>
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">
+                  {smsBalance.balance.toFixed(2)} {smsBalance.currency}
+                </p>
+                {smsBalance.last_updated && (
+                  <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">Updated: {smsBalance.last_updated}</p>
+                )}
+              </div>
+              <Button variant="secondary" onClick={handleRefreshSmsBalance} disabled={smsBalanceLoading}>
+                <RefreshCw className={`w-4 h-4 ${smsBalanceLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          )}
+          {channelsLoading ? (
+            <div className="py-10 text-center text-gray-400">Loading channels...</div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {channels.map(channel => (
               <div key={channel.id} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
@@ -417,14 +682,7 @@ export default function CommunicationsPage() {
                     <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${channel.is_active ? "translate-x-6" : "translate-x-0.5"}`} />
                   </button>
                 </div>
-                
-                {channel.type === "sms" && channel.balance !== undefined && (
-                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <p className="text-xs text-blue-600 dark:text-blue-400">SMS Balance</p>
-                    <p className="text-lg font-bold text-blue-700 dark:text-blue-300">{channel.balance.toFixed(2)} MAD</p>
-                  </div>
-                )}
-                
+
                 <div className="space-y-2 text-sm">
                   {channel.credentials.sender_id && (
                     <div className="flex justify-between">
@@ -451,17 +709,34 @@ export default function CommunicationsPage() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-[#1F1F23]">
-                  <Button variant="secondary" className="flex-1" onClick={() => handleTestChannel(channel)}>
+                  <Button variant="secondary" className="flex-1" onClick={() => {
+                    setSelectedChannel(channel)
+                    setChannelTestRecipient("")
+                    setChannelTestResult(null)
+                    setShowChannelModal(true)
+                  }}>
                     <Play className="w-4 h-4" />
                     Test
                   </Button>
-                  <Button variant="ghost" onClick={() => { setSelectedChannel(channel); setShowChannelModal(true); }}>
+                  <Button variant="ghost" onClick={() => {
+                    setSelectedChannel(channel)
+                    setChannelForm({
+                      api_key: "",
+                      sender_id: channel.credentials.sender_id ?? "",
+                      from_email: channel.credentials.from_email ?? "",
+                      phone_number: channel.credentials.phone_number ?? "",
+                    })
+                    setChannelTestRecipient("")
+                    setChannelTestResult(null)
+                    setChannelSaveError(null)
+                    setShowChannelModal(true)
+                  }}>
                     <Settings className="w-4 h-4" />
                   </Button>
                 </div>
-                
+
                 {channel.last_tested_at && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
                     Last tested: {channel.last_tested_at}
@@ -470,11 +745,15 @@ export default function CommunicationsPage() {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
       {activeTab === "templates" && (
         <div className="space-y-4">
+          {templatesError && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{templatesError}</div>
+          )}
           <div className="flex items-center justify-between">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -486,12 +765,20 @@ export default function CommunicationsPage() {
                 className="w-80 pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               />
             </div>
-            <Button variant="primary" onClick={() => { setSelectedTemplate(null); setShowTemplateModal(true); }}>
+            <Button variant="primary" onClick={() => {
+              setSelectedTemplate(null)
+              setTemplateForm({ name: "", channel: "sms", subject: "", body: "" })
+              setTemplateSaveError(null)
+              setShowTemplateModal(true)
+            }}>
               <Plus className="w-4 h-4" />
               Create Template
             </Button>
           </div>
 
+          {templatesLoading ? (
+            <div className="py-10 text-center text-gray-400">Loading templates...</div>
+          ) : (
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
@@ -534,11 +821,17 @@ export default function CommunicationsPage() {
                     <td className="p-4 text-sm text-gray-500 dark:text-gray-400">{template.updated_at}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" onClick={() => { setSelectedTemplate(template); setShowTemplateModal(true); }}>
-                          <Eye className="w-4 h-4" />
+                        <Button variant="ghost" onClick={() => {
+                          setSelectedTemplate(template)
+                          setTemplateForm({ name: template.name, channel: template.channel, subject: template.subject ?? "", body: template.body })
+                          setTemplateSaveError(null)
+                          setPreviewResult(null)
+                          setShowTemplateModal(true)
+                        }}>
+                          <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" onClick={() => handleToggleTemplate(template.id)}>
-                          {template.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                        <Button variant="ghost" onClick={() => handleDeleteTemplate(template.id)}>
+                          <Trash2 className="w-4 h-4 text-red-400" />
                         </Button>
                       </div>
                     </td>
@@ -547,6 +840,7 @@ export default function CommunicationsPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
@@ -569,14 +863,16 @@ export default function CommunicationsPage() {
                 onChange={(e) => setSendForm(prev => ({ ...prev, template_id: e.target.value }))}
               />
               <Input
-                label="Recipient"
-                placeholder="Phone number or email..."
-                value={sendForm.recipient}
-                onChange={(e) => setSendForm(prev => ({ ...prev, recipient: e.target.value }))}
+                label="Customer ID (optional)"
+                placeholder="UUID of customer..."
+                value={sendForm.customer_id}
+                onChange={(e) => setSendForm(prev => ({ ...prev, customer_id: e.target.value }))}
               />
-              <Button variant="primary" className="w-full" disabled={!sendForm.template_id || !sendForm.recipient}>
+              {sendError && <p className="text-sm text-red-500">{sendError}</p>}
+              {sendSuccess && <p className="text-sm text-green-600 dark:text-green-400">{sendSuccess}</p>}
+              <Button variant="primary" className="w-full" disabled={!sendForm.template_id || sendLoading} onClick={handleSingleSend}>
                 <Send className="w-4 h-4" />
-                Send Message
+                {sendLoading ? "Sending..." : "Send Message"}
               </Button>
             </div>
           </div>
@@ -601,27 +897,26 @@ export default function CommunicationsPage() {
                 label="Customer Segment"
                 options={[
                   { value: "all", label: "All Customers" },
-                  { value: "active", label: "Active (Last 30 days)" },
-                  { value: "inactive", label: "Inactive (90+ days)" },
+                  { value: "grade", label: "By Grade" },
+                  { value: "label", label: "By Label" },
+                  { value: "specific", label: "Specific Customers" },
                 ]}
                 value={sendForm.segment}
-                onChange={(e) => setSendForm(prev => ({ ...prev, segment: e.target.value }))}
+                onChange={(e) => setSendForm(prev => ({ ...prev, segment: e.target.value as any }))}
               />
-              
+
               <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-[#1F1F23]">
                 <div className="flex justify-between mb-2">
-                  <span className="text-sm text-indigo-700 dark:text-indigo-300">Estimated Recipients:</span>
-                  <span className="font-bold text-indigo-800 dark:text-indigo-200">{estimatedRecipients.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-indigo-700 dark:text-indigo-300">Estimated Cost (SMS):</span>
-                  <span className="font-bold text-indigo-800 dark:text-indigo-200">{estimatedCost.toFixed(2)} MAD</span>
+                  <span className="text-sm text-indigo-700 dark:text-indigo-300">Segment:</span>
+                  <span className="font-bold text-indigo-800 dark:text-indigo-200 capitalize">{sendForm.segment}</span>
                 </div>
               </div>
-              
-              <Button variant="primary" className="w-full" disabled={!sendForm.template_id}>
+
+              {campaignError && <p className="text-sm text-red-500">{campaignError}</p>}
+              {campaignSuccess && <p className="text-sm text-green-600 dark:text-green-400">{campaignSuccess}</p>}
+              <Button variant="primary" className="w-full" disabled={!sendForm.template_id || campaignLoading} onClick={handleCampaignSend}>
                 <Send className="w-4 h-4" />
-                Send Campaign
+                {campaignLoading ? "Starting..." : "Send Campaign"}
               </Button>
             </div>
           </div>
@@ -731,21 +1026,63 @@ export default function CommunicationsPage() {
       <Modal isOpen={showChannelModal} onClose={() => setShowChannelModal(false)} title={`Configure ${selectedChannel?.name || "Channel"}`} size="md">
         {selectedChannel && (
           <div className="space-y-4">
-            <Input label="API Key" type="password" placeholder="Enter API key..." value={selectedChannel.credentials.api_key || ""} />
+            <Input
+              label="API Key (leave blank to keep current)"
+              type="password"
+              placeholder="Enter new API key..."
+              value={channelForm.api_key}
+              onChange={(e) => setChannelForm(prev => ({ ...prev, api_key: e.target.value }))}
+            />
             {selectedChannel.type === "sms" && (
-              <Input label="Sender ID" placeholder="MYSTORE" value={selectedChannel.credentials.sender_id || ""} />
+              <Input
+                label="Sender ID"
+                placeholder="MYSTORE"
+                value={channelForm.sender_id}
+                onChange={(e) => setChannelForm(prev => ({ ...prev, sender_id: e.target.value }))}
+              />
             )}
             {selectedChannel.type === "email" && (
-              <Input label="From Email" type="email" placeholder="noreply@example.com" value={selectedChannel.credentials.from_email || ""} />
+              <Input
+                label="From Email"
+                type="email"
+                placeholder="noreply@example.com"
+                value={channelForm.from_email}
+                onChange={(e) => setChannelForm(prev => ({ ...prev, from_email: e.target.value }))}
+              />
             )}
             {selectedChannel.type === "whatsapp" && (
-              <Input label="Phone Number" placeholder="+212 6XX XXX XXX" value={selectedChannel.credentials.phone_number || ""} />
+              <Input
+                label="Phone Number"
+                placeholder="+212 6XX XXX XXX"
+                value={channelForm.phone_number}
+                onChange={(e) => setChannelForm(prev => ({ ...prev, phone_number: e.target.value }))}
+              />
             )}
+            {channelSaveError && <p className="text-sm text-red-500">{channelSaveError}</p>}
             <div className="flex gap-3 pt-4">
               <Button variant="secondary" className="flex-1" onClick={() => setShowChannelModal(false)}>Cancel</Button>
-              <Button variant="primary" className="flex-1" onClick={() => setShowChannelModal(false)}>
+              <Button variant="primary" className="flex-1" onClick={handleSaveChannel} disabled={channelSaving}>
                 <Check className="w-4 h-4" />
-                Save Changes
+                {channelSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+
+            {/* Test section */}
+            <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-4 space-y-3">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Test Channel</p>
+              <Input
+                placeholder="Test recipient (phone or email)..."
+                value={channelTestRecipient}
+                onChange={(e) => setChannelTestRecipient(e.target.value)}
+              />
+              {channelTestResult && (
+                <div className={`text-sm p-2 rounded ${channelTestResult.success ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}>
+                  {channelTestResult.message}
+                </div>
+              )}
+              <Button variant="secondary" className="w-full" onClick={() => handleTestChannel(selectedChannel)} disabled={channelTesting}>
+                <Play className="w-4 h-4" />
+                {channelTesting ? "Testing..." : "Send Test"}
               </Button>
             </div>
           </div>
@@ -756,7 +1093,12 @@ export default function CommunicationsPage() {
       <Modal isOpen={showTemplateModal} onClose={() => setShowTemplateModal(false)} title={selectedTemplate ? "Edit Template" : "Create Template"} size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Template Name" placeholder="e.g. Order Confirmation" value={selectedTemplate?.name || ""} />
+            <Input
+              label="Template Name"
+              placeholder="e.g. Order Confirmation"
+              value={templateForm.name}
+              onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+            />
             <Select
               label="Channel"
               options={[
@@ -764,18 +1106,25 @@ export default function CommunicationsPage() {
                 { value: "email", label: "Email" },
                 { value: "whatsapp", label: "WhatsApp" },
               ]}
-              value={selectedTemplate?.channel || "sms"}
+              value={templateForm.channel}
+              onChange={(e) => setTemplateForm(prev => ({ ...prev, channel: e.target.value as any }))}
             />
           </div>
-          {(selectedTemplate?.channel === "email" || !selectedTemplate) && (
-            <Input label="Subject" placeholder="Email subject with {{placeholders}}" value={selectedTemplate?.subject || ""} />
+          {templateForm.channel === "email" && (
+            <Input
+              label="Subject"
+              placeholder="Email subject with {{placeholders}}"
+              value={templateForm.subject}
+              onChange={(e) => setTemplateForm(prev => ({ ...prev, subject: e.target.value }))}
+            />
           )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Message Body</label>
             <textarea
               rows={5}
               placeholder="Enter your message. Use {{placeholder}} for dynamic content..."
-              defaultValue={selectedTemplate?.body || ""}
+              value={templateForm.body}
+              onChange={(e) => setTemplateForm(prev => ({ ...prev, body: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
             />
           </div>
@@ -783,24 +1132,46 @@ export default function CommunicationsPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Available placeholders:</p>
             <div className="flex flex-wrap gap-2">
               {["customer_name", "order_number", "total", "business_name", "points", "coupon_code"].map(p => (
-                <button key={p} className="px-2 py-1 bg-white dark:bg-[#1F1F23] border border-gray-200 dark:border-[#2a2a33] rounded text-xs font-mono text-gray-600 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                <button key={p} onClick={() => setTemplateForm(prev => ({ ...prev, body: prev.body + `{{${p}}}` }))} className="px-2 py-1 bg-white dark:bg-[#1F1F23] border border-gray-200 dark:border-[#2a2a33] rounded text-xs font-mono text-gray-600 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
                   {`{{${p}}}`}
                 </button>
               ))}
             </div>
           </div>
+          {templateSaveError && <p className="text-sm text-red-500">{templateSaveError}</p>}
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowTemplateModal(false)}>Cancel</Button>
-            <Button variant="secondary">
-              <Eye className="w-4 h-4" />
-              Preview
-            </Button>
-            <Button variant="primary" onClick={() => setShowTemplateModal(false)}>
+            {selectedTemplate && (
+              <Button variant="secondary" onClick={handlePreviewTemplate} disabled={previewLoading}>
+                <Eye className="w-4 h-4" />
+                {previewLoading ? "Loading..." : "Preview"}
+              </Button>
+            )}
+            <Button variant="primary" onClick={handleSaveTemplate} disabled={templateSaving || !templateForm.name || !templateForm.body}>
               <Check className="w-4 h-4" />
-              {selectedTemplate ? "Save Changes" : "Create Template"}
+              {templateSaving ? "Saving..." : selectedTemplate ? "Save Changes" : "Create Template"}
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Preview Modal */}
+      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} title="Template Preview" size="md">
+        {previewResult && (
+          <div className="space-y-3">
+            {previewResult.rendered_subject && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Subject</p>
+                <p className="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-[#1a1a20] rounded p-3">{previewResult.rendered_subject}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">Body</p>
+              <pre className="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-[#1a1a20] rounded p-3 whitespace-pre-wrap">{previewResult.rendered_body}</pre>
+            </div>
+            <Button variant="secondary" className="w-full" onClick={() => setShowPreviewModal(false)}>Close</Button>
+          </div>
+        )}
       </Modal>
     </div>
   )

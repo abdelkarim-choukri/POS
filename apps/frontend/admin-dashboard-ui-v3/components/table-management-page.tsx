@@ -46,35 +46,6 @@ interface Table {
   position_y?: number
 }
 
-const DINING_AREAS: DiningArea[] = [
-  { id: "area-1", name: "Indoor Seating", description: "Main dining room", sort_order: 1, is_active: true, table_count: 5 },
-  { id: "area-2", name: "Terrace", description: "Outdoor patio area", sort_order: 2, is_active: true, table_count: 3 },
-  { id: "area-3", name: "Bar", description: "Bar counter seating", sort_order: 3, is_active: true, table_count: 4 },
-  { id: "area-4", name: "Private Room", description: "Events & VIP", sort_order: 4, is_active: false, table_count: 0 },
-]
-
-const TABLE_TYPES: TableType[] = [
-  { id: "type-1", name: "Standard", default_capacity: 4, is_active: true, table_count: 5 },
-  { id: "type-2", name: "Booth", default_capacity: 6, is_active: true, table_count: 3 },
-  { id: "type-3", name: "Bar Stool", default_capacity: 1, is_active: true, table_count: 4 },
-  { id: "type-4", name: "Private Room", default_capacity: 12, is_active: true, table_count: 0 },
-]
-
-const TABLES: Table[] = [
-  { id: "t-1", table_number: "T-01", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 15, position_y: 20 },
-  { id: "t-2", table_number: "T-02", capacity: 6, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-2", table_type_name: "Booth", is_active: true, position_x: 35, position_y: 20 },
-  { id: "t-3", table_number: "T-03", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 55, position_y: 20 },
-  { id: "t-4", table_number: "T-04", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 15, position_y: 55 },
-  { id: "t-5", table_number: "T-05", capacity: 6, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-2", table_type_name: "Booth", is_active: true, position_x: 35, position_y: 55 },
-  { id: "t-6", table_number: "T-06", capacity: 2, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 70, position_y: 30 },
-  { id: "t-7", table_number: "T-07", capacity: 4, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 85, position_y: 30 },
-  { id: "t-8", table_number: "T-08", capacity: 4, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true },
-  { id: "t-9", table_number: "B-01", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true },
-  { id: "t-10", table_number: "B-02", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true },
-  { id: "t-11", table_number: "B-03", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true, position_x: 70, position_y: 70 },
-  { id: "t-12", table_number: "B-04", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true, position_x: 85, position_y: 70 },
-]
-
 function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "green" | "red" | "blue" | "yellow" | "gray" }) {
   const variants = {
     default: "bg-gray-100 text-gray-700 dark:bg-[#1F1F23] dark:text-gray-300",
@@ -129,19 +100,118 @@ const addBtnCls = "flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white ro
 const saveBtnCls = "px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
 const cancelBtnCls = "px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors"
 
-function DiningAreasTab() {
-  const [areas, setAreas] = useState(DINING_AREAS)
-  const [showModal, setShowModal] = useState(true)
-  const [formData, setFormData] = useState({ name: "", description: "", sort_order: "0" })
-
-  const toggleStatus = (id: string) => {
-    setAreas(areas.map((a) => (a.id === id ? { ...a, is_active: !a.is_active } : a)))
+function mapArea(a: any): DiningArea {
+  return {
+    id: a.id,
+    name: a.name,
+    description: a.description,
+    sort_order: a.sort_order ?? 0,
+    is_active: a.is_active,
+    table_count: a.table_count ?? 0,
   }
+}
+
+function mapTableType(t: any): TableType {
+  return {
+    id: t.id,
+    name: t.name,
+    default_capacity: t.default_capacity ?? t.capacity ?? 4,
+    is_active: t.is_active,
+    table_count: t.table_count ?? 0,
+  }
+}
+
+function mapTable(t: any): Table {
+  return {
+    id: t.id,
+    table_number: String(t.table_number),
+    capacity: t.capacity ?? 4,
+    area_id: t.dining_area?.id ?? t.area_id ?? "",
+    area_name: t.dining_area?.name ?? t.area_name ?? "",
+    table_type_id: t.table_type?.id ?? t.table_type_id ?? "",
+    table_type_name: t.table_type?.name ?? t.table_type_name ?? "",
+    is_active: t.is_active,
+    position_x: t.position_x,
+    position_y: t.position_y,
+  }
+}
+
+function DiningAreasTab() {
+  const [areas, setAreas] = useState<DiningArea[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingArea, setEditingArea] = useState<DiningArea | null>(null)
+  const [formData, setFormData] = useState({ name: "", description: "", sort_order: "0" })
+  const [saving, setSaving] = useState(false)
+
+  const fetchAreas = () => {
+    setLoading(true)
+    apiFetch<{ data: any[] }>("/api/business/dining-areas")
+      .then((res) => setAreas(res.data.map(mapArea)))
+      .catch((e: any) => setError(e.message ?? "Failed to load dining areas"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchAreas() }, [])
+
+  const openCreate = () => {
+    setFormData({ name: "", description: "", sort_order: "0" })
+    setEditingArea(null)
+    setShowCreateModal(true)
+  }
+
+  const openEdit = (area: DiningArea) => {
+    setFormData({ name: area.name, description: area.description ?? "", sort_order: String(area.sort_order) })
+    setEditingArea(area)
+    setShowCreateModal(true)
+  }
+
+  const handleSubmit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const body = { name: formData.name, description: formData.description, sort_order: Number(formData.sort_order) }
+      if (editingArea) {
+        // PATCH /api/business/dining-areas/:id
+        await apiFetch(`/api/business/dining-areas/${editingArea.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        // POST /api/business/dining-areas
+        await apiFetch("/api/business/dining-areas", { method: "POST", body: JSON.stringify(body) })
+      }
+      setShowCreateModal(false)
+      fetchAreas()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save dining area")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (area: DiningArea) => {
+    if (!confirm(`Delete "${area.name}"?`)) return
+    setError(null)
+    try {
+      // DELETE /api/business/dining-areas/:id
+      await apiFetch(`/api/business/dining-areas/${area.id}`, { method: "DELETE" })
+      fetchAreas()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete dining area")
+    }
+  }
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
       <div className="flex justify-end">
-        <button onClick={() => setShowModal(true)} className={addBtnCls}>
+        <button onClick={openCreate} className={addBtnCls}>
           <Plus className="w-4 h-4" />
           Add Dining Area
         </button>
@@ -180,15 +250,19 @@ function DiningAreasTab() {
                   <span className="text-sm text-gray-600 dark:text-gray-400">{area.sort_order}</span>
                 </td>
                 <td className="px-5 py-4">
-                  <Toggle checked={area.is_active} onChange={() => toggleStatus(area.id)} />
+                  <Badge variant={area.is_active ? "green" : "gray"}>{area.is_active ? "Active" : "Inactive"}</Badge>
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
-                    <button className="p-2 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors">
+                    <button
+                      onClick={() => openEdit(area)}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors"
+                    >
                       <Pencil className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                     </button>
                     <div className="relative group">
                       <button
+                        onClick={() => handleDelete(area)}
                         className={`p-2 rounded-lg transition-colors ${
                           area.table_count > 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-red-50 dark:hover:bg-red-900/20"
                         }`}
@@ -211,7 +285,11 @@ function DiningAreasTab() {
         </table>
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create Dining Area">
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title={editingArea ? "Edit Dining Area" : "Create Dining Area"}
+      >
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Name *</label>
@@ -226,8 +304,10 @@ function DiningAreasTab() {
             <input type="number" value={formData.sort_order} onChange={(e) => setFormData({ ...formData, sort_order: e.target.value })} className={inputCls} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setShowModal(false)} className={cancelBtnCls}>Cancel</button>
-            <button className={saveBtnCls}>Create Area</button>
+            <button onClick={() => setShowCreateModal(false)} className={cancelBtnCls}>Cancel</button>
+            <button onClick={handleSubmit} disabled={saving} className={saveBtnCls}>
+              {saving ? "Saving..." : editingArea ? "Save Changes" : "Create Area"}
+            </button>
           </div>
         </div>
       </Modal>
@@ -236,17 +316,86 @@ function DiningAreasTab() {
 }
 
 function TableTypesTab() {
-  const [types, setTypes] = useState(TABLE_TYPES)
+  const [types, setTypes] = useState<TableType[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [editingType, setEditingType] = useState<TableType | null>(null)
+  const [formData, setFormData] = useState({ name: "", default_capacity: "4", description: "" })
+  const [saving, setSaving] = useState(false)
 
-  const toggleStatus = (id: string) => {
-    setTypes(types.map((t) => (t.id === id ? { ...t, is_active: !t.is_active } : t)))
+  const fetchTypes = () => {
+    setLoading(true)
+    // GET /api/business/table-types
+    apiFetch<{ data: any[] }>("/api/business/table-types")
+      .then((res) => setTypes(res.data.map(mapTableType)))
+      .catch((e: any) => setError(e.message ?? "Failed to load table types"))
+      .finally(() => setLoading(false))
   }
+
+  useEffect(() => { fetchTypes() }, [])
+
+  const openCreate = () => {
+    setFormData({ name: "", default_capacity: "4", description: "" })
+    setEditingType(null)
+    setShowModal(true)
+  }
+
+  const openEdit = (type: TableType) => {
+    setFormData({ name: type.name, default_capacity: String(type.default_capacity), description: "" })
+    setEditingType(type)
+    setShowModal(true)
+  }
+
+  const handleSubmit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const body: Record<string, any> = {
+        name: formData.name,
+        capacity: Number(formData.default_capacity),
+      }
+      if (formData.description) body.description = formData.description
+      if (editingType) {
+        // PATCH /api/business/table-types/:id
+        await apiFetch(`/api/business/table-types/${editingType.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        // POST /api/business/table-types
+        await apiFetch("/api/business/table-types", { method: "POST", body: JSON.stringify(body) })
+      }
+      setShowModal(false)
+      fetchTypes()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save table type")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (type: TableType) => {
+    if (!confirm(`Delete "${type.name}"?`)) return
+    setError(null)
+    try {
+      // DELETE /api/business/table-types/:id
+      await apiFetch(`/api/business/table-types/${type.id}`, { method: "DELETE" })
+      fetchTypes()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete table type")
+    }
+  }
+
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
       <div className="flex justify-end">
-        <button onClick={() => setShowModal(true)} className={addBtnCls}>
+        <button onClick={openCreate} className={addBtnCls}>
           <Plus className="w-4 h-4" />
           Add Table Type
         </button>
@@ -276,12 +425,16 @@ function TableTypesTab() {
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-[#1F1F23]">
-              <button className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+              <button
+                onClick={() => openEdit(type)}
+                className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
                 <Pencil className="w-4 h-4" />
                 Edit
               </button>
               <div className="relative group">
                 <button
+                  onClick={() => handleDelete(type)}
                   className={`flex items-center gap-1.5 text-sm transition-colors ${
                     type.table_count > 0 ? "text-gray-300 dark:text-gray-600 cursor-not-allowed" : "text-red-500 hover:text-red-600"
                   }`}
@@ -302,19 +455,25 @@ function TableTypesTab() {
         ))}
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create Table Type">
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingType ? "Edit Table Type" : "Create Table Type"}
+      >
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Name *</label>
-            <input type="text" placeholder="e.g. Standard" className={inputCls} />
+            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Standard" className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Default Capacity *</label>
-            <input type="number" defaultValue={4} min={1} className={inputCls} />
+            <input type="number" value={formData.default_capacity} onChange={(e) => setFormData({ ...formData, default_capacity: e.target.value })} min={1} className={inputCls} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => setShowModal(false)} className={cancelBtnCls}>Cancel</button>
-            <button className={saveBtnCls}>Create Type</button>
+            <button onClick={handleSubmit} disabled={saving} className={saveBtnCls}>
+              {saving ? "Saving..." : editingType ? "Save Changes" : "Create Type"}
+            </button>
           </div>
         </div>
       </Modal>
@@ -323,39 +482,101 @@ function TableTypesTab() {
 }
 
 function TablesTab() {
-  const [tables, setTables] = useState(TABLES)
-  const [diningAreas, setDiningAreas] = useState(DINING_AREAS)
+  const [tables, setTables] = useState<Table[]>([])
+  const [diningAreas, setDiningAreas] = useState<DiningArea[]>([])
+  const [tableTypes, setTableTypes] = useState<TableType[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [editingTable, setEditingTable] = useState<Table | null>(null)
   const [areaFilter, setAreaFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [formData, setFormData] = useState({
+    table_number: "",
+    dining_area_id: "",
+    table_type_id: "",
+    capacity: "4",
+    position_x: "",
+    position_y: "",
+  })
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
+  const fetchAll = () => {
     setLoading(true)
+    // GET /api/business/tables + GET /api/business/dining-areas + GET /api/business/table-types
     Promise.all([
       apiFetch<{ data: any[] }>("/api/business/tables"),
       apiFetch<{ data: any[] }>("/api/business/dining-areas"),
-    ]).then(([tablesRes, areasRes]) => {
-      setTables(tablesRes.data.map((t: any) => ({
-        id: t.id,
-        table_number: String(t.table_number),
-        capacity: t.capacity ?? 4,
-        area_id: t.dining_area?.id ?? "",
-        area_name: t.dining_area?.name ?? "",
-        table_type_id: t.table_type?.id ?? "",
-        table_type_name: t.table_type?.name ?? "",
-        is_active: t.is_active,
-      })))
-      setDiningAreas(areasRes.data.map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        description: a.description,
-        sort_order: a.sort_order ?? 0,
-        is_active: a.is_active,
-        table_count: a.table_count ?? 0,
-      })))
-    }).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+      apiFetch<{ data: any[] }>("/api/business/table-types"),
+    ]).then(([tablesRes, areasRes, typesRes]) => {
+      setTables(tablesRes.data.map(mapTable))
+      setDiningAreas(areasRes.data.map(mapArea))
+      setTableTypes(typesRes.data.map(mapTableType))
+    }).catch((e: any) => setError(e.message ?? "Failed to load tables"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  const openCreate = () => {
+    setFormData({ table_number: "", dining_area_id: "", table_type_id: "", capacity: "4", position_x: "", position_y: "" })
+    setEditingTable(null)
+    setShowModal(true)
+  }
+
+  const openEdit = (table: Table) => {
+    setFormData({
+      table_number: table.table_number,
+      dining_area_id: table.area_id,
+      table_type_id: table.table_type_id,
+      capacity: String(table.capacity),
+      position_x: table.position_x != null ? String(table.position_x) : "",
+      position_y: table.position_y != null ? String(table.position_y) : "",
+    })
+    setEditingTable(table)
+    setShowModal(true)
+  }
+
+  const handleSubmit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const body: Record<string, any> = {
+        table_number: formData.table_number,
+        dining_area_id: formData.dining_area_id,
+        capacity: Number(formData.capacity),
+      }
+      if (formData.table_type_id) body.table_type_id = formData.table_type_id
+      if (formData.position_x !== "") body.position_x = Number(formData.position_x)
+      if (formData.position_y !== "") body.position_y = Number(formData.position_y)
+
+      if (editingTable) {
+        // PATCH /api/business/tables/:id
+        await apiFetch(`/api/business/tables/${editingTable.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      } else {
+        // POST /api/business/tables
+        await apiFetch("/api/business/tables", { method: "POST", body: JSON.stringify(body) })
+      }
+      setShowModal(false)
+      fetchAll()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save table")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (table: Table) => {
+    if (!confirm(`Delete table "${table.table_number}"?`)) return
+    setError(null)
+    try {
+      // DELETE /api/business/tables/:id
+      await apiFetch(`/api/business/tables/${table.id}`, { method: "DELETE" })
+      fetchAll()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete table")
+    }
+  }
 
   if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
 
@@ -366,12 +587,14 @@ function TablesTab() {
     return true
   })
 
-  const toggleStatus = (id: string) => {
-    setTables(tables.map((t) => (t.id === id ? { ...t, is_active: !t.is_active } : t)))
-  }
-
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -392,7 +615,7 @@ function TablesTab() {
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
-        <button onClick={() => setShowModal(true)} className={addBtnCls}>
+        <button onClick={openCreate} className={addBtnCls}>
           <Plus className="w-4 h-4" />
           Add Table
         </button>
@@ -429,14 +652,20 @@ function TablesTab() {
                   </div>
                 </td>
                 <td className="px-5 py-4">
-                  <Toggle checked={table.is_active} onChange={() => toggleStatus(table.id)} />
+                  <Badge variant={table.is_active ? "green" : "gray"}>{table.is_active ? "Active" : "Inactive"}</Badge>
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center justify-end gap-1">
-                    <button className="p-2 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors">
+                    <button
+                      onClick={() => openEdit(table)}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg transition-colors"
+                    >
                       <Pencil className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                     </button>
-                    <button className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                    <button
+                      onClick={() => handleDelete(table)}
+                      className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    >
                       <Trash2 className="w-4 h-4 text-red-500" />
                     </button>
                   </div>
@@ -447,16 +676,20 @@ function TablesTab() {
         </table>
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create Table">
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingTable ? "Edit Table" : "Create Table"}
+      >
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Table Number *</label>
-            <input type="text" placeholder="T-01" className={`${inputCls} font-mono`} />
+            <input type="text" value={formData.table_number} onChange={(e) => setFormData({ ...formData, table_number: e.target.value })} placeholder="T-01" className={`${inputCls} font-mono`} />
           </div>
           <div>
             <label className={labelCls}>Area *</label>
             <div className="relative">
-              <select className={selectCls}>
+              <select value={formData.dining_area_id} onChange={(e) => setFormData({ ...formData, dining_area_id: e.target.value })} className={selectCls}>
                 <option value="">Select area...</option>
                 {diningAreas.filter((a) => a.is_active).map((area) => (
                   <option key={area.id} value={area.id}>{area.name}</option>
@@ -466,11 +699,11 @@ function TablesTab() {
             </div>
           </div>
           <div>
-            <label className={labelCls}>Table Type *</label>
+            <label className={labelCls}>Table Type</label>
             <div className="relative">
-              <select className={selectCls}>
+              <select value={formData.table_type_id} onChange={(e) => setFormData({ ...formData, table_type_id: e.target.value })} className={selectCls}>
                 <option value="">Select type...</option>
-                {TABLE_TYPES.filter((t) => t.is_active).map((type) => (
+                {tableTypes.filter((t) => t.is_active).map((type) => (
                   <option key={type.id} value={type.id}>{type.name} ({type.default_capacity} seats)</option>
                 ))}
               </select>
@@ -479,7 +712,7 @@ function TablesTab() {
           </div>
           <div>
             <label className={labelCls}>Capacity</label>
-            <input type="number" defaultValue={4} min={1} className={inputCls} />
+            <input type="number" value={formData.capacity} onChange={(e) => setFormData({ ...formData, capacity: e.target.value })} min={1} className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Floor Plan Position (optional)</label>
@@ -487,17 +720,19 @@ function TablesTab() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">X (0-100)</label>
-                <input type="number" min={0} max={100} placeholder="0" className={inputCls} />
+                <input type="number" value={formData.position_x} onChange={(e) => setFormData({ ...formData, position_x: e.target.value })} min={0} max={100} placeholder="0" className={inputCls} />
               </div>
               <div className="flex-1">
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Y (0-100)</label>
-                <input type="number" min={0} max={100} placeholder="0" className={inputCls} />
+                <input type="number" value={formData.position_y} onChange={(e) => setFormData({ ...formData, position_y: e.target.value })} min={0} max={100} placeholder="0" className={inputCls} />
               </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => setShowModal(false)} className={cancelBtnCls}>Cancel</button>
-            <button className={saveBtnCls}>Create Table</button>
+            <button onClick={handleSubmit} disabled={saving} className={saveBtnCls}>
+              {saving ? "Saving..." : editingTable ? "Save Changes" : "Create Table"}
+            </button>
           </div>
         </div>
       </Modal>

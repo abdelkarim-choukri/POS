@@ -18,6 +18,7 @@ import {
   Globe,
   CheckCircle,
   AlertCircle,
+  Bell,
 } from "lucide-react"
 
 // ==================== TYPES ====================
@@ -161,15 +162,35 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
   )
 }
 
+// ==================== TYPES (for-me tab) ====================
+interface ForMeAnnouncement {
+  id: string
+  title: string
+  body: string
+  type?: string
+  display_until?: string
+  created_at: string
+}
+
 // ==================== MAIN COMPONENT ====================
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState(mockAnnouncements)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"all" | "for-me">("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showViewModal, setShowViewModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null)
+  const [editFormData, setEditFormData] = useState({
+    title: "",
+    content: "",
+    target_audience: "all" as Announcement["target_audience"],
+    expiry_date: "",
+    is_active: true,
+  })
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
   const [formData, setFormData] = useState({
     title: "",
@@ -179,6 +200,42 @@ export default function AnnouncementsPage() {
     publish_date: "",
     expiry_date: "",
   })
+
+  // ── For Me tab state ──────────────────────────────────────────────────────
+  const [forMeAnnouncements, setForMeAnnouncements] = useState<ForMeAnnouncement[]>([])
+  const [forMeLoading, setForMeLoading] = useState(false)
+  const [forMeError, setForMeError] = useState<string | null>(null)
+  const [forMeFetched, setForMeFetched] = useState(false)
+
+  const fetchForMe = async () => {
+    if (forMeFetched) return
+    setForMeLoading(true)
+    setForMeError(null)
+    try {
+      const res = await apiFetch<{ data: any[] } | any[]>("/api/business/announcements/for-me")
+      const items: any[] = Array.isArray(res) ? res : (res as any).data ?? []
+      setForMeAnnouncements(
+        items.map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body ?? a.content ?? "",
+          type: a.type,
+          display_until: a.display_until,
+          created_at: a.created_at ?? "",
+        }))
+      )
+      setForMeFetched(true)
+    } catch (e: any) {
+      setForMeError(e.message ?? "Failed to load announcements for you")
+    } finally {
+      setForMeLoading(false)
+    }
+  }
+
+  const handleTabChange = (tab: "all" | "for-me") => {
+    setActiveTab(tab)
+    if (tab === "for-me") fetchForMe()
+  }
 
   const fetchAnnouncements = async () => {
     setLoading(true)
@@ -272,16 +329,54 @@ export default function AnnouncementsPage() {
   }
 
   const handlePublish = (id: string) => {
-    setAnnouncements(announcements.map(a => 
+    setAnnouncements(announcements.map(a =>
       a.id === id ? { ...a, status: "published" as const, publish_date: new Date().toISOString().split("T")[0] } : a
     ))
   }
 
-  const handleDelete = (id: string) => {
-    setAnnouncements(announcements.filter(a => a.id !== id))
+  const openEditModal = (announcement: Announcement) => {
+    setEditingAnnouncement(announcement)
+    setEditFormData({
+      title: announcement.title,
+      content: announcement.content,
+      target_audience: announcement.target_audience,
+      expiry_date: announcement.expiry_date ?? "",
+      is_active: announcement.status === "published",
+    })
+    setShowEditModal(true)
   }
 
-  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+  const handleEdit = async () => {
+    if (!editingAnnouncement) return
+    try {
+      await apiFetch(`/api/business/announcements/${editingAnnouncement.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: editFormData.title,
+          body: editFormData.content,
+          role: editFormData.target_audience === "all" ? undefined : editFormData.target_audience,
+          display_until: editFormData.expiry_date || undefined,
+          is_active: editFormData.is_active,
+        }),
+      })
+      setShowEditModal(false)
+      setEditingAnnouncement(null)
+      await fetchAnnouncements()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update announcement")
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await apiFetch(`/api/business/announcements/${id}`, { method: "DELETE" })
+      await fetchAnnouncements()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete announcement")
+    }
+  }
+
+  if (loading && activeTab === "all") return <div className="py-10 text-center text-gray-400">Loading...</div>
 
   return (
     <div>
@@ -297,6 +392,81 @@ export default function AnnouncementsPage() {
           Create Announcement
         </Button>
       </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#0F0F12] p-1 rounded-xl w-fit mb-6">
+        <button
+          onClick={() => handleTabChange("all")}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "all"
+              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          <Megaphone className="w-4 h-4" />
+          All Announcements
+        </button>
+        <button
+          onClick={() => handleTabChange("for-me")}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === "for-me"
+              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          For Me
+        </button>
+      </div>
+
+      {/* ── For Me Tab ── */}
+      {activeTab === "for-me" && (
+        <div>
+          {forMeLoading && <div className="py-10 text-center text-gray-400">Loading…</div>}
+          {forMeError && <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{forMeError}</div>}
+          {!forMeLoading && !forMeError && forMeAnnouncements.length === 0 && (
+            <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-[#0F0F12] rounded-full flex items-center justify-center mx-auto mb-4">
+                <Bell className="w-8 h-8 text-gray-400 dark:text-gray-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No announcements for you</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">There are no active announcements targeting your role right now.</p>
+            </div>
+          )}
+          {!forMeLoading && forMeAnnouncements.length > 0 && (
+            <div className="space-y-4">
+              {forMeAnnouncements.map((a) => (
+                <div key={a.id} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 flex-shrink-0">
+                      <Bell className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{a.title}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{a.body}</p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {a.created_at ? new Date(a.created_at).toLocaleDateString() : ""}
+                        </span>
+                        {a.display_until && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Expires {new Date(a.display_until).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── All Announcements Tab ── */}
+      {activeTab === "all" && (<>
 
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
@@ -398,7 +568,10 @@ export default function AnnouncementsPage() {
                 >
                   <Eye className="w-4 h-4" />
                 </button>
-                <button className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg">
+                <button
+                  onClick={() => openEditModal(announcement)}
+                  className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg"
+                >
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
@@ -422,6 +595,9 @@ export default function AnnouncementsPage() {
           </div>
         )}
       </div>
+
+      {/* end "all" tab */}
+      </>)}
 
       {/* Create Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Announcement" size="lg">
@@ -491,6 +667,63 @@ export default function AnnouncementsPage() {
               <Send className="w-4 h-4" />
               Publish Now
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setEditingAnnouncement(null) }} title="Edit Announcement" size="lg">
+        <div className="space-y-4">
+          <Input
+            label="Title"
+            placeholder="Enter announcement title"
+            value={editFormData.title}
+            onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
+            <textarea
+              value={editFormData.content}
+              onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
+              placeholder="Write your announcement..."
+              rows={4}
+              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Audience</label>
+              <select
+                value={editFormData.target_audience}
+                onChange={(e) => setEditFormData({ ...editFormData, target_audience: e.target.value as Announcement["target_audience"] })}
+                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+              >
+                <option value="all">All Staff</option>
+                <option value="employees">Employees Only</option>
+                <option value="managers">Managers Only</option>
+                <option value="specific_locations">Specific Locations</option>
+              </select>
+            </div>
+            <Input
+              label="Expiry Date (Optional)"
+              type="date"
+              value={editFormData.expiry_date}
+              onChange={(e) => setEditFormData({ ...editFormData, expiry_date: e.target.value })}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="edit-is-active"
+              checked={editFormData.is_active}
+              onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
+              className="rounded border-gray-300 dark:border-[#1F1F23]"
+            />
+            <label htmlFor="edit-is-active" className="text-sm font-medium text-gray-700 dark:text-gray-300">Active</label>
+          </div>
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-[#1F1F23]">
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowEditModal(false); setEditingAnnouncement(null) }}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleEdit}>Save Changes</Button>
           </div>
         </div>
       </Modal>

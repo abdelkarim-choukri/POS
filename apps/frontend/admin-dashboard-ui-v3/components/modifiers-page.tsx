@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -209,16 +210,26 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function ModifiersPage() {
-  const [groups, setGroups] = useState<ModifierGroup[]>(mockModifierGroups)
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["grp-1"]))
+  const [groups, setGroups] = useState<ModifierGroup[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState("")
-  
+
   // Modals
   const [showAddGroup, setShowAddGroup] = useState(false)
   const [showEditGroup, setShowEditGroup] = useState(false)
   const [showAddModifier, setShowAddModifier] = useState<string | null>(null)
   const [showLinkProducts, setShowLinkProducts] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<ModifierGroup | null>(null)
+
+  // Per-operation saving states
+  const [groupSaving, setGroupSaving] = useState(false)
+  const [groupSaveError, setGroupSaveError] = useState("")
+  const [modifierSaving, setModifierSaving] = useState(false)
+  const [modifierSaveError, setModifierSaveError] = useState("")
+  const [linkSaving, setLinkSaving] = useState(false)
+  const [linkSaveError, setLinkSaveError] = useState("")
 
   // Form state
   const [groupForm, setGroupForm] = useState({
@@ -227,12 +238,45 @@ export default function ModifiersPage() {
     min_selections: "0",
     max_selections: "1",
   })
-  const [modifierForm, setModifierForm] = useState({ name: "", price_delta: "0" })
+  const [modifierForm, setModifierForm] = useState({ name: "", price_delta: "0", is_default: false })
   const [productSearch, setProductSearch] = useState("")
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
 
+  // ── Fetch modifier groups on mount ──────────────────────────────────────────
+  const fetchGroups = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<{ data: any[] } | any[]>("/api/business/modifier-groups")
+      const items: any[] = Array.isArray(res) ? res : (res as any).data ?? []
+      const mapped: ModifierGroup[] = items.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        selection_type: g.type === "multiple" ? "multiple" : "single",
+        min_selections: g.min_selections ?? 0,
+        max_selections: g.max_selections ?? 1,
+        is_active: g.is_active ?? true,
+        product_count: g.product_count ?? 0,
+        modifiers: (g.modifiers ?? []).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          price_delta: parseFloat(m.price_adjustment ?? m.price_delta ?? 0),
+          is_available: m.is_available ?? true,
+          sort_order: m.sort_order ?? 0,
+        })),
+      }))
+      setGroups(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load modifier groups")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchGroups() }, [])
+
   // Filtered groups
-  const filteredGroups = groups.filter(g => 
+  const filteredGroups = groups.filter(g =>
     g.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -261,6 +305,7 @@ export default function ModifiersPage() {
 
   const handleAddGroup = () => {
     setGroupForm({ name: "", selection_type: "single", min_selections: "0", max_selections: "1" })
+    setGroupSaveError("")
     setShowAddGroup(true)
   }
 
@@ -272,19 +317,122 @@ export default function ModifiersPage() {
       min_selections: group.min_selections.toString(),
       max_selections: group.max_selections.toString(),
     })
+    setGroupSaveError("")
     setShowEditGroup(true)
   }
 
+  // ── Create group: POST /api/business/modifier-groups ────────────────────────
+  const handleSaveAddGroup = async () => {
+    if (!groupForm.name.trim()) return
+    setGroupSaving(true)
+    setGroupSaveError("")
+    try {
+      await apiFetch("/api/business/modifier-groups", {
+        method: "POST",
+        body: JSON.stringify({
+          name: groupForm.name,
+          type: groupForm.selection_type,
+          min_selections: parseInt(groupForm.min_selections) || 0,
+          max_selections: parseInt(groupForm.max_selections) || 1,
+        }),
+      })
+      setShowAddGroup(false)
+      await fetchGroups()
+    } catch (e: any) {
+      setGroupSaveError(e.message ?? "Failed to create modifier group")
+    } finally {
+      setGroupSaving(false)
+    }
+  }
+
+  // ── Update group: PUT /api/business/modifier-groups/:id ─────────────────────
+  const handleSaveEditGroup = async () => {
+    if (!selectedGroup || !groupForm.name.trim()) return
+    setGroupSaving(true)
+    setGroupSaveError("")
+    try {
+      await apiFetch(`/api/business/modifier-groups/${selectedGroup.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: groupForm.name,
+          type: groupForm.selection_type,
+          min_selections: parseInt(groupForm.min_selections) || 0,
+          max_selections: parseInt(groupForm.max_selections) || 1,
+        }),
+      })
+      setShowEditGroup(false)
+      setSelectedGroup(null)
+      await fetchGroups()
+    } catch (e: any) {
+      setGroupSaveError(e.message ?? "Failed to update modifier group")
+    } finally {
+      setGroupSaving(false)
+    }
+  }
+
   const handleAddModifier = (groupId: string) => {
-    setModifierForm({ name: "", price_delta: "0" })
+    setModifierForm({ name: "", price_delta: "0", is_default: false })
+    setModifierSaveError("")
     setShowAddModifier(groupId)
+  }
+
+  // ── Add modifier: POST /api/business/modifier-groups/:id/modifiers ──────────
+  const handleSaveAddModifier = async () => {
+    if (!showAddModifier || !modifierForm.name.trim()) return
+    setModifierSaving(true)
+    setModifierSaveError("")
+    try {
+      await apiFetch(`/api/business/modifier-groups/${showAddModifier}/modifiers`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: modifierForm.name,
+          price_adjustment: parseFloat(modifierForm.price_delta) || 0,
+          is_default: modifierForm.is_default,
+        }),
+      })
+      setShowAddModifier(null)
+      await fetchGroups()
+    } catch (e: any) {
+      setModifierSaveError(e.message ?? "Failed to add modifier")
+    } finally {
+      setModifierSaving(false)
+    }
   }
 
   const handleLinkProducts = (group: ModifierGroup) => {
     setSelectedGroup(group)
     setProductSearch("")
     setSelectedProducts(new Set())
+    setLinkSaveError("")
     setShowLinkProducts(group.id)
+  }
+
+  // ── Link products: POST /api/business/products/:id/modifier-groups ──────────
+  const handleSaveLinkProducts = async () => {
+    if (!selectedGroup || selectedProducts.size === 0) {
+      setShowLinkProducts(null)
+      return
+    }
+    setLinkSaving(true)
+    setLinkSaveError("")
+    const errors: string[] = []
+    for (const productId of Array.from(selectedProducts)) {
+      try {
+        await apiFetch(`/api/business/products/${productId}/modifier-groups`, {
+          method: "POST",
+          body: JSON.stringify({ modifier_group_id: selectedGroup.id }),
+        })
+      } catch (e: any) {
+        errors.push(`Product ${productId}: ${e.message ?? "failed"}`)
+      }
+    }
+    setLinkSaving(false)
+    if (errors.length > 0) {
+      setLinkSaveError(errors.join("; "))
+    } else {
+      setShowLinkProducts(null)
+      await fetchGroups()
+    }
   }
 
   const filteredProductsForLink = mockProducts.filter(p =>
@@ -292,8 +440,11 @@ export default function ModifiersPage() {
     p.sku.toLowerCase().includes(productSearch.toLowerCase())
   )
 
+  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
   return (
     <div className="h-full">
+      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -484,12 +635,13 @@ export default function ModifiersPage() {
               )}
             </p>
           </div>
+          {groupSaveError && <p className="text-sm text-red-600 dark:text-red-400">{groupSaveError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddGroup(false)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAddGroup(false)} disabled={groupSaving}>
               Cancel
             </Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddGroup(false)}>
-              Create Group
+            <Button variant="primary" className="flex-1" onClick={handleSaveAddGroup} disabled={groupSaving || !groupForm.name.trim()}>
+              {groupSaving ? "Creating…" : "Create Group"}
             </Button>
           </div>
         </div>
@@ -529,12 +681,13 @@ export default function ModifiersPage() {
               onChange={(e) => setGroupForm(f => ({ ...f, max_selections: e.target.value }))}
             />
           </div>
+          {groupSaveError && <p className="text-sm text-red-600 dark:text-red-400">{groupSaveError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowEditGroup(false)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditGroup(false)} disabled={groupSaving}>
               Cancel
             </Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowEditGroup(false)}>
-              Save Changes
+            <Button variant="primary" className="flex-1" onClick={handleSaveEditGroup} disabled={groupSaving || !groupForm.name.trim()}>
+              {groupSaving ? "Saving…" : "Save Changes"}
             </Button>
           </div>
         </div>
@@ -550,21 +703,32 @@ export default function ModifiersPage() {
             onChange={(e) => setModifierForm(f => ({ ...f, name: e.target.value }))}
           />
           <Input
-            label="Price Delta (MAD)"
+            label="Price Adjustment (MAD)"
             type="number"
             placeholder="0.00"
             value={modifierForm.price_delta}
             onChange={(e) => setModifierForm(f => ({ ...f, price_delta: e.target.value }))}
           />
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="mod-is-default"
+              checked={modifierForm.is_default}
+              onChange={(e) => setModifierForm(f => ({ ...f, is_default: e.target.checked }))}
+              className="w-4 h-4 rounded border-gray-300 dark:border-[#1F1F23]"
+            />
+            <label htmlFor="mod-is-default" className="text-sm text-gray-700 dark:text-gray-300">Default selection</label>
+          </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Enter 0 for no extra charge, positive values added to price, negative values deducted.
           </p>
+          {modifierSaveError && <p className="text-sm text-red-600 dark:text-red-400">{modifierSaveError}</p>}
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddModifier(null)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAddModifier(null)} disabled={modifierSaving}>
               Cancel
             </Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddModifier(null)}>
-              Add Modifier
+            <Button variant="primary" className="flex-1" onClick={handleSaveAddModifier} disabled={modifierSaving || !modifierForm.name.trim()}>
+              {modifierSaving ? "Adding…" : "Add Modifier"}
             </Button>
           </div>
         </div>
@@ -615,17 +779,18 @@ export default function ModifiersPage() {
               </label>
             ))}
           </div>
+          {linkSaveError && <p className="text-sm text-red-600 dark:text-red-400">{linkSaveError}</p>}
           <div className="flex items-center justify-between pt-2">
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {selectedProducts.size} products selected
             </span>
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setShowLinkProducts(null)}>
+              <Button variant="secondary" onClick={() => setShowLinkProducts(null)} disabled={linkSaving}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={() => setShowLinkProducts(null)}>
+              <Button variant="primary" onClick={handleSaveLinkProducts} disabled={linkSaving || selectedProducts.size === 0}>
                 <Check className="w-4 h-4" />
-                Link Products
+                {linkSaving ? "Linking…" : "Link Products"}
               </Button>
             </div>
           </div>

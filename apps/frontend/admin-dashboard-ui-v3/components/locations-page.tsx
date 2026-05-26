@@ -185,6 +185,7 @@ export default function LocationsPage() {
   const [showEditLocation, setShowEditLocation] = useState(false)
   const [showAssignTerminal, setShowAssignTerminal] = useState<string | null>(null)
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
+  const [terminalsLoading, setTerminalsLoading] = useState<Set<string>>(new Set())
 
   // Form state
   const [locationForm, setLocationForm] = useState({ name: "", address: "", city: "" })
@@ -254,11 +255,36 @@ export default function LocationsPage() {
     loc.address.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const fetchTerminalsForLocation = async (locationId: string) => {
+    setTerminalsLoading(prev => new Set(prev).add(locationId))
+    try {
+      const res = await apiFetch<Terminal[]>(`/api/business/locations/${locationId}/terminals`)
+      setLocations(prev =>
+        prev.map(loc =>
+          loc.id === locationId ? { ...loc, terminals: res } : loc
+        )
+      )
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load terminals")
+    } finally {
+      setTerminalsLoading(prev => {
+        const next = new Set(prev)
+        next.delete(locationId)
+        return next
+      })
+    }
+  }
+
   const toggleLocation = (locationId: string) => {
     setExpandedLocations(prev => {
       const next = new Set(prev)
-      if (next.has(locationId)) next.delete(locationId)
-      else next.add(locationId)
+      if (next.has(locationId)) {
+        next.delete(locationId)
+      } else {
+        next.add(locationId)
+        // Fetch terminals when expanding — GET /api/business/locations/:id/terminals
+        fetchTerminalsForLocation(locationId)
+      }
       return next
     })
   }
@@ -382,7 +408,12 @@ export default function LocationsPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                      {/* No backend DELETE for locations — button disabled */}
+                      <button
+                        disabled
+                        title="Deleting locations is not supported"
+                        className="p-2 text-gray-200 dark:text-gray-700 cursor-not-allowed rounded-lg"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -392,36 +423,40 @@ export default function LocationsPage() {
                 {/* Terminals List (Expanded) */}
                 {expandedLocations.has(location.id) && (
                   <div className="border-t border-gray-100 dark:border-[#1F1F23] bg-gray-50 dark:bg-[#0F0F12]/30 p-4">
-                    {location.terminals.length > 0 ? (
-                      <div className="space-y-2">
-                        {location.terminals.map(terminal => (
-                          <div
-                            key={terminal.id}
-                            className="flex items-center justify-between p-3 bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-100 dark:border-[#1F1F23]"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-gray-100 dark:bg-[#1F1F23] rounded-lg flex items-center justify-center">
-                                <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium text-gray-900 dark:text-white">{terminal.name}</p>
-                                  <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{terminal.terminal_code}</span>
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  v{terminal.firmware_version} | Last seen: {terminal.last_seen_at ? new Date(terminal.last_seen_at).toLocaleString() : "Never"}
-                                </p>
-                              </div>
-                            </div>
-                            <HealthBadge lastSeenAt={terminal.last_seen_at} />
-                          </div>
-                        ))}
-                      </div>
+                    {terminalsLoading.has(location.id) ? (
+                      <div className="py-6 text-center text-sm text-gray-400">Loading terminals...</div>
                     ) : (
-                      <div className="text-center py-6">
-                        <Monitor className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No terminals assigned</p>
-                      </div>
+                      location.terminals.length > 0 ? (
+                        <div className="space-y-2">
+                          {location.terminals.map(terminal => (
+                            <div
+                              key={terminal.id}
+                              className="flex items-center justify-between p-3 bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-100 dark:border-[#1F1F23]"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gray-100 dark:bg-[#1F1F23] rounded-lg flex items-center justify-center">
+                                  <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900 dark:text-white">{terminal.name}</p>
+                                    <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{terminal.terminal_code}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    v{terminal.firmware_version} | Last seen: {terminal.last_seen_at ? new Date(terminal.last_seen_at).toLocaleString() : "Never"}
+                                  </p>
+                                </div>
+                              </div>
+                              <HealthBadge lastSeenAt={terminal.last_seen_at} />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6">
+                          <Monitor className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                          <p className="text-sm text-gray-500 dark:text-gray-400">No terminals assigned</p>
+                        </div>
+                      )
                     )}
                     <div className="mt-4">
                       <Button variant="secondary" size="sm" onClick={() => handleAssignTerminal(location.id)}>

@@ -1,6 +1,7 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, X, Megaphone, Calendar, Building2, Eye } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 interface AdminAnnouncement {
   id: string
@@ -18,36 +19,6 @@ interface AdminAnnouncement {
 
 const ALL_TYPES = ["retail", "restaurant", "pharmacy", "salon", "hotel"]
 
-const mockAnnouncements: AdminAnnouncement[] = [
-  {
-    id: "aa-1",
-    title: "New TVA Compliance Update — Finance Law 50-25",
-    body: "Important update regarding Finance Law 50-25 requirements. All businesses must review the updated TVA declaration process effective from January 2025. Please ensure your ICE and IF numbers are correctly configured in your business profile.",
-    target_business_types: ["retail", "restaurant", "pharmacy", "salon", "hotel"],
-    starts_at: "2025-01-01", ends_at: "2025-03-31",
-    is_active: true, priority: "high",
-    created_at: "2024-12-20", view_count: 1240, dismiss_count: 387,
-  },
-  {
-    id: "aa-2",
-    title: "System Maintenance — Sunday January 26",
-    body: "Planned maintenance on Sunday January 26, 2025 from 02:00–04:00 AM (Casablanca time). The system will be unavailable during this window. All terminal offline queues will sync automatically once service resumes.",
-    target_business_types: ["retail", "restaurant", "pharmacy"],
-    starts_at: "2025-01-20", ends_at: "2025-01-27",
-    is_active: true, priority: "medium",
-    created_at: "2025-01-15", view_count: 892, dismiss_count: 612,
-  },
-  {
-    id: "aa-3",
-    title: "Loyalty Program Enhancement — Cross-Location Points",
-    body: "New features added to the loyalty program. Customers can now exchange points across chain locations using the points exchange module. Contact support to enable this feature for your chain.",
-    target_business_types: ["retail"],
-    starts_at: "2025-02-01", ends_at: "2025-04-30",
-    is_active: false, priority: "low",
-    created_at: "2025-01-18", view_count: 0, dismiss_count: 0,
-  },
-]
-
 const PRIORITY_COLORS: Record<string, string> = {
   high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
@@ -55,7 +26,9 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 export default function AdminAnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState(mockAnnouncements)
+  const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [viewing, setViewing] = useState<AdminAnnouncement | null>(null)
   const [editing, setEditing] = useState<AdminAnnouncement | null>(null)
@@ -66,6 +39,21 @@ export default function AdminAnnouncementsPage() {
     is_active: true,
   })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  const fetchAnnouncements = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch<any>("/api/super/announcements")
+      setAnnouncements(res.data ?? res)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load announcements")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchAnnouncements() }, [])
 
   const openAdd = () => {
     setEditing(null)
@@ -79,20 +67,33 @@ export default function AdminAnnouncementsPage() {
     setShowModal(true)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.title.trim() || !form.body.trim()) return
-    if (editing) {
-      setAnnouncements(prev => prev.map(a => a.id === editing.id ? { ...a, ...form } : a))
-    } else {
-      setAnnouncements(prev => [...prev, {
-        id: `aa-${Date.now()}`, ...form,
-        created_at: "2025-01-21", view_count: 0, dismiss_count: 0,
-      }])
+    setError(null)
+    try {
+      if (editing) {
+        await apiFetch(`/api/super/announcements/${editing.id}`, { method: "PATCH", body: JSON.stringify(form) })
+      } else {
+        await apiFetch("/api/super/announcements", { method: "POST", body: JSON.stringify(form) })
+      }
+      setShowModal(false)
+      await fetchAnnouncements()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save announcement")
     }
-    setShowModal(false)
   }
 
-  const remove = (id: string) => { setAnnouncements(prev => prev.filter(a => a.id !== id)); setConfirmDelete(null) }
+  const remove = async (id: string) => {
+    setError(null)
+    try {
+      await apiFetch(`/api/super/announcements/${id}`, { method: "DELETE" })
+      setConfirmDelete(null)
+      await fetchAnnouncements()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete announcement")
+      setConfirmDelete(null)
+    }
+  }
 
   const toggleType = (type: string) => {
     setForm(prev => ({
@@ -113,6 +114,16 @@ export default function AdminAnnouncementsPage() {
           <Plus className="w-4 h-4" /> New Announcement
         </button>
       </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <p className="text-sm text-gray-400 dark:text-gray-500">Loading announcements...</p>
+      )}
 
       <div className="space-y-4">
         {announcements.map(ann => (

@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import {
   Settings,
   User,
@@ -126,6 +127,148 @@ export default function SettingsPage() {
     allow_local_promotions: true,
   })
 
+  // ── Profile (GET /api/auth/me) ──────────────────────────────────────────────
+  const [profile, setProfile] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    role: "",
+    business_name: "",
+    language_preference: "fr",
+  })
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState("")
+
+  // ── Change password (PUT /api/auth/change-password) ────────────────────────
+  const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm_password: "" })
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState("")
+  const [pwSuccess, setPwSuccess] = useState("")
+
+  // ── Settlement cutoff (GET/PUT /api/business/settings/settlement-cutoff) ───
+  const [cutoffLoading, setCutoffLoading] = useState(true)
+  const [cutoffSaving, setCutoffSaving] = useState(false)
+  const [cutoffError, setCutoffError] = useState("")
+  const [cutoffSuccess, setCutoffSuccess] = useState("")
+
+  // ── Notification channels (GET/PUT /api/business/notifications/channels) ───
+  type NotifChannel = { channel: string; is_enabled: boolean; config: Record<string, string> }
+  const [notifChannels, setNotifChannels] = useState<NotifChannel[]>([])
+  const [notifChannelsLoading, setNotifChannelsLoading] = useState(true)
+  const [notifChannelsError, setNotifChannelsError] = useState("")
+  const [notifChannelsSaving, setNotifChannelsSaving] = useState<Record<string, boolean>>({})
+  const [notifChannelsSuccess, setNotifChannelsSuccess] = useState<Record<string, string>>({})
+
+  // ── Morocco regions tree (GET /api/auth/regions/tree) ───────────────────────
+  type Region = { id: string; name: string; parent_id: string | null; children?: Region[] }
+  const [regionsTree, setRegionsTree] = useState<Region[]>([])
+  const [regionsLoading, setRegionsLoading] = useState(true)
+  const [selectedRegion, setSelectedRegion] = useState("")
+
+  // ── Mount: load profile + settlement cutoff + notification channels ─────────
+  useEffect(() => {
+    // GET /api/auth/me
+    apiFetch<{
+      id: string; email: string; first_name: string; last_name: string;
+      role: string; business_id: string; business_name: string; language_preference: string
+    }>("/api/auth/me")
+      .then((data) => {
+        setProfile({
+          first_name: data.first_name ?? "",
+          last_name: data.last_name ?? "",
+          email: data.email ?? "",
+          role: data.role ?? "",
+          business_name: data.business_name ?? "",
+          language_preference: data.language_preference ?? "fr",
+        })
+        updateSetting("language", data.language_preference ?? settings.language)
+      })
+      .catch((e: any) => { setProfileError(e.message ?? "Failed to load profile") })
+      .finally(() => setProfileLoading(false))
+
+    // GET /api/business/settings/settlement-cutoff
+    apiFetch<{ cutoff_time: string; timezone: string }>("/api/business/settings/settlement-cutoff")
+      .then((data) => {
+        updateSetting("daily_settlement_cutoff", data.cutoff_time ?? "02:00")
+        if (data.timezone) updateSetting("timezone", data.timezone)
+      })
+      .catch((e: any) => { setCutoffError(e.message ?? "Failed to load settlement cutoff") })
+      .finally(() => setCutoffLoading(false))
+
+    // GET /api/business/notifications/channels
+    apiFetch<NotifChannel[]>("/api/business/notifications/channels")
+      .then((data) => setNotifChannels(Array.isArray(data) ? data : []))
+      .catch((e: any) => { setNotifChannelsError(e.message ?? "Failed to load notification channels") })
+      .finally(() => setNotifChannelsLoading(false))
+
+    // GET /api/auth/regions/tree
+    apiFetch<Region[]>("/api/auth/regions/tree")
+      .then((data) => setRegionsTree(Array.isArray(data) ? data : []))
+      .catch(() => { /* regions are optional UI enhancement; swallow silently */ })
+      .finally(() => setRegionsLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+  async function handleChangePassword() {
+    setPwError("")
+    setPwSuccess("")
+    if (pwForm.new_password !== pwForm.confirm_password) {
+      setPwError("New passwords do not match")
+      return
+    }
+    setPwSaving(true)
+    try {
+      await apiFetch<{ message: string }>("/api/auth/change-password", {
+        method: "PUT",
+        body: JSON.stringify({ current_password: pwForm.current_password, new_password: pwForm.new_password }),
+      })
+      setPwSuccess("Password changed successfully")
+      setPwForm({ current_password: "", new_password: "", confirm_password: "" })
+    } catch (e: any) {
+      setPwError(e.message ?? "Failed to change password")
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
+  async function handleSaveCutoff() {
+    setCutoffError("")
+    setCutoffSuccess("")
+    setCutoffSaving(true)
+    try {
+      await apiFetch("/api/business/settings/settlement-cutoff", {
+        method: "PUT",
+        body: JSON.stringify({ cutoff_time: settings.daily_settlement_cutoff }),
+      })
+      setCutoffSuccess("Settlement cutoff saved")
+    } catch (e: any) {
+      setCutoffError(e.message ?? "Failed to save settlement cutoff")
+    } finally {
+      setCutoffSaving(false)
+    }
+  }
+
+  async function handleToggleChannel(ch: NotifChannel, newEnabled: boolean) {
+    const updated = { ...ch, is_enabled: newEnabled }
+    setNotifChannels((prev) => prev.map((c) => c.channel === ch.channel ? updated : c))
+    setNotifChannelsSaving((prev) => ({ ...prev, [ch.channel]: true }))
+    setNotifChannelsSuccess((prev) => ({ ...prev, [ch.channel]: "" }))
+    try {
+      await apiFetch("/api/business/notifications/channels", {
+        method: "PUT",
+        body: JSON.stringify(updated),
+      })
+      setNotifChannelsSuccess((prev) => ({ ...prev, [ch.channel]: "Saved" }))
+    } catch (e: any) {
+      setNotifChannelsError(e.message ?? "Failed to update channel")
+      // revert optimistic update
+      setNotifChannels((prev) => prev.map((c) => c.channel === ch.channel ? ch : c))
+    } finally {
+      setNotifChannelsSaving((prev) => ({ ...prev, [ch.channel]: false }))
+    }
+  }
+
   const sections = [
     { id: "business", label: "Business Profile", icon: Building2 },
     { id: "fiscal", label: "Fiscal Settings", icon: FileText },
@@ -195,7 +338,59 @@ export default function SettingsPage() {
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Business Profile</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Basic information about your business</p>
                 </div>
-                
+
+                {/* Account info from GET /api/auth/me */}
+                <div className="border border-gray-200 dark:border-[#1F1F23] rounded-xl p-5 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Your Account
+                  </h3>
+                  {profileLoading ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+                  ) : profileError ? (
+                    <p className="text-sm text-red-600 dark:text-red-400">{profileError}</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First Name</label>
+                        <input
+                          type="text"
+                          value={profile.first_name}
+                          onChange={(e) => setProfile((p) => ({ ...p, first_name: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last Name</label>
+                        <input
+                          type="text"
+                          value={profile.last_name}
+                          onChange={(e) => setProfile((p) => ({ ...p, last_name: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={profile.email}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-sm bg-gray-50 dark:bg-[#0F0F12] text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
+                        <input
+                          type="text"
+                          value={profile.role}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-sm bg-gray-50 dark:bg-[#0F0F12] text-gray-500 dark:text-gray-400 cursor-not-allowed capitalize"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business Name</label>
@@ -244,6 +439,31 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
                   />
                 </div>
+
+                {/* Region selector — populated from GET /api/auth/regions/tree */}
+                {!regionsLoading && regionsTree.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Region <span className="flex items-center gap-1 inline-flex"><MapPin className="w-3 h-3" /></span>
+                    </label>
+                    <select
+                      value={selectedRegion}
+                      onChange={(e) => setSelectedRegion(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                    >
+                      <option value="">— Select region —</option>
+                      {regionsTree.map((region) => (
+                        <optgroup key={region.id} label={region.name}>
+                          {(region.children ?? []).map((prefecture) => (
+                            <option key={prefecture.id} value={prefecture.id}>
+                              {prefecture.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -411,15 +631,31 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Daily Settlement Cutoff Time */}
+                    {/* Daily Settlement Cutoff Time — wired to GET/PUT /api/business/settings/settlement-cutoff */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Daily Settlement Cutoff Time</label>
-                      <input
-                        type="time"
-                        value={settings.daily_settlement_cutoff}
-                        onChange={(e) => updateSetting("daily_settlement_cutoff", e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
-                      />
+                      {cutoffLoading ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+                      ) : (
+                        <>
+                          <input
+                            type="time"
+                            value={settings.daily_settlement_cutoff}
+                            onChange={(e) => updateSetting("daily_settlement_cutoff", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                          />
+                          <button
+                            onClick={handleSaveCutoff}
+                            disabled={cutoffSaving}
+                            className="mt-2 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <Save className="w-3 h-3" />
+                            {cutoffSaving ? "Saving…" : "Save Cutoff"}
+                          </button>
+                          {cutoffSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{cutoffSuccess}</p>}
+                          {cutoffError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{cutoffError}</p>}
+                        </>
+                      )}
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Transactions before this time count toward the previous business day. Affects daily ops reports only — TVA reports always use calendar date.</p>
                     </div>
 
@@ -716,6 +952,43 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Notification Channels — wired to GET/PUT /api/business/notifications/channels */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    Notification Channels
+                  </h3>
+                  {notifChannelsLoading ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Loading channels…</p>
+                  ) : notifChannelsError ? (
+                    <p className="text-sm text-red-600 dark:text-red-400">{notifChannelsError}</p>
+                  ) : notifChannels.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No channels configured.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {notifChannels.map((ch) => (
+                        <div key={ch.channel} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white capitalize">{ch.channel}</p>
+                            {notifChannelsSuccess[ch.channel] && (
+                              <p className="text-xs text-emerald-600 dark:text-emerald-400">{notifChannelsSuccess[ch.channel]}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {notifChannelsSaving[ch.channel] && (
+                              <span className="text-xs text-gray-400">Saving…</span>
+                            )}
+                            <Toggle
+                              checked={ch.is_enabled}
+                              onChange={(val) => handleToggleChannel(ch, val)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -764,6 +1037,56 @@ export default function SettingsPage() {
                     <option value={120}>2 hours</option>
                     <option value={0}>Never</option>
                   </select>
+                </div>
+
+                {/* Change Password — wired to PUT /api/auth/change-password */}
+                <div className="border border-gray-200 dark:border-[#1F1F23] rounded-xl p-5 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Change Password
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
+                      <input
+                        type="password"
+                        value={pwForm.current_password}
+                        onChange={(e) => setPwForm((f) => ({ ...f, current_password: e.target.value }))}
+                        autoComplete="current-password"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
+                      <input
+                        type="password"
+                        value={pwForm.new_password}
+                        onChange={(e) => setPwForm((f) => ({ ...f, new_password: e.target.value }))}
+                        autoComplete="new-password"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={pwForm.confirm_password}
+                        onChange={(e) => setPwForm((f) => ({ ...f, confirm_password: e.target.value }))}
+                        autoComplete="new-password"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
+                      />
+                    </div>
+                    {pwError && <p className="text-sm text-red-600 dark:text-red-400">{pwError}</p>}
+                    {pwSuccess && <p className="text-sm text-emerald-600 dark:text-emerald-400">{pwSuccess}</p>}
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={pwSaving || !pwForm.current_password || !pwForm.new_password || !pwForm.confirm_password}
+                      className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      {pwSaving ? "Saving…" : "Update Password"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

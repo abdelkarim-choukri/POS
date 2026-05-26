@@ -60,6 +60,7 @@ import SystemParametersPage from "@/components/system-parameters-page"
 import VersionLogPage from "@/components/version-log-page"
 import CustomAuthorityPage from "@/components/custom-authority-page"
 import AdminAnnouncementsPage from "@/components/admin-announcements-page"
+import { apiFetch, clearToken, setToken, setRefreshToken, loadToken, getToken } from "@/lib/api"
 import {
   LayoutDashboard,
   Package,
@@ -431,12 +432,13 @@ interface NavGroup {
 
 type MenuState = "full" | "collapsed" | "hidden"
 
-function Sidebar({ activeItem, onNavigate, menuState, onToggleMenuState, onHoverChange }: {
+function Sidebar({ activeItem, onNavigate, menuState, onToggleMenuState, onHoverChange, onSignOut }: {
   activeItem: string
   onNavigate: (page: string, id?: string) => void
   menuState: MenuState
   onToggleMenuState: () => void
   onHoverChange?: (hovered: boolean) => void
+  onSignOut?: () => void
 }) {
   const [expandedGroups, setExpandedGroups] = useState<string[]>(["OVERVIEW", "CATALOG", "PEOPLE", "OPERATIONS", "MARKETING", "ANALYTICS", "INVENTORY", "COMMUNICATIONS", "ADMIN", "SYSTEM"])
   const [isHovered, setIsHovered] = useState(false)
@@ -719,7 +721,11 @@ function Sidebar({ activeItem, onNavigate, menuState, onToggleMenuState, onHover
             </div>
           )}
           {showText && (
-            <button className="p-1.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-colors">
+            <button
+              onClick={onSignOut}
+              className="p-1.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-colors"
+              title="Sign out"
+            >
               <LogOut className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             </button>
           )}
@@ -1369,7 +1375,7 @@ function PlaceholderPage({ title, description }: { title: string; description: s
 }
 
 // ============== MAIN LAYOUT ==============
-function MainLayout({ activePage, selectedId, onNavigate }: { activePage: string; selectedId: string | null; onNavigate: (page: string, id?: string) => void }) {
+function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activePage: string; selectedId: string | null; onNavigate: (page: string, id?: string) => void; onSignOut?: () => void }) {
   const [menuState, setMenuState] = useState<MenuState>("full")
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -1533,6 +1539,7 @@ function MainLayout({ activePage, selectedId, onNavigate }: { activePage: string
         menuState={isMobile ? "full" : menuState}
         onToggleMenuState={toggleMenuState}
         onHoverChange={setSidebarHovered}
+        onSignOut={onSignOut}
       />
       <main
         className="min-h-screen flex flex-col"
@@ -1552,6 +1559,284 @@ function MainLayout({ activePage, selectedId, onNavigate }: { activePage: string
           </motion.div>
         </AnimatePresence>
       </main>
+    </div>
+  )
+}
+
+// ============== LOGIN SCREEN ==============
+interface AccessibleBusiness { id: string; name: string; chain_role?: string }
+interface LoginResult { access_token: string; refresh_token: string; user?: { role?: string } }
+
+function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (isSuperAdmin: boolean) => void }) {
+  const [loginType, setLoginType] = useState<"business" | "super">("business")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Accessible businesses (chain users)
+  const [businesses, setBusinesses] = useState<AccessibleBusiness[] | null>(null)
+  const [switchingId, setSwitchingId] = useState<string | null>(null)
+  const [switchError, setSwitchError] = useState<string | null>(null)
+
+  // Region validate (linked from this screen as a utility)
+  const [regionCode, setRegionCode] = useState("")
+  const [regionResult, setRegionResult] = useState<unknown | null>(null)
+  const [regionLoading, setRegionLoading] = useState(false)
+  const [regionError, setRegionError] = useState<string | null>(null)
+  const [showRegionTool, setShowRegionTool] = useState(false)
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setBusinesses(null)
+    try {
+      const endpoint = loginType === "super" ? "/api/auth/super-admin/login" : "/api/auth/login"
+      const res = await apiFetch<LoginResult>(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      })
+      setToken(res.access_token)
+      setRefreshToken(res.refresh_token)
+
+      if (loginType === "business") {
+        // Fetch accessible businesses for chain users
+        try {
+          const bizRes = await apiFetch<AccessibleBusiness[] | { data: AccessibleBusiness[] }>(
+            "/api/auth/me/accessible-businesses"
+          )
+          const list = Array.isArray(bizRes) ? bizRes : (bizRes as { data: AccessibleBusiness[] }).data ?? []
+          if (list.length > 1) {
+            // Chain user — let them pick which business to enter
+            setBusinesses(list)
+            setLoading(false)
+            return
+          }
+        } catch {
+          // Not a chain user or endpoint not applicable — proceed normally
+        }
+        onLoginSuccess(false)
+      } else {
+        onLoginSuccess(true)
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Login failed")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSwitchBusiness = async (businessId: string) => {
+    setSwitchingId(businessId)
+    setSwitchError(null)
+    try {
+      const res = await apiFetch<LoginResult>("/api/auth/switch-business", {
+        method: "POST",
+        body: JSON.stringify({ business_id: businessId }),
+      })
+      setToken(res.access_token)
+      if (res.refresh_token) setRefreshToken(res.refresh_token)
+      onLoginSuccess(false)
+    } catch (e: any) {
+      setSwitchError(e.message ?? "Failed to switch business")
+    } finally {
+      setSwitchingId(null)
+    }
+  }
+
+  const handleValidateRegion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!regionCode.trim()) return
+    setRegionLoading(true)
+    setRegionError(null)
+    setRegionResult(null)
+    try {
+      const res = await apiFetch("/api/auth/regions/validate", {
+        method: "POST",
+        body: JSON.stringify({ region_code: regionCode.trim() }),
+      })
+      setRegionResult(res)
+    } catch (e: any) {
+      setRegionError(e.message ?? "Validation failed")
+    } finally {
+      setRegionLoading(false)
+    }
+  }
+
+  // If we have a list of businesses, show the picker instead of the form
+  if (businesses) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-[#09090f] flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full max-w-md p-8 space-y-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Select Business</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">You have access to multiple businesses</p>
+          </div>
+          {switchError && (
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{switchError}</p>
+          )}
+          <div className="space-y-3">
+            {businesses.map(biz => (
+              <button
+                key={biz.id}
+                onClick={() => handleSwitchBusiness(biz.id)}
+                disabled={switchingId === biz.id}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-[#1F1F23] hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all text-left disabled:opacity-60"
+              >
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                  {biz.name[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 dark:text-white truncate">{biz.name}</p>
+                  {biz.chain_role && (
+                    <p className="text-xs text-gray-400 capitalize">{biz.chain_role}</p>
+                  )}
+                </div>
+                {switchingId === biz.id && (
+                  <span className="animate-spin w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { setBusinesses(null); clearToken() }}
+            className="w-full text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          >
+            Back to login
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-[#09090f] flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full max-w-md p-8 space-y-6">
+        {/* Logo / Title */}
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+            <Store className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">POS Dashboard</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to your account</p>
+        </div>
+
+        {/* Login type tabs */}
+        <div className="flex gap-1 bg-gray-100 dark:bg-[#0F0F12] p-1 rounded-xl">
+          <button
+            onClick={() => { setLoginType("business"); setError(null) }}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${loginType === "business" ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"}`}
+          >
+            <div className="flex items-center justify-center gap-1.5">
+              <Building2 className="w-4 h-4" />
+              Business Admin
+            </div>
+          </button>
+          <button
+            onClick={() => { setLoginType("super"); setError(null) }}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${loginType === "super" ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"}`}
+          >
+            <div className="flex items-center justify-center gap-1.5">
+              <Shield className="w-4 h-4" />
+              Super Admin
+            </div>
+          </button>
+        </div>
+
+        {/* Login form */}
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-[#1F1F23] rounded-xl text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              placeholder="admin@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full px-4 py-2.5 pr-11 border border-gray-200 dark:border-[#1F1F23] rounded-xl text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                Signing in…
+              </>
+            ) : (
+              `Sign in as ${loginType === "super" ? "Super Admin" : "Business Admin"}`
+            )}
+          </button>
+        </form>
+
+        {/* Region Validate utility (collapsed by default) */}
+        <div className="border-t border-gray-200 dark:border-[#1F1F23] pt-4">
+          <button
+            onClick={() => setShowRegionTool(p => !p)}
+            className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors w-full"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            {showRegionTool ? "Hide" : "Validate region address"}
+          </button>
+          {showRegionTool && (
+            <form onSubmit={handleValidateRegion} className="mt-3 space-y-2">
+              <input
+                type="text"
+                required
+                value={regionCode}
+                onChange={e => setRegionCode(e.target.value)}
+                placeholder="Region code (e.g. mr-r-01)"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-xs bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              {regionError && <p className="text-xs text-red-500">{regionError}</p>}
+              {regionResult && (
+                <p className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded px-2 py-1">
+                  Valid: {JSON.stringify(regionResult)}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={regionLoading}
+                className="px-3 py-1.5 text-xs bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg font-medium hover:bg-gray-700 dark:hover:bg-gray-100 disabled:opacity-50 transition-colors"
+              >
+                {regionLoading ? "Validating…" : "Validate"}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1577,18 +1862,50 @@ const PAGES = [
 type Page = typeof PAGES[number]
 
 export default function App() {
-  const [page, setPage] = useState<Page>("super-dashboard")
+  const [page, setPage] = useState<Page>("dashboard")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  // On mount, restore token from localStorage and treat as authenticated if present
+  useEffect(() => {
+    loadToken()
+    if (getToken()) {
+      setIsAuthenticated(true)
+    }
+    setAuthChecked(true)
+  }, [])
 
   const navigate = (newPage: string, id?: string) => {
     setPage(newPage as Page)
     setSelectedId(id ?? null)
   }
 
-  if (page === "super-dashboard") {
-    return <SuperAdminPage onBack={() => navigate("dashboard")} />
+  const handleSignOut = async () => {
+    try { await apiFetch("/api/auth/logout", { method: "POST" }) } catch {}
+    clearToken()
+    setIsAuthenticated(false)
+    setIsSuperAdmin(false)
+    setPage("dashboard")
   }
 
-  return <MainLayout activePage={page} selectedId={selectedId} onNavigate={navigate} />
+  const handleLoginSuccess = (superAdmin: boolean) => {
+    setIsSuperAdmin(superAdmin)
+    setIsAuthenticated(true)
+    setPage(superAdmin ? "super-dashboard" : "dashboard")
+  }
+
+  if (!authChecked) return null  // avoid flash before localStorage check
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />
+  }
+
+  if (isSuperAdmin || page === "super-dashboard") {
+    return <SuperAdminPage onBack={() => { setIsSuperAdmin(false); navigate("dashboard") }} />
+  }
+
+  return <MainLayout activePage={page} selectedId={selectedId} onNavigate={navigate} onSignOut={handleSignOut} />
 }
 

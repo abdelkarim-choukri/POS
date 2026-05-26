@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   LayoutGrid,
   ChevronDown,
@@ -10,6 +10,7 @@ import {
   MapPin,
   Armchair,
 } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 // Data Shapes
 interface Table {
@@ -70,10 +71,12 @@ function TableBubble({
   table,
   isSelected,
   onClick,
+  onDragStart,
 }: {
   table: Table
   isSelected: boolean
   onClick: () => void
+  onDragStart: (e: React.DragEvent<HTMLButtonElement>, tableId: string) => void
 }) {
   // Determine color based on session status (for mockup, all are setup mode - gray)
   const getBubbleStyles = () => {
@@ -89,7 +92,9 @@ function TableBubble({
 
   return (
     <button
+      draggable
       onClick={onClick}
+      onDragStart={(e) => onDragStart(e, table.id)}
       className={`absolute w-[72px] h-[72px] rounded-2xl border-2 flex flex-col items-center justify-center cursor-move transition-all ${getBubbleStyles()} ${
         isSelected ? "ring-2 ring-green-500 ring-offset-1" : ""
       }`}
@@ -106,9 +111,19 @@ function TableBubble({
 }
 
 // Unplaced Table Chip Component
-function UnplacedTableChip({ table }: { table: Table }) {
+function UnplacedTableChip({
+  table,
+  onDragStart,
+}: {
+  table: Table
+  onDragStart: (e: React.DragEvent<HTMLDivElement>, tableId: string) => void
+}) {
   return (
-    <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-move hover:border-gray-300 transition-colors">
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, table.id)}
+      className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-move hover:border-gray-300 transition-colors"
+    >
       <GripVertical className="w-4 h-4 text-gray-400" />
       <span className="font-mono text-sm text-gray-700">{table.table_number}</span>
     </div>
@@ -118,8 +133,61 @@ function UnplacedTableChip({ table }: { table: Table }) {
 // Main Page Component
 export default function FloorPlanSetupPage() {
   const [selectedArea, setSelectedArea] = useState("all")
-  const [selectedTableId, setSelectedTableId] = useState<string | null>("t-3") // T-03 selected by default
-  const [tables, setTables] = useState(TABLES)
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
+  const [tables, setTables] = useState<Table[]>(TABLES)
+  const [loadingTables, setLoadingTables] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Track which table IDs have unsaved position changes
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
+  // Per-table save status: "saving" | "saved" | "error"
+  const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({})
+  // Bulk save layout state
+  const [savingLayout, setSavingLayout] = useState(false)
+  const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
+  // Drag tracking
+  const dragTableId = useRef<string | null>(null)
+  const dragOffsetRef = useRef<{ ox: number; oy: number }>({ ox: 0, oy: 0 })
+  const canvasRef = useRef<HTMLDivElement>(null)
+
+  // Load tables from backend on mount
+  useEffect(() => {
+    setLoadingTables(true)
+    setLoadError(null)
+    apiFetch<{ data: Table[] } | Table[]>("/api/business/tables")
+      .then((res) => {
+        const rows = Array.isArray(res) ? res : (res as { data: Table[] }).data
+        if (Array.isArray(rows) && rows.length > 0) {
+          setTables(rows)
+        }
+        // else keep mock data as fallback
+      })
+      .catch(() => {
+        // Backend not reachable — silently keep mock data; show a subtle indicator
+        setLoadError("Could not load tables from server — showing local data.")
+      })
+      .finally(() => setLoadingTables(false))
+  }, [])
+
+  // Persist a single table's position to the backend
+  const persistPosition = useCallback(async (tableId: string, x: number, y: number) => {
+    setSaveStatus((prev) => ({ ...prev, [tableId]: "saving" }))
+    try {
+      await apiFetch(`/api/business/tables/${tableId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ position_x: x, position_y: y }),
+      })
+      setSaveStatus((prev) => ({ ...prev, [tableId]: "saved" }))
+      setDirtyIds((prev) => { const next = new Set(prev); next.delete(tableId); return next })
+      // Clear "saved" badge after 2 s
+      setTimeout(() => setSaveStatus((prev) => {
+        const next = { ...prev }
+        if (next[tableId] === "saved") delete next[tableId]
+        return next
+      }), 2000)
+    } catch {
+      setSaveStatus((prev) => ({ ...prev, [tableId]: "error" }))
+    }
+  }, [])
 
   // Filter tables by area
   const filteredTables = selectedArea === "all" ? tables : tables.filter((t) => t.area_id === selectedArea)
@@ -130,13 +198,80 @@ export default function FloorPlanSetupPage() {
 
   const selectedTable = tables.find((t) => t.id === selectedTableId)
 
+  // Update position in local state and mark dirty (no auto-persist — user must press Save Position or Save Layout)
   const updateTablePosition = (tableId: string, x: number, y: number) => {
-    setTables(tables.map((t) => (t.id === tableId ? { ...t, position_x: x, position_y: y } : t)))
+    setTables((prev) => prev.map((t) => (t.id === tableId ? { ...t, position_x: x, position_y: y } : t)))
+    setDirtyIds((prev) => new Set(prev).add(tableId))
   }
 
   const removeFromFloorPlan = (tableId: string) => {
-    setTables(tables.map((t) => (t.id === tableId ? { ...t, position_x: undefined, position_y: undefined } : t)))
+    setTables((prev) => prev.map((t) => (t.id === tableId ? { ...t, position_x: undefined, position_y: undefined } : t)))
+    setDirtyIds((prev) => { const next = new Set(prev); next.delete(tableId); return next })
     setSelectedTableId(null)
+    // Persist removal (null positions represented by omitting fields — send 0,0 is wrong;
+    // instead PATCH without position fields would leave it unchanged, so we skip the API call
+    // here; the backend simply won't have a position stored, matching the undefined state.)
+  }
+
+  // Drag-start: record which table and the cursor offset inside the bubble
+  const handleDragStart = (
+    e: React.DragEvent<HTMLButtonElement | HTMLDivElement>,
+    tableId: string,
+  ) => {
+    dragTableId.current = tableId
+    // Store cursor offset relative to the drag element's top-left corner
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    dragOffsetRef.current = {
+      ox: e.clientX - rect.left,
+      oy: e.clientY - rect.top,
+    }
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  // Drop on canvas: calculate new % position and update state
+  const handleCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const tableId = dragTableId.current
+    if (!tableId || !canvasRef.current) return
+    const canvasRect = canvasRef.current.getBoundingClientRect()
+    // Cursor position relative to canvas, adjusted by intra-bubble offset so the bubble centre lands under cursor
+    const bubbleHalfW = 36 // 72px / 2
+    const bubbleHalfH = 36
+    const rawX = e.clientX - canvasRect.left - dragOffsetRef.current.ox + bubbleHalfW
+    const rawY = e.clientY - canvasRect.top - dragOffsetRef.current.oy + bubbleHalfH
+    // Convert to percentage, clamped 2–98 so bubbles don't clip the canvas edge
+    const pctX = Math.min(98, Math.max(2, (rawX / canvasRect.width) * 100))
+    const pctY = Math.min(98, Math.max(2, (rawY / canvasRect.height) * 100))
+    const x = Math.round(pctX * 10) / 10
+    const y = Math.round(pctY * 10) / 10
+    updateTablePosition(tableId, x, y)
+    setSelectedTableId(tableId)
+    // Auto-persist immediately after drop
+    persistPosition(tableId, x, y)
+    dragTableId.current = null
+  }
+
+  // Save Layout: batch-persist all dirty table positions
+  const handleSaveLayout = async () => {
+    if (dirtyIds.size === 0) return
+    setSavingLayout(true)
+    setLayoutSaveError(null)
+    const dirty = tables.filter((t) => dirtyIds.has(t.id) && t.position_x !== undefined && t.position_y !== undefined)
+    try {
+      await Promise.all(
+        dirty.map((t) =>
+          apiFetch(`/api/business/tables/${t.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ position_x: t.position_x, position_y: t.position_y }),
+          }),
+        ),
+      )
+      setDirtyIds(new Set())
+    } catch {
+      setLayoutSaveError("Some positions could not be saved. Please try again.")
+    } finally {
+      setSavingLayout(false)
+    }
   }
 
   return (
@@ -153,27 +288,53 @@ export default function FloorPlanSetupPage() {
           </div>
         </div>
 
-        <div className="relative">
-          <select
-            value={selectedArea}
-            onChange={(e) => setSelectedArea(e.target.value)}
-            className="appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-          >
-            {DINING_AREAS.map((area) => (
-              <option key={area.id} value={area.id}>
-                {area.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <div className="flex items-center gap-3">
+          {/* Save Layout button — only shown when there are unsaved positions */}
+          {dirtyIds.size > 0 && (
+            <button
+              onClick={handleSaveLayout}
+              disabled={savingLayout}
+              className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-xl hover:bg-green-600 disabled:opacity-60 transition-colors"
+            >
+              {savingLayout ? "Saving…" : `Save Layout (${dirtyIds.size})`}
+            </button>
+          )}
+          {layoutSaveError && (
+            <span className="text-xs text-red-500">{layoutSaveError}</span>
+          )}
+
+          <div className="relative">
+            <select
+              value={selectedArea}
+              onChange={(e) => setSelectedArea(e.target.value)}
+              className="appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+            >
+              {DINING_AREAS.map((area) => (
+                <option key={area.id} value={area.id}>
+                  {area.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
+
+      {/* Load error banner */}
+      {loadError && (
+        <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          {loadError}
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex gap-6">
         {/* Canvas Area */}
         <div className="flex-1">
           <div
+            ref={canvasRef}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleCanvasDrop}
             className="relative bg-white border border-gray-200 rounded-2xl overflow-hidden"
             style={{
               height: "520px",
@@ -184,6 +345,13 @@ export default function FloorPlanSetupPage() {
               backgroundSize: "40px 40px",
             }}
           >
+            {/* Loading overlay */}
+            {loadingTables && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
+                <span className="text-sm text-gray-400">Loading tables…</span>
+              </div>
+            )}
+
             {/* Area Labels */}
             <div className="absolute top-4 left-4 flex gap-2">
               {selectedArea === "all" && (
@@ -205,11 +373,12 @@ export default function FloorPlanSetupPage() {
                 table={table}
                 isSelected={selectedTableId === table.id}
                 onClick={() => setSelectedTableId(table.id)}
+                onDragStart={handleDragStart}
               />
             ))}
 
             {/* Empty State */}
-            {placedTables.length === 0 && (
+            {!loadingTables && placedTables.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <LayoutGrid className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -232,7 +401,18 @@ export default function FloorPlanSetupPage() {
                 <h3 className="font-semibold text-gray-900">
                   {selectedTable.table_number} — {selectedTable.area_name}
                 </h3>
-                <Badge variant="green">Active</Badge>
+                <div className="flex items-center gap-2">
+                  {saveStatus[selectedTable.id] === "saving" && (
+                    <span className="text-xs text-gray-400">Saving…</span>
+                  )}
+                  {saveStatus[selectedTable.id] === "saved" && (
+                    <span className="text-xs text-green-600">Saved</span>
+                  )}
+                  {saveStatus[selectedTable.id] === "error" && (
+                    <span className="text-xs text-red-500">Save failed</span>
+                  )}
+                  <Badge variant="green">Active</Badge>
+                </div>
               </div>
 
               <div className="flex items-center gap-6 text-sm text-gray-600 mb-4">
@@ -261,7 +441,9 @@ export default function FloorPlanSetupPage() {
                         min={0}
                         max={100}
                         value={selectedTable.position_x ?? 0}
-                        onChange={(e) => updateTablePosition(selectedTable.id, Number(e.target.value), selectedTable.position_y ?? 0)}
+                        onChange={(e) =>
+                          updateTablePosition(selectedTable.id, Number(e.target.value), selectedTable.position_y ?? 0)
+                        }
                         className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
                       />
                     </div>
@@ -272,7 +454,9 @@ export default function FloorPlanSetupPage() {
                         min={0}
                         max={100}
                         value={selectedTable.position_y ?? 0}
-                        onChange={(e) => updateTablePosition(selectedTable.id, selectedTable.position_x ?? 0, Number(e.target.value))}
+                        onChange={(e) =>
+                          updateTablePosition(selectedTable.id, selectedTable.position_x ?? 0, Number(e.target.value))
+                        }
                         className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
                       />
                     </div>
@@ -286,8 +470,18 @@ export default function FloorPlanSetupPage() {
                   >
                     Remove from Floor Plan
                   </button>
-                  <button className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors">
-                    Save Position
+                  <button
+                    disabled={saveStatus[selectedTable.id] === "saving"}
+                    onClick={() =>
+                      persistPosition(
+                        selectedTable.id,
+                        selectedTable.position_x ?? 0,
+                        selectedTable.position_y ?? 0,
+                      )
+                    }
+                    className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-60 transition-colors"
+                  >
+                    {saveStatus[selectedTable.id] === "saving" ? "Saving…" : "Save Position"}
                   </button>
                 </div>
               </div>
@@ -302,7 +496,11 @@ export default function FloorPlanSetupPage() {
           {unplacedTables.length > 0 ? (
             <div className="space-y-2">
               {unplacedTables.map((table) => (
-                <UnplacedTableChip key={table.id} table={table} />
+                <UnplacedTableChip
+                  key={table.id}
+                  table={table}
+                  onDragStart={handleDragStart}
+                />
               ))}
             </div>
           ) : (

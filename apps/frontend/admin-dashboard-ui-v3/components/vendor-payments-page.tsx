@@ -82,29 +82,6 @@ interface VendorPayment {
   created_by: string
 }
 
-// ============== MOCK DATA ==============
-const mockVendors: Vendor[] = [
-  { id: "v1", name: "Fresh Farms Produce", contact_name: "Ahmed Benali", phone: "+212 6 12 34 56 78" },
-  { id: "v2", name: "Ocean Seafood Co.", contact_name: "Fatima Alami", phone: "+212 6 22 33 44 55" },
-  { id: "v3", name: "Bakery Supplies Ltd", contact_name: "Karim Idrissi", phone: "+212 6 33 44 55 66" },
-  { id: "v4", name: "Beverage Distributors", contact_name: "Sara Tazi", phone: "+212 6 44 55 66 77" },
-]
-
-const mockOutstandingPOs: OutstandingPO[] = [
-  { id: "po1", po_number: "PO-2024-001", vendor_id: "v1", vendor_name: "Fresh Farms Produce", total_ttc: 35000, amount_paid: 15000, balance_due: 20000, expected_delivery_date: "2024-03-10", status: "partial" },
-  { id: "po2", po_number: "PO-2024-003", vendor_id: "v1", vendor_name: "Fresh Farms Produce", total_ttc: 18500, amount_paid: 0, balance_due: 18500, expected_delivery_date: "2024-03-15", status: "unpaid" },
-  { id: "po3", po_number: "PO-2024-005", vendor_id: "v2", vendor_name: "Ocean Seafood Co.", total_ttc: 25000, amount_paid: 12000, balance_due: 13000, expected_delivery_date: "2024-03-12", status: "partial" },
-  { id: "po4", po_number: "PO-2024-008", vendor_id: "v3", vendor_name: "Bakery Supplies Ltd", total_ttc: 8500, amount_paid: 0, balance_due: 8500, expected_delivery_date: "2024-03-18", status: "unpaid" },
-  { id: "po5", po_number: "PO-2024-010", vendor_id: "v2", vendor_name: "Ocean Seafood Co.", total_ttc: 15000, amount_paid: 15000, balance_due: 0, expected_delivery_date: "2024-03-05", status: "paid" },
-]
-
-const mockPayments: VendorPayment[] = [
-  { id: "vp1", payment_number: "VP-2024-00001", vendor_id: "v1", vendor_name: "Fresh Farms Produce", po_number: "PO-2024-001", po_id: "po1", payment_method: "bank_transfer", amount: 15000, status: "confirmed", payment_date: "2024-03-01", confirmed_by: "Admin", confirmed_at: "2024-03-01 14:30", reference_number: "TRF-12345", notes: null, created_by: "Staff" },
-  { id: "vp2", payment_number: "VP-2024-00002", vendor_id: "v2", vendor_name: "Ocean Seafood Co.", po_number: "PO-2024-005", po_id: "po3", payment_method: "check", amount: 12000, status: "pending", payment_date: "2024-03-05", confirmed_by: null, confirmed_at: null, reference_number: "CHK-001235", notes: "Check due: March 15", created_by: "Staff" },
-  { id: "vp3", payment_number: "VP-2024-00003", vendor_id: "v2", vendor_name: "Ocean Seafood Co.", po_number: "PO-2024-010", po_id: "po5", payment_method: "cash", amount: 15000, status: "confirmed", payment_date: "2024-03-03", confirmed_by: "Manager", confirmed_at: "2024-03-03 10:15", reference_number: null, notes: null, created_by: "Manager" },
-  { id: "vp4", payment_number: "VP-2024-00004", vendor_id: "v1", vendor_name: "Fresh Farms Produce", po_number: null, po_id: null, payment_method: "mobile", amount: 5000, status: "voided", payment_date: "2024-03-02", confirmed_by: null, confirmed_at: null, reference_number: "MOB-9876", notes: "Voided - incorrect amount", created_by: "Staff" },
-  { id: "vp5", payment_number: "VP-2024-00005", vendor_id: "v3", vendor_name: "Bakery Supplies Ltd", po_number: null, po_id: null, payment_method: "bank_transfer", amount: 3500, status: "pending", payment_date: "2024-03-08", confirmed_by: null, confirmed_at: null, reference_number: "TRF-54321", notes: "Advance payment for next order", created_by: "Admin" },
-]
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "blue" | "yellow" | "gray" | "indigo" | "purple" }) {
@@ -177,11 +154,6 @@ interface UserPermissions {
   can_void_payment: boolean
 }
 
-const mockUserPermissions: UserPermissions = {
-  role: "manager",
-  can_confirm_payment: true,
-  can_void_payment: true,
-}
 
 // Helper functions for formatting
 function formatPrice(amount: number): string {
@@ -261,23 +233,39 @@ function getStatusIcon(status: PaymentStatus) {
 }
 
 // ============== MAIN PAGE COMPONENT ==============
+interface VendorSummary {
+  total_paid: number
+  total_outstanding: number
+  avg_days_to_pay: number
+}
+
 export default function VendorPaymentsPage() {
-  const [payments, setPayments] = useState<VendorPayment[]>(mockPayments)
+  const [payments, setPayments] = useState<VendorPayment[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [outstandingPOs, setOutstandingPOs] = useState<OutstandingPO[]>([])
+  const [vendorSummary, setVendorSummary] = useState<VendorSummary | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [vendorFilter, setVendorFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState<"all" | PaymentStatus>("all")
   const [methodFilter, setMethodFilter] = useState<"all" | PaymentMethod>("all")
   const [isLoading, setIsLoading] = useState(true)
-  const [permissions] = useState<UserPermissions>(mockUserPermissions)
-  
+  const [permissions] = useState<UserPermissions>({
+    role: "manager",
+    can_confirm_payment: true,
+    can_void_payment: true,
+  })
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGINATION.defaultPageSize)
-  
+
   // Modals & Panels
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [showVoidModal, setShowVoidModal] = useState(false)
+  const [voidReason, setVoidReason] = useState("")
   const [selectedPayment, setSelectedPayment] = useState<VendorPayment | null>(null)
   
   // Form state
@@ -291,35 +279,58 @@ export default function VendorPaymentsPage() {
     notes: "",
   })
 
+  const mapPayment = (p: any): VendorPayment => ({
+    id: p.id,
+    payment_number: p.payment_number,
+    vendor_id: p.vendor_id,
+    vendor_name: p.vendor?.name ?? p.vendor_name ?? "",
+    po_id: p.purchase_order_id ?? null,
+    po_number: p.purchase_order?.po_number ?? p.po_number ?? null,
+    payment_method: p.payment_method,
+    amount: p.amount ?? 0,
+    payment_date: p.payment_date ?? "",
+    status: p.status,
+    reference_number: p.reference_number ?? null,
+    notes: p.notes ?? null,
+    confirmed_by: p.confirmed_by ?? null,
+    confirmed_at: p.confirmed_at ?? null,
+    created_by: p.created_by_user?.name ?? p.created_by ?? "",
+  })
+
   const fetchPayments = async () => {
     setIsLoading(true)
     try {
-      const res = await apiFetch<{ data: any[] }>(`/api/business/vendor-payments?status=${statusFilter !== "all" ? statusFilter : ""}&vendor_id=${vendorFilter !== "all" ? vendorFilter : ""}`)
-      const mapped: VendorPayment[] = res.data.map((p: any) => ({
-        id: p.id,
-        payment_number: p.payment_number,
-        vendor_id: p.vendor_id,
-        vendor_name: p.vendor?.name ?? p.vendor_name ?? "",
-        po_id: p.purchase_order_id,
-        po_number: p.purchase_order?.po_number ?? p.po_number,
-        payment_method: p.payment_method,
-        amount: p.amount ?? 0,
-        payment_date: p.payment_date ?? "",
-        status: p.status,
-        reference_number: p.reference_number,
-        notes: p.notes,
-        confirmed_by: p.confirmed_by,
-        confirmed_at: p.confirmed_at,
-        created_at: p.created_at ?? "",
-      }))
-      setPayments(mapped)
-    } catch {
+      const params = new URLSearchParams()
+      if (statusFilter !== "all") params.set("status", statusFilter)
+      if (vendorFilter !== "all") params.set("vendor_id", vendorFilter)
+      const res = await apiFetch<{ data: any[]; total: number }>(`/api/business/vendor-payments?${params.toString()}`)
+      setPayments((res.data ?? []).map(mapPayment))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load payments")
     } finally {
       setIsLoading(false)
     }
   }
 
-  useEffect(() => { fetchPayments() }, [])
+  const fetchVendors = async () => {
+    try {
+      const res = await apiFetch<{ data: any[] }>("/api/business/vendors")
+      setVendors(
+        (res.data ?? []).map((v: any) => ({
+          id: v.id,
+          name: v.name,
+          contact_name: v.contact_name ?? "",
+          phone: v.phone ?? "",
+        }))
+      )
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load vendors")
+    }
+  }
+
+  useEffect(() => {
+    Promise.all([fetchPayments(), fetchVendors()])
+  }, [])
 
   // Permission checks
   const canConfirmPayment = permissions.role === "manager" || permissions.role === "owner"
@@ -332,7 +343,7 @@ export default function VendorPaymentsPage() {
   const totalPaidThisMonth = payments
     .filter(p => p.status === "confirmed" && new Date(p.payment_date).getMonth() === currentMonth && new Date(p.payment_date).getFullYear() === currentYear)
     .reduce((sum, p) => sum + p.amount, 0)
-  const totalOutstanding = mockOutstandingPOs.reduce((sum, po) => sum + po.balance_due, 0)
+  const totalOutstanding = outstandingPOs.reduce((sum, po) => sum + po.balance_due, 0)
   const pendingPayments = payments.filter(p => p.status === "pending").length
   const pendingAmount = payments.filter(p => p.status === "pending").reduce((sum, p) => sum + p.amount, 0)
 
@@ -347,10 +358,58 @@ export default function VendorPaymentsPage() {
     return matchesSearch && matchesVendor && matchesStatus && matchesMethod
   })
 
-  // Get outstanding POs for selected vendor
+  // Get outstanding POs for selected vendor (from API-fetched outstandingPOs)
   const vendorPOs = formData.vendor_id
-    ? mockOutstandingPOs.filter(po => po.vendor_id === formData.vendor_id && po.balance_due > 0)
+    ? outstandingPOs.filter(po => po.vendor_id === formData.vendor_id && po.balance_due > 0)
     : []
+
+  const handleSubmitPayment = async () => {
+    try {
+      const body: Record<string, any> = {
+        vendor_id: formData.vendor_id,
+        payment_method: formData.payment_method,
+        amount: parseFloat(formData.amount),
+        payment_date: formData.payment_date,
+      }
+      if (formData.po_id) body.purchase_order_id = formData.po_id
+      if (formData.reference_number) body.reference_number = formData.reference_number
+      if (formData.notes) body.notes = formData.notes
+      await apiFetch("/api/business/vendor-payments", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+      setShowAddModal(false)
+      await fetchPayments()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to create payment")
+    }
+  }
+
+  const fetchOutstandingPOs = async (vendorId: string) => {
+    if (!vendorId) { setOutstandingPOs([]); setVendorSummary(null); return }
+    try {
+      const [outstandingRes, summaryRes] = await Promise.all([
+        apiFetch<{ purchase_orders: any[] }>(`/api/business/vendors/${vendorId}/outstanding`),
+        apiFetch<VendorSummary>(`/api/business/vendors/${vendorId}/payment-summary`),
+      ])
+      setOutstandingPOs(
+        (outstandingRes.purchase_orders ?? []).map((po: any) => ({
+          id: po.id,
+          po_number: po.po_number,
+          vendor_id: vendorId,
+          vendor_name: "",
+          total_ttc: po.total_ttc ?? 0,
+          amount_paid: po.amount_paid ?? 0,
+          balance_due: po.balance_due ?? 0,
+          expected_delivery_date: po.expected_delivery_date ?? "",
+          status: po.balance_due <= 0 ? "paid" : po.amount_paid > 0 ? "partial" : "unpaid",
+        }))
+      )
+      setVendorSummary(summaryRes)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load vendor outstanding POs")
+    }
+  }
 
   const handleAddPayment = () => {
     setFormData({
@@ -362,12 +421,20 @@ export default function VendorPaymentsPage() {
       reference_number: "",
       notes: "",
     })
+    setOutstandingPOs([])
+    setVendorSummary(null)
     setShowAddModal(true)
   }
 
-  const handleViewPayment = (payment: VendorPayment) => {
+  const handleViewPayment = async (payment: VendorPayment) => {
     setSelectedPayment(payment)
     setShowDetailPanel(true)
+    try {
+      const detail = await apiFetch<any>(`/api/business/vendor-payments/${payment.id}`)
+      setSelectedPayment(mapPayment(detail))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load payment details")
+    }
   }
 
   const handleConfirmPayment = (payment: VendorPayment) => {
@@ -380,22 +447,40 @@ export default function VendorPaymentsPage() {
       try {
         await apiFetch(`/api/business/vendor-payments/${selectedPayment.id}/confirm`, { method: "POST" })
         await fetchPayments()
-      } catch {}
+      } catch (e: any) {
+        setError(e.message ?? "Failed to confirm payment")
+      }
     }
     setShowConfirmModal(false)
     setSelectedPayment(null)
   }
 
-  const voidPayment = async (paymentId: string) => {
+  const handleVoidPayment = (payment: VendorPayment) => {
+    setSelectedPayment(payment)
+    setVoidReason("")
+    setShowVoidModal(true)
+  }
+
+  const submitVoidPayment = async () => {
+    if (!selectedPayment) return
     try {
-      await apiFetch(`/api/business/vendor-payments/${paymentId}/void`, { method: "POST" })
+      await apiFetch(`/api/business/vendor-payments/${selectedPayment.id}/void`, {
+        method: "POST",
+        body: JSON.stringify({ reason: voidReason }),
+      })
       await fetchPayments()
-    } catch {}
+    } catch (e: any) {
+      setError(e.message ?? "Failed to void payment")
+    }
+    setShowVoidModal(false)
+    setVoidReason("")
+    setSelectedPayment(null)
+    setShowDetailPanel(false)
   }
 
   const handlePOSelect = (poId: string) => {
     setFormData(f => ({ ...f, po_id: poId }))
-    const po = mockOutstandingPOs.find(p => p.id === poId)
+    const po = outstandingPOs.find(p => p.id === poId)
     if (po) {
       setFormData(f => ({ ...f, amount: po.balance_due.toString() }))
     }
@@ -403,6 +488,15 @@ export default function VendorPaymentsPage() {
 
   return (
     <div className="h-full">
+      {/* Error Banner */}
+      {error && (
+        <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -468,7 +562,7 @@ export default function VendorPaymentsPage() {
             className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
           >
             <option value="all">All Vendors</option>
-            {mockVendors.map(v => (
+            {vendors.map(v => (
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
           </select>
@@ -562,7 +656,7 @@ export default function VendorPaymentsPage() {
                           <Check className="w-3 h-3" />
                           Confirm
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600" onClick={() => voidPayment(payment.id)}>
+                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600" onClick={() => handleVoidPayment(payment)}>
                           <Ban className="w-3 h-3" />
                         </Button>
                       </>
@@ -603,11 +697,15 @@ export default function VendorPaymentsPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vendor *</label>
             <select
               value={formData.vendor_id}
-              onChange={(e) => setFormData(f => ({ ...f, vendor_id: e.target.value, po_id: "", amount: "" }))}
+              onChange={(e) => {
+                const vid = e.target.value
+                setFormData(f => ({ ...f, vendor_id: vid, po_id: "", amount: "" }))
+                fetchOutstandingPOs(vid)
+              }}
               className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
             >
               <option value="">Select vendor...</option>
-              {mockVendors.map(v => (
+              {vendors.map(v => (
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
             </select>
@@ -710,7 +808,7 @@ export default function VendorPaymentsPage() {
           
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" disabled={!formData.vendor_id || !formData.amount}>
+            <Button variant="primary" className="flex-1" disabled={!formData.vendor_id || !formData.amount} onClick={handleSubmitPayment}>
               <Check className="w-4 h-4" />
               Record Payment
             </Button>
@@ -758,6 +856,34 @@ export default function VendorPaymentsPage() {
               <Button variant="primary" className="flex-1" onClick={confirmPayment}>
                 <CheckCircle className="w-4 h-4" />
                 Confirm Payment
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Void Payment Modal */}
+      <Modal isOpen={showVoidModal} onClose={() => { setShowVoidModal(false); setVoidReason("") }} title="Void Payment" size="sm">
+        {selectedPayment && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              You are about to void payment <span className="font-mono font-semibold text-gray-900 dark:text-white">{selectedPayment.payment_number}</span>. This action cannot be undone.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason *</label>
+              <textarea
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="Reason for voiding this payment..."
+                rows={3}
+                className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white resize-none"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" className="flex-1" onClick={() => { setShowVoidModal(false); setVoidReason("") }}>Cancel</Button>
+              <Button variant="danger" className="flex-1" disabled={!voidReason.trim()} onClick={submitVoidPayment}>
+                <Ban className="w-4 h-4" />
+                Void Payment
               </Button>
             </div>
           </div>
@@ -862,7 +988,7 @@ export default function VendorPaymentsPage() {
                     <CheckCircle className="w-4 h-4" />
                     Confirm Payment
                   </Button>
-                  <Button variant="danger" className="w-full" onClick={() => { voidPayment(selectedPayment.id); setShowDetailPanel(false); }}>
+                  <Button variant="danger" className="w-full" onClick={() => { setShowDetailPanel(false); handleVoidPayment(selectedPayment); }}>
                     <Ban className="w-4 h-4" />
                     Void Payment
                   </Button>

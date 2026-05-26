@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShoppingCart,
   Trash2,
@@ -42,124 +42,24 @@ import {
   Flame,
   Truck,
   MoveRight,
+  ArrowRightLeft,
 } from "lucide-react";
 import { terminalService } from '../lib/services/terminal.service';
+import type {
+  FloorPlanTable,
+  OpenedSession,
+  SessionItem,
+} from '../lib/services/terminal.service';
 
 // ============================================================
 // MOCK DATA
 // ============================================================
 
 // ============================================================
-// PHASE 10 - RESTAURANT OPERATIONS MOCK DATA
+// PHASE 10 - RESTAURANT OPERATIONS (types only; no mock data)
 // ============================================================
 
-type TableStatus = 'available' | 'occupied' | 'awaiting_payment';
-type KdsStatus = 'new' | 'preparing' | 'ready' | 'served';
-
-interface FloorPlanTable {
-  id: string;
-  table_number: string;
-  capacity: number;
-  area_id: string;
-  area_name: string;
-  table_type: string;
-  session_status: TableStatus;
-  session_id?: string;
-  open_since?: string;
-  guest_count?: number;
-  current_order_total?: number;
-}
-
-interface DiningArea {
-  id: string;
-  name: string;
-  sort_order: number;
-}
-
-interface TableSessionItem {
-  id: string;
-  product_id: string;
-  product_name: string;
-  variant_name?: string;
-  quantity: number;
-  unit_price_ttc: number;
-  line_total: number;
-  modifiers_json?: { modifiers?: { name: string; price: number }[] };
-  notes?: string;
-  kds_status: KdsStatus;
-  added_by: string;
-  customer_id?: string;
-  customer_label?: string;
-}
-
-interface TableSession {
-  id: string;
-  table_id: string;
-  table_number: string;
-  area_name: string;
-  status: 'open' | 'awaiting_payment';
-  guest_count: number;
-  opened_at: string;
-  items: TableSessionItem[];
-  notes?: string;
-  session_total: number;
-}
-
-const MOCK_DINING_AREAS: DiningArea[] = [
-  { id: "indoor", name: "Indoor", sort_order: 1 },
-  { id: "terrace", name: "Terrace", sort_order: 2 },
-  { id: "bar", name: "Bar", sort_order: 3 },
-];
-
-const MOCK_FLOOR_TABLES: FloorPlanTable[] = [
-  // Indoor
-  { id: "t1", table_number: "T-01", capacity: 4, area_id: "indoor", area_name: "Indoor", table_type: "Standard", session_status: "available" },
-  { id: "t2", table_number: "T-02", capacity: 4, area_id: "indoor", area_name: "Indoor", table_type: "Booth", session_status: "occupied", session_id: "s1", open_since: new Date(Date.now() - 38 * 60000).toISOString(), guest_count: 4, current_order_total: 245 },
-  { id: "t3", table_number: "T-03", capacity: 2, area_id: "indoor", area_name: "Indoor", table_type: "Standard", session_status: "occupied", session_id: "s2", open_since: new Date(Date.now() - 12 * 60000).toISOString(), guest_count: 2, current_order_total: 87 },
-  { id: "t4", table_number: "T-04", capacity: 4, area_id: "indoor", area_name: "Indoor", table_type: "Standard", session_status: "available" },
-  { id: "t5", table_number: "T-05", capacity: 6, area_id: "indoor", area_name: "Indoor", table_type: "Private", session_status: "awaiting_payment", session_id: "s3", open_since: new Date(Date.now() - 65 * 60000).toISOString(), guest_count: 6, current_order_total: 412 },
-  // Terrace
-  { id: "t6", table_number: "T-06", capacity: 2, area_id: "terrace", area_name: "Terrace", table_type: "Standard", session_status: "available" },
-  { id: "t7", table_number: "T-07", capacity: 2, area_id: "terrace", area_name: "Terrace", table_type: "Standard", session_status: "occupied", session_id: "s4", open_since: new Date(Date.now() - 5 * 60000).toISOString(), guest_count: 2, current_order_total: 45 },
-  { id: "t8", table_number: "T-08", capacity: 4, area_id: "terrace", area_name: "Terrace", table_type: "Standard", session_status: "available" },
-  // Bar
-  { id: "b1", table_number: "B-01", capacity: 2, area_id: "bar", area_name: "Bar", table_type: "Bar Stool", session_status: "available" },
-  { id: "b2", table_number: "B-02", capacity: 1, area_id: "bar", area_name: "Bar", table_type: "Bar Stool", session_status: "occupied", session_id: "s5", open_since: new Date(Date.now() - 22 * 60000).toISOString(), guest_count: 1, current_order_total: 65 },
-  { id: "b3", table_number: "B-03", capacity: 2, area_id: "bar", area_name: "Bar", table_type: "Bar Stool", session_status: "awaiting_payment", session_id: "s6", open_since: new Date(Date.now() - 45 * 60000).toISOString(), guest_count: 2, current_order_total: 130 },
-  { id: "b4", table_number: "B-04", capacity: 2, area_id: "bar", area_name: "Bar", table_type: "Bar Stool", session_status: "available" },
-];
-
-const MOCK_TABLE_SESSION: TableSession = {
-  id: "s1",
-  table_id: "t2",
-  table_number: "T-02",
-  area_name: "Indoor",
-  status: "open",
-  guest_count: 4,
-  opened_at: new Date(Date.now() - 38 * 60000).toISOString(),
-  session_total: 482,
-  items: [
-    { id: "i1", product_id: "p1", product_name: "Espresso", quantity: 2, unit_price_ttc: 30, line_total: 60, kds_status: "ready", added_by: "Ahmed", customer_label: "Guest 1" },
-    { id: "i2", product_id: "p2", product_name: "Café Latte", variant_name: "Large", quantity: 1, unit_price_ttc: 45, line_total: 45, kds_status: "preparing", added_by: "Ahmed", customer_label: "Guest 2" },
-    { id: "i3", product_id: "p3", product_name: "Croissant", quantity: 3, unit_price_ttc: 35, line_total: 105, kds_status: "new", added_by: "Ahmed", modifiers_json: { modifiers: [{ name: "Extra Butter", price: 5 }] } },
-    { id: "i4", product_id: "p4", product_name: "Moroccan Mint Tea", quantity: 1, unit_price_ttc: 25, line_total: 25, kds_status: "new", added_by: "Ahmed", notes: "extra mint" },
-    { id: "i5", product_id: "p5", product_name: "Orange Juice", quantity: 1, unit_price_ttc: 30, line_total: 30, kds_status: "served", added_by: "Ahmed", customer_label: "Guest 2" },
-    { id: "i6", product_id: "p6", product_name: "Avocado Toast", quantity: 2, unit_price_ttc: 55, line_total: 110, kds_status: "new", added_by: "Fatima" },
-    { id: "i7", product_id: "p7", product_name: "Almond Croissant", quantity: 2, unit_price_ttc: 40, line_total: 80, kds_status: "ready", added_by: "Ahmed", customer_label: "Guest 3" },
-    { id: "i8", product_id: "p8", product_name: "Cappuccino", quantity: 1, unit_price_ttc: 27, line_total: 27, kds_status: "served", added_by: "Fatima", customer_label: "Guest 4" },
-  ],
-};
-
-const MOCK_QUICK_ADD_PRODUCTS = [
-  { id: "q1", name: "Espresso", price: 30, category: "Coffee" },
-  { id: "q2", name: "Café Latte", price: 40, category: "Coffee" },
-  { id: "q3", name: "Cappuccino", price: 35, category: "Coffee" },
-  { id: "q4", name: "Americano", price: 28, category: "Coffee" },
-  { id: "q5", name: "Croissant", price: 30, category: "Pastries" },
-  { id: "q6", name: "Pain au Chocolat", price: 35, category: "Pastries" },
-  { id: "q7", name: "Orange Juice", price: 30, category: "Drinks" },
-  { id: "q8", name: "Mint Tea", price: 25, category: "Drinks" },
-];
+type KdsStatus = 'new' | 'preparing' | 'ready' | 'served' | 'cancelled';
 
 const MOCK_CUSTOMERS = [
   { id: "1", name: "Ahmed Hassan", phone: "0612345678", grade: "Gold", points: 2450, color: "bg-yellow-500" },
@@ -1746,46 +1646,88 @@ function VoidScreen({
 }
 
 // ============================================================
-// FLOOR PLAN SCREEN (Phase 10)
+// FLOOR PLAN SCREEN (Phase 10) — real API
 // ============================================================
 
 function FloorPlanScreen({
   onSelectTable,
   onBack,
 }: {
-  onSelectTable: (tableId: string) => void;
+  onSelectTable: (tableId: string, session: OpenedSession | null) => void;
   onBack: () => void;
 }) {
+  const [tables, setTables] = useState<FloorPlanTable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<string>("all");
-  const [openTableModal, setOpenTableModal] = useState<FloorPlanTable | null>(
-    MOCK_FLOOR_TABLES.find((t) => t.table_number === "T-06") || null
-  );
+  const [openTableModal, setOpenTableModal] = useState<FloorPlanTable | null>(null);
   const [guestCount, setGuestCount] = useState(2);
-  const [serverNotes, setServerNotes] = useState("");
+  const [openingTable, setOpeningTable] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
 
-  const filteredTables = selectedArea === "all" 
-    ? MOCK_FLOOR_TABLES 
-    : MOCK_FLOOR_TABLES.filter((t) => t.area_id === selectedArea);
+  // Derive unique areas from the table list
+  const areas = Array.from(
+    new Map(tables.map((t) => [t.area_id, t.area_name])).entries()
+  ).map(([id, name]) => ({ id, name }));
 
-  const getElapsedTime = (isoString?: string) => {
+  const filteredTables = selectedArea === "all"
+    ? tables
+    : tables.filter((t) => t.area_id === selectedArea);
+
+  const getElapsedTime = (isoString?: string | null) => {
     if (!isoString) return "";
     const diff = Date.now() - new Date(isoString).getTime();
     return Math.floor(diff / 60000) + "m";
   };
 
-  const getStatusColor = (status: TableStatus) => {
+  const getStatusLabel = (status: FloorPlanTable["session_status"]) => {
     switch (status) {
-      case "available": return "border-green-500 bg-green-500/10";
-      case "occupied": return "border-blue-500 bg-blue-500/10";
-      case "awaiting_payment": return "border-orange-500 bg-orange-500/10 animate-pulse";
+      case "available": return { text: "Available", dot: "bg-green-500", label: "text-green-600" };
+      case "occupied": return { text: "Occupied", dot: "bg-orange-500", label: "text-orange-600" };
+      case "awaiting_payment": return { text: "Awaiting Payment", dot: "bg-red-500", label: "text-red-600" };
     }
   };
 
-  const getStatusLabel = (status: TableStatus) => {
+  const getBorderClass = (status: FloorPlanTable["session_status"]) => {
     switch (status) {
-      case "available": return { text: "Available", color: "text-green-500" };
-      case "occupied": return { text: "Occupied", color: "text-blue-500" };
-      case "awaiting_payment": return { text: "Awaiting Payment", color: "text-orange-500" };
+      case "available": return "border-green-500";
+      case "occupied": return "border-orange-500";
+      case "awaiting_payment": return "border-red-500 animate-pulse";
+    }
+  };
+
+  // Fetch floor plan on mount
+  useEffect(() => {
+    setLoading(true);
+    setFetchError(null);
+    terminalService.getFloorPlan()
+      .then((res) => setTables(res.tables))
+      .catch((err) => setFetchError(err instanceof Error ? err.message : "Failed to load floor plan"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleOpenTable = async () => {
+    if (!openTableModal) return;
+    setOpeningTable(true);
+    setOpenError(null);
+    const result = await terminalService.openTable(openTableModal.id, guestCount);
+    setOpeningTable(false);
+    if (!result.success || !result.session) {
+      setOpenError(result.error ?? "Failed to open table");
+      return;
+    }
+    setOpenTableModal(null);
+    onSelectTable(openTableModal.id, result.session);
+  };
+
+  const handleTableClick = (table: FloorPlanTable) => {
+    if (table.session_status === "available") {
+      setOpenTableModal(table);
+      setGuestCount(Math.min(2, table.capacity));
+      setOpenError(null);
+    } else {
+      // Navigate to session view — no full session detail from floor plan, pass null
+      onSelectTable(table.id, null);
     }
   };
 
@@ -1794,9 +1736,9 @@ function FloorPlanScreen({
       {/* Top Bar */}
       <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6">
         <div className="flex items-center gap-3">
-          <img 
-            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/fb86e0c2490745d8e8a2f8e3d4dfef68-CmoeMPYULNHBwFTGDqb6DJ4IIax4oc.png" 
-            alt="RITS Solutions" 
+          <img
+            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/fb86e0c2490745d8e8a2f8e3d4dfef68-CmoeMPYULNHBwFTGDqb6DJ4IIax4oc.png"
+            alt="RITS Solutions"
             className="h-8 w-auto"
           />
           <div className="h-6 w-px bg-gray-200" />
@@ -1810,7 +1752,7 @@ function FloorPlanScreen({
             </div>
           </div>
         </div>
-        
+
         <div className="flex-1 text-center">
           <h1 className="text-lg font-bold text-gray-900">Floor Plan</h1>
           <p className="text-xs text-gray-500">Cafe Atlas - Main Branch</p>
@@ -1838,7 +1780,7 @@ function FloorPlanScreen({
           >
             All Areas
           </button>
-          {MOCK_DINING_AREAS.map((area) => (
+          {areas.map((area) => (
             <button
               key={area.id}
               onClick={() => setSelectedArea(area.id)}
@@ -1856,69 +1798,64 @@ function FloorPlanScreen({
 
       {/* Table Grid */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredTables.map((table) => {
-            const statusLabel = getStatusLabel(table.session_status);
-            return (
-              <button
-                key={table.id}
-                onClick={() => {
-                  if (table.session_status === "available") {
-                    setOpenTableModal(table);
-                    setGuestCount(Math.min(2, table.capacity));
-                  } else {
-                    onSelectTable(table.id);
-                  }
-                }}
-                className={`bg-white rounded-2xl border-2 p-4 min-h-[140px] flex flex-col transition hover:shadow-lg hover:scale-[1.02] ${
-                  table.session_status === "available" ? "border-green-500" :
-                  table.session_status === "occupied" ? "border-orange-500" : "border-red-500 animate-pulse"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-lg text-gray-900">{table.table_number}</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full ${
-                      table.session_status === "available" ? "bg-green-500" :
-                      table.session_status === "occupied" ? "bg-orange-500" : "bg-red-500"
-                    }`} />
-                    <span className={`text-xs font-medium ${
-                      table.session_status === "available" ? "text-green-600" :
-                      table.session_status === "occupied" ? "text-orange-600" : "text-red-600"
-                    }`}>
-                      {statusLabel.text}
-                    </span>
-                  </div>
-                </div>
-                
-                <p className="text-xs text-gray-500 mb-1">{table.table_type}</p>
-                
-                <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
-                  <Users className="w-3 h-3" />
-                  <span>{table.capacity} seats</span>
-                </div>
-
-                {(table.session_status === "occupied" || table.session_status === "awaiting_payment") && (
-                  <div className="mt-auto space-y-1">
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="flex items-center gap-1 text-gray-600">
-                        <Clock className="w-3 h-3" />
-                        {getElapsedTime(table.open_since)}
-                      </span>
-                      <span className="flex items-center gap-1 text-gray-600">
-                        <Users className="w-3 h-3" />
-                        {table.guest_count} guests
+        {loading && (
+          <div className="flex items-center justify-center h-40">
+            <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        )}
+        {fetchError && (
+          <p className="text-red-500 text-sm text-center mt-8">{fetchError}</p>
+        )}
+        {!loading && !fetchError && (
+          <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredTables.map((table) => {
+              const statusInfo = getStatusLabel(table.session_status);
+              const sess = table.current_session;
+              return (
+                <button
+                  key={table.id}
+                  onClick={() => handleTableClick(table)}
+                  className={`bg-white rounded-2xl border-2 p-4 min-h-[140px] flex flex-col transition hover:shadow-lg hover:scale-[1.02] ${getBorderClass(table.session_status)}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-lg text-gray-900">{table.table_number}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${statusInfo.dot}`} />
+                      <span className={`text-xs font-medium ${statusInfo.label}`}>
+                        {statusInfo.text}
                       </span>
                     </div>
-                    <p className="font-mono text-sm font-bold text-orange-500">
-                      {table.current_order_total?.toFixed(2)} MAD
-                    </p>
                   </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+
+                  <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
+                    <Users className="w-3 h-3" />
+                    <span>{table.capacity} seats</span>
+                  </div>
+
+                  {sess && (
+                    <div className="mt-auto space-y-1">
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="flex items-center gap-1 text-gray-600">
+                          <Clock className="w-3 h-3" />
+                          {getElapsedTime(sess.opened_at)}
+                        </span>
+                        {sess.guest_count != null && (
+                          <span className="flex items-center gap-1 text-gray-600">
+                            <Users className="w-3 h-3" />
+                            {sess.guest_count} guests
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-mono text-sm font-bold text-orange-500">
+                        {sess.current_total_ttc.toFixed(2)} MAD
+                      </p>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Open Table Modal */}
@@ -1927,10 +1864,10 @@ function FloorPlanScreen({
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl">
             <h2 className="text-xl font-bold text-gray-900 mb-1">Open Table {openTableModal.table_number}</h2>
             <p className="text-sm text-gray-500 mb-4">
-              {openTableModal.table_type} - {openTableModal.capacity} seats
+              {openTableModal.capacity} seats
             </p>
 
-            <div className="mb-4">
+            <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
               <div className="flex items-center justify-center gap-4">
                 <button
@@ -1949,35 +1886,26 @@ function FloorPlanScreen({
               </div>
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Server Notes (Optional)</label>
-              <input
-                type="text"
-                value={serverNotes}
-                onChange={(e) => setServerNotes(e.target.value)}
-                placeholder="Any special requests?"
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              />
-            </div>
+            {openError && (
+              <p className="text-red-500 text-sm mb-4">{openError}</p>
+            )}
 
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setOpenTableModal(null);
-                  setServerNotes("");
-                }}
+                onClick={() => { setOpenTableModal(null); setOpenError(null); }}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition"
+                disabled={openingTable}
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  onSelectTable(openTableModal.id);
-                  setOpenTableModal(null);
-                }}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition"
+                onClick={handleOpenTable}
+                disabled={openingTable}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"
               >
-                Open Table
+                {openingTable ? (
+                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Opening...</>
+                ) : "Open Table"}
               </button>
             </div>
           </div>
@@ -1988,20 +1916,68 @@ function FloorPlanScreen({
 }
 
 // ============================================================
-// TABLE SESSION SCREEN (Phase 10)
+// TABLE SESSION SCREEN (Phase 10) — real API
 // ============================================================
 
 function TableSessionScreen({
+  tableId,
+  initialSession,
   onBack,
   onPay,
   onSplit,
 }: {
+  tableId: string;
+  initialSession: OpenedSession | null;
   onBack: () => void;
-  onPay: () => void;
-  onSplit: () => void;
+  onPay: (sessionId: string) => void;
+  onSplit: (session: LiveSession) => void;
 }) {
-  const session = MOCK_TABLE_SESSION;
+  // Live session state — built from openTable response or floor-plan data
+  const [session, setSession] = useState<LiveSession | null>(() =>
+    initialSession
+      ? {
+          id: initialSession.id,
+          table_id: initialSession.table_id,
+          table_number: initialSession.table_number,
+          area_name: "",
+          status: initialSession.status,
+          guest_count: initialSession.guest_count ?? 0,
+          opened_at: initialSession.opened_at,
+          items: initialSession.items,
+          session_total: initialSession.items.reduce(
+            (s, i) => s + i.quantity * i.unit_price_ttc, 0
+          ),
+        }
+      : null
+  );
+
   const [quickAddCategory, setQuickAddCategory] = useState("Coffee");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+  const [closingTable, setClosingTable] = useState(false);
+  const [cancellingTable, setCancellingTable] = useState(false);
+  const [addingItemId, setAddingItemId] = useState<string | null>(null);
+
+  // Transfer dialog state
+  const [transferDialogItemId, setTransferDialogItemId] = useState<string | null>(null);
+  const [transferTargetSessionId, setTransferTargetSessionId] = useState("");
+  const [transferableSessions, setTransferableSessions] = useState<{ session_id: string; table_number: string }[]>([]);
+  const [transferring, setTransferring] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+
+  // Quick-add products derived from catalog (static placeholder list
+  // — replace with terminalService.getCatalog() if catalog endpoint is wired)
+  const quickAddProducts = [
+    { id: "q1", name: "Espresso", price: 30, category: "Coffee" },
+    { id: "q2", name: "Café Latte", price: 40, category: "Coffee" },
+    { id: "q3", name: "Cappuccino", price: 35, category: "Coffee" },
+    { id: "q4", name: "Americano", price: 28, category: "Coffee" },
+    { id: "q5", name: "Croissant", price: 30, category: "Pastries" },
+    { id: "q6", name: "Pain au Chocolat", price: 35, category: "Pastries" },
+    { id: "q7", name: "Orange Juice", price: 30, category: "Drinks" },
+    { id: "q8", name: "Mint Tea", price: 25, category: "Drinks" },
+  ];
+  const filteredQuickProducts = quickAddProducts.filter((p) => p.category === quickAddCategory);
 
   const getElapsedTime = (isoString: string) => {
     const diff = Date.now() - new Date(isoString).getTime();
@@ -2014,22 +1990,153 @@ function TableSessionScreen({
       case "preparing": return { bg: "bg-yellow-500", text: "Preparing", icon: Clock };
       case "ready": return { bg: "bg-green-500", text: "Ready", icon: CheckCircle };
       case "served": return { bg: "bg-gray-500", text: "Served", icon: Truck };
+      case "cancelled": return { bg: "bg-gray-300", text: "Cancelled", icon: X };
     }
   };
 
+  const visibleItems = session?.items.filter((i) => i.kds_status !== "cancelled") ?? [];
   const kdsCounts = {
-    new: session.items.filter((i) => i.kds_status === "new").length,
-    preparing: session.items.filter((i) => i.kds_status === "preparing").length,
-    ready: session.items.filter((i) => i.kds_status === "ready").length,
-    served: session.items.filter((i) => i.kds_status === "served").length,
+    new: visibleItems.filter((i) => i.kds_status === "new").length,
+    preparing: visibleItems.filter((i) => i.kds_status === "preparing").length,
+    ready: visibleItems.filter((i) => i.kds_status === "ready").length,
+    served: visibleItems.filter((i) => i.kds_status === "served").length,
+  };
+  const readyItems = visibleItems.filter((i) => i.kds_status === "ready");
+  const hasBlockingItems = visibleItems.some((i) => i.kds_status === "new" || i.kds_status === "preparing");
+
+  // Add a single product via quick-add (uses product id as product_id)
+  const handleQuickAdd = async (product: typeof quickAddProducts[0]) => {
+    if (!session) return;
+    setAddingItemId(product.id);
+    setActionError(null);
+    const result = await terminalService.addSessionItems(session.id, [
+      { product_id: product.id, quantity: 1 },
+    ]);
+    setAddingItemId(null);
+    if (!result.success) {
+      setActionError(result.error ?? "Failed to add item");
+      return;
+    }
+    // Merge new items into local state
+    setSession((prev) => {
+      if (!prev) return prev;
+      const newItems: SessionItem[] = (result.data?.added_items ?? []).map((ai) => ({
+        id: ai.id,
+        product_id: ai.product_id,
+        product_name: ai.product_name,
+        quantity: ai.quantity,
+        unit_price_ttc: ai.unit_price_ttc,
+        kds_status: ai.kds_status,
+        notes: ai.notes,
+      }));
+      return {
+        ...prev,
+        items: [...prev.items, ...newItems],
+        session_total: result.data?.session_total_ttc ?? prev.session_total,
+      };
+    });
   };
 
-  const readyItems = session.items.filter((i) => i.kds_status === "ready");
-  const hasBlockingItems = session.items.some((i) => i.kds_status === "new" || i.kds_status === "preparing");
+  // Remove an item (soft-delete → kds_status becomes 'cancelled')
+  const handleRemoveItem = async (itemId: string) => {
+    if (!session) return;
+    setRemovingItemId(itemId);
+    setActionError(null);
+    const result = await terminalService.removeSessionItem(itemId);
+    setRemovingItemId(null);
+    if (!result.success) {
+      setActionError(result.error ?? "Failed to remove item");
+      return;
+    }
+    // Mark item cancelled locally
+    setSession((prev) => {
+      if (!prev) return prev;
+      const updatedItems = prev.items.map((i) =>
+        i.id === itemId ? { ...i, kds_status: "cancelled" as KdsStatus } : i
+      );
+      const newTotal = updatedItems
+        .filter((i) => i.kds_status !== "cancelled")
+        .reduce((s, i) => s + i.quantity * i.unit_price_ttc, 0);
+      return { ...prev, items: updatedItems, session_total: newTotal };
+    });
+  };
 
-  const filteredQuickProducts = MOCK_QUICK_ADD_PRODUCTS.filter(
-    (p) => p.category === quickAddCategory
-  );
+  // Close table → transition to payment
+  const handleClosePay = async () => {
+    if (!session) return;
+    setClosingTable(true);
+    setActionError(null);
+    const result = await terminalService.closeTable(session.id);
+    setClosingTable(false);
+    if (!result.success) {
+      setActionError(result.error ?? "Failed to close table");
+      return;
+    }
+    onPay(session.id);
+  };
+
+  // Cancel session
+  const handleCancel = async () => {
+    if (!session) return;
+    setCancellingTable(true);
+    setActionError(null);
+    const result = await terminalService.cancelSession(session.id, "Cancelled by server");
+    setCancellingTable(false);
+    if (!result.success) {
+      setActionError(result.error ?? "Failed to cancel session");
+      return;
+    }
+    onBack();
+  };
+
+  // Open transfer dialog: load occupied tables (excluding current) as targets
+  const openTransferDialog = async (itemId: string) => {
+    setTransferDialogItemId(itemId);
+    setTransferTargetSessionId("");
+    setTransferError(null);
+    try {
+      const fp = await terminalService.getFloorPlan();
+      const targets = fp.tables
+        .filter((t) => t.current_session && t.id !== tableId)
+        .map((t) => ({ session_id: t.current_session!.id, table_number: t.table_number }));
+      setTransferableSessions(targets);
+    } catch {
+      setTransferableSessions([]);
+    }
+  };
+
+  const handleTransferItem = async () => {
+    if (!transferDialogItemId || !transferTargetSessionId) return;
+    setTransferring(true);
+    setTransferError(null);
+    const result = await terminalService.transferSessionItems([transferDialogItemId], transferTargetSessionId);
+    setTransferring(false);
+    if (!result.success) {
+      setTransferError(result.error ?? "Transfer failed");
+      return;
+    }
+    // Remove item from local state after successful transfer
+    setSession((prev) => {
+      if (!prev) return prev;
+      const updatedItems = prev.items.filter((i) => i.id !== transferDialogItemId);
+      const newTotal = updatedItems
+        .filter((i) => i.kds_status !== "cancelled")
+        .reduce((s, i) => s + i.quantity * i.unit_price_ttc, 0);
+      return { ...prev, items: updatedItems, session_total: newTotal };
+    });
+    setTransferDialogItemId(null);
+  };
+
+  if (!session) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">No session data available.</p>
+          <button onClick={onBack} className="text-orange-500 underline text-sm">Back to floor plan</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex">
@@ -2048,17 +2155,21 @@ function TableSessionScreen({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xl font-bold text-gray-900">{session.table_number}</span>
-                  <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-xs font-medium">
-                    {session.area_name}
-                  </span>
+                  {session.area_name && (
+                    <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-xs font-medium">
+                      {session.area_name}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1 text-sm text-gray-600">
-                <Users className="w-4 h-4" />
-                {session.guest_count} guests
-              </span>
+              {session.guest_count > 0 && (
+                <span className="flex items-center gap-1 text-sm text-gray-600">
+                  <Users className="w-4 h-4" />
+                  {session.guest_count} guests
+                </span>
+              )}
               <span className="flex items-center gap-1 text-sm text-gray-600">
                 <Clock className="w-4 h-4" />
                 {getElapsedTime(session.opened_at)}
@@ -2082,9 +2193,20 @@ function TableSessionScreen({
           </div>
         </div>
 
+        {/* Inline action error */}
+        {actionError && (
+          <div className="mx-6 mt-3 px-4 py-2 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <span className="text-red-700 text-sm">{actionError}</span>
+            <button onClick={() => setActionError(null)} className="ml-auto text-red-400 hover:text-red-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Items List */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-          {session.items.map((item) => {
+          {visibleItems.map((item) => {
             const kdsStyle = getKdsStatusStyle(item.kds_status);
             const KdsIcon = kdsStyle.icon;
             return (
@@ -2096,13 +2218,10 @@ function TableSessionScreen({
                   <KdsIcon className="w-3 h-3" />
                   {kdsStyle.text}
                 </span>
-                
+
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900">{item.product_name}</p>
-                  {item.variant_name && (
-                    <p className="text-xs text-gray-500">{item.variant_name}</p>
-                  )}
-                  {item.modifiers_json?.modifiers && (
+                  {item.modifiers_json?.modifiers && item.modifiers_json.modifiers.length > 0 && (
                     <p className="text-xs text-gray-500">
                       + {item.modifiers_json.modifiers.map((m) => m.name).join(", ")}
                     </p>
@@ -2110,27 +2229,34 @@ function TableSessionScreen({
                   {item.notes && (
                     <p className="text-xs italic text-orange-600 mt-1">"{item.notes}"</p>
                   )}
-                  {item.customer_label && (
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-medium">
-                      {item.customer_label}
-                    </span>
-                  )}
                 </div>
 
                 <div className="text-right">
                   <p className="font-mono text-sm text-gray-600">
                     {item.quantity} x {item.unit_price_ttc.toFixed(2)}
                   </p>
-                  <p className="font-mono font-bold text-gray-900">{item.line_total.toFixed(2)} MAD</p>
+                  <p className="font-mono font-bold text-gray-900">
+                    {(item.quantity * item.unit_price_ttc).toFixed(2)} MAD
+                  </p>
                 </div>
 
                 {item.kds_status === "new" && (
                   <div className="flex gap-1">
-                    <button className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition">
-                      <Pencil className="w-4 h-4" />
+                    <button
+                      onClick={() => openTransferDialog(item.id)}
+                      title="Transfer to another table"
+                      className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 flex items-center justify-center transition"
+                    >
+                      <ArrowRightLeft className="w-4 h-4" />
                     </button>
-                    <button className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 flex items-center justify-center transition">
-                      <Trash2 className="w-4 h-4" />
+                    <button
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={removingItemId === item.id}
+                      className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 disabled:opacity-40 flex items-center justify-center transition"
+                    >
+                      {removingItemId === item.id
+                        ? <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        : <Trash2 className="w-4 h-4" />}
                     </button>
                   </div>
                 )}
@@ -2144,7 +2270,7 @@ function TableSessionScreen({
           <div className="mx-6 mb-4 px-4 py-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-green-700 text-sm">
-              {readyItems.length} items ready to serve - {readyItems.map((i) => `${i.product_name} x ${i.quantity}`).join(", ")}
+              {readyItems.length} items ready — {readyItems.map((i) => `${i.product_name} x${i.quantity}`).join(", ")}
             </span>
           </div>
         )}
@@ -2156,7 +2282,7 @@ function TableSessionScreen({
         <div className="px-4 py-4 border-b border-gray-200">
           <p className="text-sm text-gray-500 mb-1">Session Total</p>
           <p className="font-mono text-2xl font-bold text-gray-900">{session.session_total.toFixed(2)} MAD</p>
-          <p className="text-xs text-gray-500 mt-1">{session.items.length} items</p>
+          <p className="text-xs text-gray-500 mt-1">{visibleItems.length} items</p>
           <p className="text-xs text-gray-500">Opened {getElapsedTime(session.opened_at)} ago</p>
         </div>
 
@@ -2182,8 +2308,15 @@ function TableSessionScreen({
             {filteredQuickProducts.map((product) => (
               <button
                 key={product.id}
-                className="bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl p-3 text-left transition"
+                onClick={() => handleQuickAdd(product)}
+                disabled={addingItemId === product.id}
+                className="bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl p-3 text-left transition disabled:opacity-50 relative"
               >
+                {addingItemId === product.id && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-xl">
+                    <div className="w-4 h-4 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+                  </div>
+                )}
                 <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
                 <p className="font-mono text-xs text-orange-500">{product.price.toFixed(2)} MAD</p>
               </button>
@@ -2193,84 +2326,170 @@ function TableSessionScreen({
 
         {/* Footer Actions */}
         <div className="px-4 py-3 border-t border-gray-200 space-y-2">
-          <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2">
-            <Plus className="w-4 h-4" />
-            Add Items
-          </button>
           <button
-            onClick={onPay}
-            disabled={hasBlockingItems}
-            className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition"
+            onClick={handleClosePay}
+            disabled={hasBlockingItems || closingTable}
+            className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2"
             title={hasBlockingItems ? "Wait for all items to be ready" : ""}
           >
-            Close & Pay
+            {closingTable
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Closing...</>
+              : "Close & Pay"}
           </button>
           <button
-            onClick={onSplit}
+            onClick={() => onSplit(session)}
             className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition"
           >
             Split Bill
           </button>
-          <button className="w-full text-red-500 hover:text-red-600 text-sm font-medium py-1">
-            Cancel Table
+          <button
+            onClick={handleCancel}
+            disabled={cancellingTable}
+            className="w-full text-red-500 hover:text-red-600 disabled:opacity-40 text-sm font-medium py-1"
+          >
+            {cancellingTable ? "Cancelling..." : "Cancel Table"}
           </button>
         </div>
       </div>
+
+      {/* Transfer Item Dialog */}
+      {transferDialogItemId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Transfer Item</h3>
+              <button onClick={() => setTransferDialogItemId(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {transferError && (
+              <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{transferError}</div>
+            )}
+            {transferableSessions.length === 0 ? (
+              <p className="text-sm text-gray-500">No other open tables available for transfer.</p>
+            ) : (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Move to table</label>
+                <select
+                  value={transferTargetSessionId}
+                  onChange={(e) => setTransferTargetSessionId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                >
+                  <option value="">Select table…</option>
+                  {transferableSessions.map((s) => (
+                    <option key={s.session_id} value={s.session_id}>Table {s.table_number}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setTransferDialogItemId(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTransferItem}
+                disabled={!transferTargetSessionId || transferring}
+                className="flex-1 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 transition"
+              >
+                {transferring ? "Moving…" : "Move Item"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// Local type for the live session state used by TableSessionScreen and SplitBillScreen
+interface LiveSession {
+  id: string;
+  table_id: string;
+  table_number: string;
+  area_name: string;
+  status: 'open' | 'awaiting_payment';
+  guest_count: number;
+  opened_at: string;
+  items: SessionItem[];
+  session_total: number;
+}
+
 // ============================================================
-// SPLIT BILL SCREEN (Phase 10)
+// SPLIT BILL SCREEN (Phase 10) — real API
 // ============================================================
 
 function SplitBillScreen({
+  session,
   onConfirm,
   onBack,
 }: {
+  session: LiveSession;
   onConfirm: () => void;
   onBack: () => void;
 }) {
-  const session = MOCK_TABLE_SESSION;
   const [splitMode, setSplitMode] = useState<"even" | "by_item" | "custom">("by_item");
-  const [splitCount, setSplitCount] = useState(4);
-  const [itemAssignments, setItemAssignments] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    session.items.forEach((item) => {
-      if (item.customer_label) {
-        initial[item.id] = item.customer_label;
-      }
-    });
-    return initial;
-  });
+  const [splitCount, setSplitCount] = useState(Math.max(2, session.guest_count || 2));
+  const [itemAssignments, setItemAssignments] = useState<Record<string, string>>({});
   const [customSplits, setCustomSplits] = useState<{ id: string; amount: number }[]>([
-    { id: "1", amount: 120 },
-    { id: "2", amount: 120 },
-    { id: "3", amount: 120 },
-    { id: "4", amount: 122 },
+    { id: "1", amount: 0 },
+    { id: "2", amount: 0 },
   ]);
+  const [submitting, setSubmitting] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
 
+  const visibleItems = session.items.filter((i) => i.kds_status !== "cancelled");
   const guests = Array.from({ length: splitCount }, (_, i) => `Guest ${i + 1}`);
   const evenAmount = session.session_total / splitCount;
   const remainder = session.session_total - Math.floor(evenAmount * 100) / 100 * splitCount;
 
   const guestTotals = guests.reduce((acc, guest) => {
-    const total = session.items
+    const total = visibleItems
       .filter((item) => itemAssignments[item.id] === guest)
-      .reduce((sum, item) => sum + item.line_total, 0);
+      .reduce((sum, item) => sum + item.quantity * item.unit_price_ttc, 0);
     acc[guest] = total;
     return acc;
   }, {} as Record<string, number>);
 
-  const unassignedItems = session.items.filter((item) => !itemAssignments[item.id]);
-  const unassignedTotal = unassignedItems.reduce((sum, item) => sum + item.line_total, 0);
+  const unassignedItems = visibleItems.filter((item) => !itemAssignments[item.id]);
+  const unassignedTotal = unassignedItems.reduce((sum, item) => sum + item.quantity * item.unit_price_ttc, 0);
 
   const customTotal = customSplits.reduce((sum, s) => sum + s.amount, 0);
   const customRemainder = session.session_total - customTotal;
 
-  const isBalanced = splitMode === "even" || 
+  const isBalanced =
+    splitMode === "even" ||
     (splitMode === "by_item" && unassignedItems.length === 0) ||
     (splitMode === "custom" && Math.abs(customRemainder) < 0.01);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    setSplitError(null);
+
+    let result;
+    if (splitMode === "even") {
+      result = await terminalService.splitBill(session.id, "even", splitCount);
+    } else if (splitMode === "by_item") {
+      const splits = guests.map((g) => ({
+        label: g,
+        item_ids: visibleItems.filter((i) => itemAssignments[i.id] === g).map((i) => i.id),
+      }));
+      result = await terminalService.splitBill(session.id, "by_item", undefined, splits);
+    } else {
+      // custom — not directly supported by the backend split endpoint;
+      // fall back to even split with the configured count
+      result = await terminalService.splitBill(session.id, "even", customSplits.length);
+    }
+
+    setSubmitting(false);
+    if (!result.success) {
+      setSplitError(result.error ?? "Failed to split bill");
+      return;
+    }
+    onConfirm();
+  };
 
   return (
     <div className="h-screen overflow-hidden bg-gray-900 text-white flex flex-col">
@@ -2343,15 +2562,9 @@ function SplitBillScreen({
               {guests.map((guest, i) => (
                 <div key={guest} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
                   <span>{guest}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono font-bold">
-                      {(evenAmount + (i === guests.length - 1 ? remainder : 0)).toFixed(2)} MAD
-                    </span>
-                    <select className="bg-gray-700 rounded-lg px-3 py-1 text-sm">
-                      <option>Cash</option>
-                      <option>Card</option>
-                    </select>
-                  </div>
+                  <span className="font-mono font-bold">
+                    {(evenAmount + (i === guests.length - 1 ? remainder : 0)).toFixed(2)} MAD
+                  </span>
                 </div>
               ))}
             </div>
@@ -2366,11 +2579,11 @@ function SplitBillScreen({
         {/* By Item Mode */}
         {splitMode === "by_item" && (
           <div className="flex gap-4">
-            {/* Unassigned Items */}
+            {/* Items to assign */}
             <div className="flex-1 bg-gray-800 rounded-xl p-4">
               <h3 className="font-bold mb-3">Items to Assign</h3>
               <div className="space-y-2">
-                {session.items.map((item) => (
+                {visibleItems.map((item) => (
                   <div
                     key={item.id}
                     className={`p-3 rounded-lg flex items-center justify-between ${
@@ -2380,7 +2593,7 @@ function SplitBillScreen({
                     <div>
                       <p className="font-medium text-sm">{item.product_name}</p>
                       <p className="font-mono text-xs text-gray-400">
-                        {item.quantity} x {item.line_total.toFixed(2)} MAD
+                        {item.quantity} × {(item.quantity * item.unit_price_ttc).toFixed(2)} MAD
                       </p>
                     </div>
                     <select
@@ -2409,7 +2622,7 @@ function SplitBillScreen({
                 <div key={guest} className="bg-gray-800 rounded-xl p-4">
                   <h4 className="font-medium mb-2">{guest}</h4>
                   <div className="space-y-1 text-xs text-gray-400">
-                    {session.items
+                    {visibleItems
                       .filter((item) => itemAssignments[item.id] === guest)
                       .map((item) => (
                         <p key={item.id}>{item.product_name}</p>
@@ -2442,7 +2655,7 @@ function SplitBillScreen({
                     value={split.amount}
                     onChange={(e) => {
                       const newSplits = [...customSplits];
-                      newSplits[i].amount = parseFloat(e.target.value) || 0;
+                      newSplits[i] = { ...newSplits[i], amount: parseFloat(e.target.value) || 0 };
                       setCustomSplits(newSplits);
                     }}
                     className="flex-1 bg-gray-700 rounded-lg px-4 py-2 font-mono"
@@ -2475,15 +2688,20 @@ function SplitBillScreen({
 
       {/* Footer */}
       <div className="bg-gray-800 border-t border-white/10 px-4 py-4">
+        {splitError && (
+          <p className="text-red-400 text-sm text-center mb-2">{splitError}</p>
+        )}
         <p className="text-sm text-gray-400 mb-3 text-center">
           Splitting {session.session_total.toFixed(2)} MAD into {splitCount} payments
         </p>
         <button
-          onClick={onConfirm}
-          disabled={!isBalanced}
-          className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed font-bold py-4 rounded-xl transition"
+          onClick={handleConfirm}
+          disabled={!isBalanced || submitting}
+          className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed font-bold py-4 rounded-xl transition flex items-center justify-center gap-2"
         >
-          Confirm & Proceed to Payment
+          {submitting
+            ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Processing...</>
+            : "Confirm & Proceed to Payment"}
         </button>
       </div>
     </div>
@@ -2498,6 +2716,10 @@ type Screen = "setup" | "login" | "sales" | "payment" | "cash" | "success" | "vo
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("sales");
+  // Restaurant session state threaded through screens
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<OpenedSession | null>(null);
+  const [splitSession, setSplitSession] = useState<LiveSession | null>(null);
 
   const screens: { id: Screen; label: string }[] = [
     { id: "setup", label: "Setup" },
@@ -2552,19 +2774,29 @@ export default function App() {
         )}
         {screen === "floor-plan" && (
           <FloorPlanScreen
-            onSelectTable={() => setScreen("table-session")}
+            onSelectTable={(tableId, session) => {
+              setActiveTableId(tableId);
+              setActiveSession(session);
+              setScreen("table-session");
+            }}
             onBack={() => setScreen("sales")}
           />
         )}
-        {screen === "table-session" && (
+        {screen === "table-session" && activeTableId && (
           <TableSessionScreen
+            tableId={activeTableId}
+            initialSession={activeSession}
             onBack={() => setScreen("floor-plan")}
-            onPay={() => setScreen("payment")}
-            onSplit={() => setScreen("split-bill")}
+            onPay={(_sessionId) => setScreen("payment")}
+            onSplit={(sess) => {
+              setSplitSession(sess);
+              setScreen("split-bill");
+            }}
           />
         )}
-        {screen === "split-bill" && (
+        {screen === "split-bill" && splitSession && (
           <SplitBillScreen
+            session={splitSession}
             onConfirm={() => setScreen("payment")}
             onBack={() => setScreen("table-session")}
           />

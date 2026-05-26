@@ -77,64 +77,7 @@ interface DiscrepancyAlert {
   created_at: string
 }
 
-// ============== MOCK DATA ==============
-const mockWarehouses: WarehouseType[] = [
-  {
-    id: "wh-1",
-    name: "Main Storage",
-    location_id: "loc-1",
-    location_name: "Downtown Branch",
-    is_default: true,
-    notes: "Primary warehouse for all inventory",
-    total_skus: 45,
-    total_stock_value: 125000,
-    stock_batches: [
-      { id: "bat-1", product_id: "p-1", product_name: "Arabica Coffee Beans", batch_number: "BAT-2024-001", quantity_on_hand: 50, unit_cost: 120, received_at: "2024-03-01", expires_at: "2024-09-01", status: "active" },
-      { id: "bat-2", product_id: "p-2", product_name: "Milk (1L)", batch_number: "BAT-2024-002", quantity_on_hand: 24, unit_cost: 12, received_at: "2024-03-10", expires_at: "2024-03-25", status: "low" },
-      { id: "bat-3", product_id: "p-3", product_name: "Croissants (Frozen)", batch_number: "BAT-2024-003", quantity_on_hand: 100, unit_cost: 8, received_at: "2024-03-05", expires_at: "2024-04-05", status: "active" },
-      { id: "bat-4", product_id: "p-4", product_name: "Orange Juice (Fresh)", batch_number: "BAT-2024-004", quantity_on_hand: 0, unit_cost: 25, received_at: "2024-02-20", expires_at: "2024-03-10", status: "expired" },
-    ],
-  },
-  {
-    id: "wh-2",
-    name: "Cold Storage",
-    location_id: "loc-1",
-    location_name: "Downtown Branch",
-    is_default: false,
-    notes: "Refrigerated items only",
-    total_skus: 18,
-    total_stock_value: 35000,
-    stock_batches: [
-      { id: "bat-5", product_id: "p-5", product_name: "Fresh Cream", batch_number: "BAT-2024-005", quantity_on_hand: 15, unit_cost: 45, received_at: "2024-03-12", expires_at: "2024-03-20", status: "low" },
-      { id: "bat-6", product_id: "p-6", product_name: "Butter Block", batch_number: "BAT-2024-006", quantity_on_hand: 30, unit_cost: 60, received_at: "2024-03-08", expires_at: "2024-05-08", status: "active" },
-    ],
-  },
-  {
-    id: "wh-3",
-    name: "Marina Mall Storage",
-    location_id: "loc-2",
-    location_name: "Marina Mall",
-    is_default: false,
-    notes: "Secondary storage for mall location",
-    total_skus: 22,
-    total_stock_value: 45000,
-    stock_batches: [],
-  },
-]
-
-const mockExpirationAlerts: ExpirationAlert[] = [
-  { id: "ea-1", product_name: "Milk (1L)", batch_number: "BAT-2024-002", warehouse_name: "Main Storage", quantity: 24, expires_at: "2024-03-25", days_remaining: 10, alert_type: "expires_soon", status: "unresolved", created_at: "2024-03-15" },
-  { id: "ea-2", product_name: "Fresh Cream", batch_number: "BAT-2024-005", warehouse_name: "Cold Storage", quantity: 15, expires_at: "2024-03-20", days_remaining: 5, alert_type: "expires_soon", status: "unresolved", created_at: "2024-03-15" },
-  { id: "ea-3", product_name: "Orange Juice (Fresh)", batch_number: "BAT-2024-004", warehouse_name: "Main Storage", quantity: 0, expires_at: "2024-03-10", days_remaining: -5, alert_type: "expired", status: "resolved", created_at: "2024-03-10" },
-]
-
-const mockDiscrepancyAlerts: DiscrepancyAlert[] = [
-  { id: "da-1", product_name: "Arabica Coffee Beans", warehouse_name: "Main Storage", expected_qty: 55, actual_qty: 50, discrepancy: -5, source: "system_detected", status: "unresolved", created_at: "2024-03-14" },
-  { id: "da-2", product_name: "Butter Block", warehouse_name: "Cold Storage", expected_qty: 28, actual_qty: 30, discrepancy: 2, source: "offline_sync", status: "unresolved", created_at: "2024-03-13" },
-  { id: "da-3", product_name: "Fresh Cream", warehouse_name: "Cold Storage", expected_qty: 20, actual_qty: 15, discrepancy: -5, source: "system_detected", status: "resolved", created_at: "2024-03-12" },
-  { id: "da-4", product_name: "Croissants (Frozen)", warehouse_name: "Main Storage", expected_qty: 100, actual_qty: 95, discrepancy: -5, source: "system_detected", status: "unresolved", created_at: "2024-03-11" },
-  { id: "da-5", product_name: "Sugar (1kg)", warehouse_name: "Marina Mall Storage", expected_qty: 40, actual_qty: 42, discrepancy: 2, source: "offline_sync", status: "unresolved", created_at: "2024-03-10" },
-]
+// ============== MOCK DATA REMOVED — all data comes from API ==============
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "indigo" }) {
@@ -231,7 +174,7 @@ function SlidePanel({ isOpen, onClose, title, children, width = "xl" }: { isOpen
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function WarehousesPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseType[]>(mockWarehouses)
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>([])
   const [warehousesLoading, setWarehousesLoading] = useState(false)
   const [warehousesError, setWarehousesError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -242,6 +185,9 @@ export default function WarehousesPage() {
   
   // Modals
   const [showAddWarehouse, setShowAddWarehouse] = useState(false)
+  const [showEditWarehouse, setShowEditWarehouse] = useState(false)
+  const [editingWarehouse, setEditingWarehouse] = useState<WarehouseType | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", location_id: "", is_active: true, notes: "" })
   const [showAdjustBatch, setShowAdjustBatch] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState<StockBatch | null>(null)
   const [showResolveDiscrepancy, setShowResolveDiscrepancy] = useState(false)
@@ -261,10 +207,9 @@ export default function WarehousesPage() {
     w.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  // Fetch warehouses from API on mount
-  useEffect(() => {
+  const fetchWarehouses = () => {
     setWarehousesLoading(true)
-    apiFetch<{ data: any[] }>("/api/business/inventory/warehouses")
+    apiFetch<{ data: any[] }>("/api/business/warehouses")
       .then(res => {
         const mapped: WarehouseType[] = res.data.map((w: any) => ({
           id: w.id,
@@ -281,12 +226,15 @@ export default function WarehousesPage() {
       })
       .catch(e => setWarehousesError(e.message ?? "Failed to load warehouses"))
       .finally(() => setWarehousesLoading(false))
-  }, [])
+  }
+
+  // Fetch warehouses from API on mount
+  useEffect(() => { fetchWarehouses() }, [])
 
   const handleSaveWarehouse = async () => {
     setWarehousesError(null)
     try {
-      const created = await apiFetch<any>("/api/business/inventory/warehouses", {
+      await apiFetch<any>("/api/business/warehouses", {
         method: "POST",
         body: JSON.stringify({
           name: warehouseForm.name,
@@ -295,25 +243,61 @@ export default function WarehousesPage() {
           notes: warehouseForm.notes || undefined,
         }),
       })
-      setWarehouses(prev => [...prev, {
-        id: created.id,
-        name: created.name,
-        location_id: created.location_id ?? null,
-        location_name: null,
-        is_default: created.is_default ?? false,
-        notes: created.notes ?? "",
-        total_skus: 0,
-        total_stock_value: 0,
-        stock_batches: [],
-      }])
+      setShowAddWarehouse(false)
+      fetchWarehouses()
     } catch (e: any) {
       setWarehousesError(e.message ?? "Failed to create warehouse")
     }
-    setShowAddWarehouse(false)
   }
 
+  const handleOpenEditWarehouse = (warehouse: WarehouseType) => {
+    setEditingWarehouse(warehouse)
+    setEditForm({
+      name: warehouse.name,
+      location_id: warehouse.location_id ?? "",
+      is_active: true,
+      notes: warehouse.notes ?? "",
+    })
+    setShowEditWarehouse(true)
+  }
+
+  const handleUpdateWarehouse = async () => {
+    if (!editingWarehouse) return
+    setWarehousesError(null)
+    try {
+      await apiFetch<any>(`/api/business/warehouses/${editingWarehouse.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editForm.name || undefined,
+          location_id: editForm.location_id || undefined,
+          is_active: editForm.is_active,
+          notes: editForm.notes || undefined,
+        }),
+      })
+      setShowEditWarehouse(false)
+      setEditingWarehouse(null)
+      fetchWarehouses()
+    } catch (e: any) {
+      setWarehousesError(e.message ?? "Failed to update warehouse")
+    }
+  }
+
+  const handleDeleteWarehouse = async (id: string) => {
+    setWarehousesError(null)
+    try {
+      await apiFetch<any>(`/api/business/warehouses/${id}`, { method: "DELETE" })
+      fetchWarehouses()
+    } catch (e: any) {
+      setWarehousesError(e.message ?? "Failed to delete warehouse")
+    }
+  }
+
+  // Discrepancy alerts come from the dedicated alerts module — empty until wired separately
+  const discrepancyAlerts: DiscrepancyAlert[] = []
+  const expirationAlerts: ExpirationAlert[] = []
+
   // Filtered discrepancy alerts
-  const filteredDiscrepancies = mockDiscrepancyAlerts.filter(d => {
+  const filteredDiscrepancies = discrepancyAlerts.filter(d => {
     const matchesStatus = discrepancyFilter === "all" || d.status === discrepancyFilter
     const matchesWarehouse = discrepancyWarehouseFilter === "all" || d.warehouse_name === discrepancyWarehouseFilter
     return matchesStatus && matchesWarehouse
@@ -350,8 +334,8 @@ export default function WarehousesPage() {
     return "green"
   }
 
-  const unresolvedExpirations = mockExpirationAlerts.filter(a => a.status === "unresolved").length
-  const unresolvedDiscrepancies = mockDiscrepancyAlerts.filter(a => a.status === "unresolved").length
+  const unresolvedExpirations = expirationAlerts.filter(a => a.status === "unresolved").length
+  const unresolvedDiscrepancies = discrepancyAlerts.filter(a => a.status === "unresolved").length
 
   return (
     <div className="h-full">
@@ -456,10 +440,16 @@ export default function WarehousesPage() {
                   <div className="flex items-center gap-2">
                     {warehouse.is_default && <Badge color="blue">Default</Badge>}
                     <button
-                      onClick={(e) => { e.stopPropagation(); }}
+                      onClick={(e) => { e.stopPropagation(); handleOpenEditWarehouse(warehouse) }}
                       className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded"
                     >
                       <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteWarehouse(warehouse.id) }}
+                      className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -503,7 +493,7 @@ export default function WarehousesPage() {
           {/* Stats Cards */}
           <div className="grid grid-cols-4 gap-4">
             <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockDiscrepancyAlerts.length}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{discrepancyAlerts.length}</p>
               <p className="text-sm text-gray-500 dark:text-gray-400">Total Alerts</p>
             </div>
             <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-red-200 dark:border-red-800 p-4">
@@ -512,13 +502,13 @@ export default function WarehousesPage() {
             </div>
             <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {mockDiscrepancyAlerts.filter(d => d.discrepancy < 0).reduce((sum, d) => sum + Math.abs(d.discrepancy), 0)}
+                {discrepancyAlerts.filter(d => d.discrepancy < 0).reduce((sum, d) => sum + Math.abs(d.discrepancy), 0)}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400">Missing Units</p>
             </div>
             <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {mockDiscrepancyAlerts.filter(d => d.discrepancy > 0).reduce((sum, d) => sum + d.discrepancy, 0)}
+                {discrepancyAlerts.filter(d => d.discrepancy > 0).reduce((sum, d) => sum + d.discrepancy, 0)}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400">Surplus Units</p>
             </div>
@@ -769,7 +759,7 @@ export default function WarehousesPage() {
                       Expiration Alerts
                     </h4>
                     <div className="space-y-2">
-                      {mockExpirationAlerts.filter(a => a.warehouse_name === selectedWarehouse.name).map(alert => (
+                      {expirationAlerts.filter(a => a.warehouse_name === selectedWarehouse.name).map(alert => (
                         <div key={alert.id} className={`p-3 rounded-lg border ${alert.status === "resolved" ? "border-gray-200 dark:border-[#1F1F23] bg-gray-50 dark:bg-[#0F0F12]/50 opacity-60" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10"}`}>
                           <div className="flex items-center justify-between">
                             <div>
@@ -799,7 +789,7 @@ export default function WarehousesPage() {
                       Discrepancy Alerts
                     </h4>
                     <div className="space-y-2">
-                      {mockDiscrepancyAlerts.filter(a => a.warehouse_name === selectedWarehouse.name).map(alert => (
+                      {discrepancyAlerts.filter(a => a.warehouse_name === selectedWarehouse.name).map(alert => (
                         <div key={alert.id} className="p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
                           <div className="flex items-center justify-between">
                             <div>
@@ -863,6 +853,44 @@ export default function WarehousesPage() {
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddWarehouse(false)}>Cancel</Button>
             <Button variant="primary" className="flex-1" onClick={handleSaveWarehouse}>Add Warehouse</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Warehouse Modal */}
+      <Modal isOpen={showEditWarehouse} onClose={() => setShowEditWarehouse(false)} title="Edit Warehouse" size="md">
+        <div className="space-y-4">
+          <Input label="Warehouse Name" placeholder="e.g. Main Storage" value={editForm.name} onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))} />
+          <Select
+            label="Location"
+            options={[
+              { value: "", label: "Select location..." },
+              { value: "loc-1", label: "Downtown Branch" },
+              { value: "loc-2", label: "Marina Mall" },
+              { value: "loc-3", label: "Airport Kiosk" },
+            ]}
+            value={editForm.location_id}
+            onChange={(e) => setEditForm(f => ({ ...f, location_id: e.target.value }))}
+          />
+          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Active</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Warehouse is available for stock operations</p>
+            </div>
+            <Toggle checked={editForm.is_active} onChange={(checked) => setEditForm(f => ({ ...f, is_active: checked }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea
+              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full h-20 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white resize-none"
+              placeholder="Optional notes..."
+              value={editForm.notes}
+              onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditWarehouse(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleUpdateWarehouse}>Save Changes</Button>
           </div>
         </div>
       </Modal>

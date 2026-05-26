@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useState, useEffect } from "react"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, getToken } from "@/lib/api"
 import {
   Search,
   Plus,
@@ -69,132 +69,6 @@ interface Product {
   wholesale_price_3?: number
   wholesale_price_4?: number
 }
-
-// ============== MOCK DATA ==============
-const mockCategories: Category[] = [
-  { id: "cat-1", name: "Beverages", product_count: 24, is_active: true, sort_order: 1 },
-  { id: "cat-2", name: "Food", product_count: 18, is_active: true, sort_order: 2 },
-  { id: "cat-3", name: "Desserts", product_count: 12, is_active: true, sort_order: 3 },
-  { id: "cat-4", name: "Snacks", product_count: 8, is_active: true, sort_order: 4 },
-  { id: "cat-5", name: "Seasonal", product_count: 5, is_active: false, sort_order: 5 },
-]
-
-const mockProducts: Product[] = [
-  {
-    id: "prod-1",
-    name: "Cappuccino",
-    category_id: "cat-1",
-    category_name: "Beverages",
-    price: 28.00,
-    sku: "BEV-001",
-    description: "Classic Italian espresso with steamed milk foam",
-    tva_rate: 20,
-    is_sold_out: false,
-    is_active: true,
-    track_stock: false,
-    variants: [
-      { id: "var-1", name: "Small", price_delta: -5, is_available: true },
-      { id: "var-2", name: "Medium", price_delta: 0, is_available: true },
-      { id: "var-3", name: "Large", price_delta: 8, is_available: true },
-    ],
-    modifier_groups: [
-      { id: "mod-1", name: "Milk Options", selection_type: "single", min_selections: 1, max_selections: 1 },
-      { id: "mod-2", name: "Extra Shots", selection_type: "multiple", min_selections: 0, max_selections: 3 },
-    ],
-    brand: "House Blend",
-    unit_of_measure: "cup",
-  },
-  {
-    id: "prod-2",
-    name: "Croissant",
-    category_id: "cat-2",
-    category_name: "Food",
-    price: 18.00,
-    sku: "FOD-001",
-    description: "Fresh buttery French croissant",
-    tva_rate: 10,
-    is_sold_out: false,
-    is_active: true,
-    track_stock: true,
-    variants: [],
-    modifier_groups: [],
-    brand: "La Boulangerie",
-    unit_of_measure: "piece",
-  },
-  {
-    id: "prod-3",
-    name: "Chocolate Cake",
-    category_id: "cat-3",
-    category_name: "Desserts",
-    price: 45.00,
-    sku: "DES-001",
-    description: "Rich Belgian chocolate layer cake",
-    tva_rate: 20,
-    is_sold_out: true,
-    is_active: true,
-    track_stock: true,
-    variants: [
-      { id: "var-4", name: "Slice", price_delta: 0, is_available: true },
-      { id: "var-5", name: "Whole Cake", price_delta: 150, is_available: false },
-    ],
-    modifier_groups: [
-      { id: "mod-3", name: "Toppings", selection_type: "multiple", min_selections: 0, max_selections: 5 },
-    ],
-  },
-  {
-    id: "prod-4",
-    name: "Espresso",
-    category_id: "cat-1",
-    category_name: "Beverages",
-    price: 15.00,
-    sku: "BEV-002",
-    tva_rate: 20,
-    is_sold_out: false,
-    is_active: true,
-    track_stock: false,
-    variants: [
-      { id: "var-6", name: "Single", price_delta: 0, is_available: true },
-      { id: "var-7", name: "Double", price_delta: 8, is_available: true },
-    ],
-    modifier_groups: [],
-  },
-  {
-    id: "prod-5",
-    name: "Caesar Salad",
-    category_id: "cat-2",
-    category_name: "Food",
-    price: 55.00,
-    sku: "FOD-002",
-    description: "Fresh romaine with house-made Caesar dressing",
-    tva_rate: 10,
-    is_sold_out: false,
-    is_active: true,
-    track_stock: true,
-    variants: [],
-    modifier_groups: [
-      { id: "mod-4", name: "Add Protein", selection_type: "single", min_selections: 0, max_selections: 1 },
-    ],
-    wholesale_price_1: 48.00,
-    wholesale_price_2: 45.00,
-    wholesale_price_3: 42.00,
-    wholesale_price_4: 40.00,
-  },
-  {
-    id: "prod-6",
-    name: "Mint Tea",
-    category_id: "cat-1",
-    category_name: "Beverages",
-    price: 20.00,
-    sku: "BEV-003",
-    description: "Traditional Moroccan mint tea",
-    tva_rate: 20,
-    is_sold_out: false,
-    is_active: false,
-    track_stock: false,
-    variants: [],
-    modifier_groups: [],
-  },
-]
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "indigo" }) {
@@ -291,8 +165,8 @@ function SlidePanel({ isOpen, onClose, title, children, width = "md" }: { isOpen
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function ProductsPage() {
-  const [categories, setCategories] = useState<Category[]>(mockCategories)
-  const [products, setProducts] = useState<Product[]>(mockProducts)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -318,63 +192,85 @@ export default function ProductsPage() {
     description: "",
     tva_rate: "20",
     track_stock: false,
+    barcode: "",
+    brand_id: "",
+    cost_price: "",
   })
+  const [productImageUrl, setProductImageUrl] = useState<string>("")
+  const [productFormLoading, setProductFormLoading] = useState(false)
+  const [productFormError, setProductFormError] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [categoryForm, setCategoryForm] = useState({ name: "", description: "" })
 
-  // Fetch categories on mount
+  // Variant state
+  const [variants, setVariants] = useState<Variant[]>([])
+  const [variantsLoading, setVariantsLoading] = useState(false)
+  const [showAddVariant, setShowAddVariant] = useState(false)
+  const [showEditVariant, setShowEditVariant] = useState(false)
+  const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null)
+  const [variantForm, setVariantForm] = useState({ name: "", price_override: "", sku: "", is_default: false })
+
+  // Fetch categories
+  const fetchCategories = async () => {
+    try {
+      const res = await apiFetch<any>("/api/business/categories")
+      const list: any[] = Array.isArray(res) ? res : (res.data ?? [])
+      const mapped: Category[] = list.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        product_count: c.product_count ?? 0,
+        is_active: c.is_active ?? true,
+        sort_order: c.sort_order ?? 0,
+      }))
+      setCategories(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load categories")
+    }
+  }
+
   useEffect(() => {
-    apiFetch<{ data: any[] }>("/api/business/categories")
-      .then(res => {
-        const mapped: Category[] = res.data.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          description: c.description,
-          product_count: c.product_count ?? 0,
-          is_active: c.is_active ?? true,
-          sort_order: c.sort_order ?? 0,
-        }))
-        setCategories(mapped)
-      })
-      .catch(() => {})
+    fetchCategories()
   }, [])
 
   // Fetch products with debounced search and category filter
+  const fetchProducts = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "50" })
+      if (searchQuery) params.set("search", searchQuery)
+      if (selectedCategory) params.set("category_id", selectedCategory)
+      const res = await apiFetch<any>(`/api/business/products?${params}`)
+      const list: any[] = Array.isArray(res) ? res : (res.data ?? [])
+      const mapped: Product[] = list.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        category_id: p.category_id,
+        category_name: p.category?.name ?? "",
+        price: Number(p.price ?? 0),
+        sku: p.sku ?? "",
+        description: p.description,
+        tva_rate: Number(p.tva_rate ?? 20),
+        is_sold_out: p.is_sold_out ?? false,
+        is_active: p.is_active ?? true,
+        track_stock: p.track_stock ?? false,
+        image_url: p.image_url,
+        variants: [],
+        modifier_groups: [],
+        brand: undefined,
+        unit_of_measure: undefined,
+      }))
+      setProducts(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load products")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const params = new URLSearchParams({ page: "1", limit: "50" })
-        if (searchQuery) params.set("search", searchQuery)
-        if (selectedCategory) params.set("category_id", selectedCategory)
-        const res = await apiFetch<{ data: any[]; total: number }>(
-          `/api/business/products?${params}`
-        )
-        const mapped: Product[] = res.data.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          category_id: p.category_id,
-          category_name: p.category?.name ?? "",
-          price: Number(p.price ?? 0),
-          sku: p.sku ?? "",
-          description: p.description,
-          tva_rate: Number(p.tva_rate ?? 20),
-          is_sold_out: p.is_sold_out ?? false,
-          is_active: p.is_active ?? true,
-          track_stock: p.track_stock ?? false,
-          image_url: p.image_url,
-          variants: [],
-          modifier_groups: [],
-          brand: undefined,
-          unit_of_measure: undefined,
-        }))
-        setProducts(mapped)
-      } catch (e: any) {
-        setError(e.message ?? "Failed to load products")
-      } finally {
-        setLoading(false)
-      }
-    }, 300)
+    const timer = setTimeout(() => { fetchProducts() }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery, selectedCategory])
 
@@ -388,7 +284,9 @@ export default function ProductsPage() {
   })
 
   const handleAddProduct = () => {
-    setProductForm({ name: "", category_id: categories[0]?.id || "", price: "", sku: "", description: "", tva_rate: "20", track_stock: false })
+    setProductForm({ name: "", category_id: categories[0]?.id || "", price: "", sku: "", description: "", tva_rate: "20", track_stock: false, barcode: "", brand_id: "", cost_price: "" })
+    setProductImageUrl("")
+    setProductFormError(null)
     setShowAddProduct(true)
   }
 
@@ -402,18 +300,61 @@ export default function ProductsPage() {
       description: product.description || "",
       tva_rate: product.tva_rate.toString(),
       track_stock: product.track_stock,
+      barcode: "",
+      brand_id: "",
+      cost_price: "",
     })
+    setProductImageUrl(product.image_url || "")
+    setProductFormError(null)
     setShowEditProduct(true)
+  }
+
+  const fetchVariants = async (productId: string) => {
+    setVariantsLoading(true)
+    try {
+      const res = await apiFetch<any>(`/api/business/products/${productId}/variants`)
+      const list: any[] = Array.isArray(res) ? res : (res.data ?? [])
+      const mapped: Variant[] = list.map((v: any) => ({
+        id: v.id,
+        name: v.name,
+        price_delta: Number(v.price_override ?? v.price_delta ?? 0),
+        is_available: v.is_available ?? true,
+        sku: v.sku,
+      }))
+      setVariants(mapped)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load variants")
+    } finally {
+      setVariantsLoading(false)
+    }
   }
 
   const handleViewProduct = (product: Product) => {
     setSelectedProduct(product)
     setDetailTab("variants")
+    setVariants([])
+    fetchVariants(product.id)
     setShowProductDetail(true)
   }
 
-  const handleToggleSoldOut = (productId: string) => {
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_sold_out: !p.is_sold_out } : p))
+  const handleToggleSoldOut = async (productId: string) => {
+    const current = products.find(p => p.id === productId)
+    if (!current) return
+    const newValue = !current.is_sold_out
+    // Optimistic update
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_sold_out: newValue } : p))
+    try {
+      const updated = await apiFetch<any>(`/api/business/products/${productId}/sold-out`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_sold_out: newValue }),
+      })
+      // Sync with server response
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_sold_out: updated.is_sold_out ?? newValue } : p))
+    } catch (e: any) {
+      // Revert on failure
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_sold_out: current.is_sold_out } : p))
+      setError(e.message ?? "Failed to toggle sold-out")
+    }
   }
 
   const handleToggleActive = (productId: string) => {
@@ -433,6 +374,179 @@ export default function ProductsPage() {
     setSelectedCategoryEdit(category)
     setCategoryForm({ name: category.name, description: category.description || "" })
     setShowEditCategory(true)
+  }
+
+  const handleDeleteProduct = async (productId: string) => {
+    const product = products.find(p => p.id === productId)
+    if (!window.confirm(`Delete "${product?.name ?? "this product"}"? This cannot be undone.`)) return
+    try {
+      await apiFetch<any>(`/api/business/products/${productId}`, { method: "DELETE" })
+      await fetchProducts()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete product")
+    }
+  }
+
+  const handleSubmitAddProduct = async () => {
+    setProductFormLoading(true)
+    setProductFormError(null)
+    try {
+      await apiFetch<any>("/api/business/products", {
+        method: "POST",
+        body: JSON.stringify({
+          name: productForm.name,
+          price: Number(productForm.price),
+          category_id: productForm.category_id || undefined,
+          description: productForm.description || undefined,
+          sku: productForm.sku || undefined,
+          tva_rate: productForm.tva_rate ? Number(productForm.tva_rate) : undefined,
+          track_stock: productForm.track_stock,
+          barcode: productForm.barcode || undefined,
+          brand_id: productForm.brand_id || undefined,
+          cost_price: productForm.cost_price ? Number(productForm.cost_price) : undefined,
+          image_url: productImageUrl || undefined,
+        }),
+      })
+      setShowAddProduct(false)
+      await fetchProducts()
+    } catch (e: any) {
+      setProductFormError(e.message ?? "Failed to add product")
+    } finally {
+      setProductFormLoading(false)
+    }
+  }
+
+  const handleSubmitEditProduct = async () => {
+    if (!selectedProduct) return
+    setProductFormLoading(true)
+    setProductFormError(null)
+    try {
+      await apiFetch<any>(`/api/business/products/${selectedProduct.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: productForm.name,
+          price: Number(productForm.price),
+          category_id: productForm.category_id || undefined,
+          description: productForm.description || undefined,
+          sku: productForm.sku || undefined,
+          tva_rate: productForm.tva_rate ? Number(productForm.tva_rate) : undefined,
+          track_stock: productForm.track_stock,
+          barcode: productForm.barcode || undefined,
+          brand_id: productForm.brand_id || undefined,
+          cost_price: productForm.cost_price ? Number(productForm.cost_price) : undefined,
+          image_url: productImageUrl || undefined,
+        }),
+      })
+      setShowEditProduct(false)
+      await fetchProducts()
+    } catch (e: any) {
+      setProductFormError(e.message ?? "Failed to update product")
+    } finally {
+      setProductFormLoading(false)
+    }
+  }
+
+  const handleImageUpload = async (file: File) => {
+    setUploadingImage(true)
+    setProductFormError(null)
+    try {
+      const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"
+      const tok = getToken()
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch(`${BASE}/api/business/upload/product-image`, {
+        method: "POST",
+        headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+        body: formData,
+      })
+      if (!res.ok) {
+        let msg = res.statusText
+        try { const j = await res.json(); msg = j.message ?? j.error ?? msg } catch {}
+        throw new Error(msg)
+      }
+      const data = await res.json()
+      setProductImageUrl(data.url ?? "")
+    } catch (e: any) {
+      setProductFormError(e.message ?? "Failed to upload image")
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleSubmitAddCategory = async () => {
+    try {
+      await apiFetch<any>("/api/business/categories", {
+        method: "POST",
+        body: JSON.stringify({ name: categoryForm.name }),
+      })
+      setShowAddCategory(false)
+      await fetchCategories()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to add category")
+    }
+  }
+
+  const handleSubmitEditCategory = async () => {
+    if (!selectedCategoryEdit) return
+    try {
+      await apiFetch<any>(`/api/business/categories/${selectedCategoryEdit.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: categoryForm.name }),
+      })
+      setShowEditCategory(false)
+      await fetchCategories()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update category")
+    }
+  }
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      await apiFetch<any>(`/api/business/categories/${categoryId}`, { method: "DELETE" })
+      await fetchCategories()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete category")
+    }
+  }
+
+  const handleSubmitAddVariant = async () => {
+    if (!selectedProduct) return
+    try {
+      await apiFetch<any>(`/api/business/products/${selectedProduct.id}/variants`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: variantForm.name,
+          price_override: Number(variantForm.price_override),
+          sku: variantForm.sku || undefined,
+          is_default: variantForm.is_default,
+        }),
+      })
+      setShowAddVariant(false)
+      setVariantForm({ name: "", price_override: "", sku: "", is_default: false })
+      await fetchVariants(selectedProduct.id)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to add variant")
+    }
+  }
+
+  const handleSubmitEditVariant = async () => {
+    if (!selectedVariant) return
+    try {
+      await apiFetch<any>(`/api/business/variants/${selectedVariant.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: variantForm.name,
+          price_override: Number(variantForm.price_override),
+          sku: variantForm.sku || undefined,
+          is_default: variantForm.is_default,
+        }),
+      })
+      setShowEditVariant(false)
+      setSelectedVariant(null)
+      if (selectedProduct) await fetchVariants(selectedProduct.id)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update variant")
+    }
   }
 
   return (
@@ -618,6 +732,7 @@ export default function ProductsPage() {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={() => handleDeleteProduct(product.id)}
                         className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
                         title="Delete"
                       >
@@ -644,13 +759,17 @@ export default function ProductsPage() {
       </div>
 
       {/* Add Product Modal */}
-      <Modal isOpen={showAddProduct} onClose={() => setShowAddProduct(false)} title="Add Product" size="lg">
+      <Modal isOpen={showAddProduct} onClose={() => { setShowAddProduct(false); setProductFormError(null) }} title="Add Product" size="lg">
         <div className="space-y-4">
-          <Input label="Product Name" placeholder="e.g. Cappuccino" value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} />
-          <Select label="Category" options={categories.map(c => ({ value: c.id, label: c.name }))} value={productForm.category_id} onChange={(e) => setProductForm(p => ({ ...p, category_id: e.target.value }))} />
+          <Input label="Product Name *" placeholder="e.g. Cappuccino" value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} />
+          <Select label="Category" options={[{ value: "", label: "— No category —" }, ...categories.map(c => ({ value: c.id, label: c.name }))]} value={productForm.category_id} onChange={(e) => setProductForm(p => ({ ...p, category_id: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Price (MAD)" type="number" placeholder="0.00" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} />
+            <Input label="Price (MAD) *" type="number" placeholder="0.00" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} />
             <Input label="SKU" placeholder="PRD-001" value={productForm.sku} onChange={(e) => setProductForm(p => ({ ...p, sku: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Barcode" placeholder="123456789" value={productForm.barcode} onChange={(e) => setProductForm(p => ({ ...p, barcode: e.target.value }))} />
+            <Input label="Cost Price (MAD)" type="number" placeholder="0.00" value={productForm.cost_price} onChange={(e) => setProductForm(p => ({ ...p, cost_price: e.target.value }))} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
@@ -662,6 +781,28 @@ export default function ProductsPage() {
             />
           </div>
           <Select label="TVA Rate (%)" options={[{ value: "0", label: "0%" }, { value: "7", label: "7%" }, { value: "10", label: "10%" }, { value: "14", label: "14%" }, { value: "20", label: "20%" }]} value={productForm.tva_rate} onChange={(e) => setProductForm(p => ({ ...p, tva_rate: e.target.value }))} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Image</label>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#1a1a20] cursor-pointer transition-colors">
+                <Upload className="w-4 h-4" />
+                {uploadingImage ? "Uploading..." : "Choose image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingImage}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f) }}
+                />
+              </label>
+              {productImageUrl && (
+                <div className="flex items-center gap-2">
+                  <img src={productImageUrl} alt="preview" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-[#1F1F23]" />
+                  <button onClick={() => setProductImageUrl("")} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">Track Stock</p>
@@ -669,21 +810,28 @@ export default function ProductsPage() {
             </div>
             <Toggle checked={productForm.track_stock} onChange={(checked) => setProductForm(p => ({ ...p, track_stock: checked }))} />
           </div>
+          {productFormError && <p className="text-sm text-red-500">{productFormError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddProduct(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddProduct(false)}>Add Product</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowAddProduct(false); setProductFormError(null) }} disabled={productFormLoading}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitAddProduct} disabled={productFormLoading || uploadingImage}>
+              {productFormLoading ? "Saving..." : "Add Product"}
+            </Button>
           </div>
         </div>
       </Modal>
 
       {/* Edit Product Modal */}
-      <Modal isOpen={showEditProduct} onClose={() => setShowEditProduct(false)} title="Edit Product" size="lg">
+      <Modal isOpen={showEditProduct} onClose={() => { setShowEditProduct(false); setProductFormError(null) }} title="Edit Product" size="lg">
         <div className="space-y-4">
-          <Input label="Product Name" placeholder="e.g. Cappuccino" value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} />
-          <Select label="Category" options={categories.map(c => ({ value: c.id, label: c.name }))} value={productForm.category_id} onChange={(e) => setProductForm(p => ({ ...p, category_id: e.target.value }))} />
+          <Input label="Product Name *" placeholder="e.g. Cappuccino" value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} />
+          <Select label="Category" options={[{ value: "", label: "— No category —" }, ...categories.map(c => ({ value: c.id, label: c.name }))]} value={productForm.category_id} onChange={(e) => setProductForm(p => ({ ...p, category_id: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Price (MAD)" type="number" placeholder="0.00" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} />
+            <Input label="Price (MAD) *" type="number" placeholder="0.00" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} />
             <Input label="SKU" placeholder="PRD-001" value={productForm.sku} onChange={(e) => setProductForm(p => ({ ...p, sku: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Barcode" placeholder="123456789" value={productForm.barcode} onChange={(e) => setProductForm(p => ({ ...p, barcode: e.target.value }))} />
+            <Input label="Cost Price (MAD)" type="number" placeholder="0.00" value={productForm.cost_price} onChange={(e) => setProductForm(p => ({ ...p, cost_price: e.target.value }))} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
@@ -695,6 +843,28 @@ export default function ProductsPage() {
             />
           </div>
           <Select label="TVA Rate (%)" options={[{ value: "0", label: "0%" }, { value: "7", label: "7%" }, { value: "10", label: "10%" }, { value: "14", label: "14%" }, { value: "20", label: "20%" }]} value={productForm.tva_rate} onChange={(e) => setProductForm(p => ({ ...p, tva_rate: e.target.value }))} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Image</label>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#1a1a20] cursor-pointer transition-colors">
+                <Upload className="w-4 h-4" />
+                {uploadingImage ? "Uploading..." : "Choose image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingImage}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f) }}
+                />
+              </label>
+              {productImageUrl && (
+                <div className="flex items-center gap-2">
+                  <img src={productImageUrl} alt="preview" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-[#1F1F23]" />
+                  <button onClick={() => setProductImageUrl("")} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">Track Stock</p>
@@ -702,9 +872,12 @@ export default function ProductsPage() {
             </div>
             <Toggle checked={productForm.track_stock} onChange={(checked) => setProductForm(p => ({ ...p, track_stock: checked }))} />
           </div>
+          {productFormError && <p className="text-sm text-red-500">{productFormError}</p>}
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowEditProduct(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowEditProduct(false)}>Save Changes</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setShowEditProduct(false); setProductFormError(null) }} disabled={productFormLoading}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitEditProduct} disabled={productFormLoading || uploadingImage}>
+              {productFormLoading ? "Saving..." : "Save Changes"}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -724,7 +897,7 @@ export default function ProductsPage() {
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddCategory(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddCategory(false)}>Add Category</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitAddCategory}>Add Category</Button>
           </div>
         </div>
       </Modal>
@@ -744,7 +917,7 @@ export default function ProductsPage() {
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setShowEditCategory(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowEditCategory(false)}>Save Changes</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitEditCategory}>Save Changes</Button>
           </div>
         </div>
       </Modal>
@@ -806,14 +979,15 @@ export default function ProductsPage() {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-medium text-gray-900 dark:text-white">Product Variants</h4>
-                    <Button variant="secondary" size="sm">
+                    <Button variant="secondary" size="sm" onClick={() => { setVariantForm({ name: "", price_override: "", sku: "", is_default: false }); setShowAddVariant(true) }}>
                       <Plus className="w-4 h-4" />
                       Add Variant
                     </Button>
                   </div>
-                  {selectedProduct.variants.length > 0 ? (
+                  {variantsLoading && <div className="py-6 text-center text-gray-400 text-sm">Loading variants...</div>}
+                  {!variantsLoading && variants.length > 0 ? (
                     <div className="space-y-2">
-                      {selectedProduct.variants.map(variant => (
+                      {variants.map(variant => (
                         <div key={variant.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0F0F12]/50 rounded-lg">
                           <div className="flex items-center gap-3">
                             <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
@@ -826,17 +1000,27 @@ export default function ProductsPage() {
                           </div>
                           <div className="flex items-center gap-3">
                             <Toggle checked={variant.is_available} onChange={() => {}} />
-                            <button className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded"><Pencil className="w-4 h-4" /></button>
-                            <button className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded"><Trash2 className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => {
+                                setSelectedVariant(variant)
+                                setVariantForm({ name: variant.name, price_override: variant.price_delta.toString(), sku: variant.sku ?? "", is_default: false })
+                                setShowEditVariant(true)
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8">
-                      <Layers className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No variants defined</p>
-                    </div>
+                    !variantsLoading && (
+                      <div className="text-center py-8">
+                        <Layers className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No variants defined</p>
+                      </div>
+                    )
                   )}
                 </div>
               )}
@@ -941,6 +1125,32 @@ export default function ProductsPage() {
           </div>
         )}
       </SlidePanel>
+
+      {/* Add Variant Modal */}
+      <Modal isOpen={showAddVariant} onClose={() => setShowAddVariant(false)} title="Add Variant" size="sm">
+        <div className="space-y-4">
+          <Input label="Variant Name" placeholder="e.g. Large" value={variantForm.name} onChange={(e) => setVariantForm(p => ({ ...p, name: e.target.value }))} />
+          <Input label="Price Override (MAD)" type="number" placeholder="0.00" value={variantForm.price_override} onChange={(e) => setVariantForm(p => ({ ...p, price_override: e.target.value }))} />
+          <Input label="SKU (optional)" placeholder="VAR-001" value={variantForm.sku} onChange={(e) => setVariantForm(p => ({ ...p, sku: e.target.value }))} />
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAddVariant(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitAddVariant}>Add Variant</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Variant Modal */}
+      <Modal isOpen={showEditVariant} onClose={() => setShowEditVariant(false)} title="Edit Variant" size="sm">
+        <div className="space-y-4">
+          <Input label="Variant Name" placeholder="e.g. Large" value={variantForm.name} onChange={(e) => setVariantForm(p => ({ ...p, name: e.target.value }))} />
+          <Input label="Price Override (MAD)" type="number" placeholder="0.00" value={variantForm.price_override} onChange={(e) => setVariantForm(p => ({ ...p, price_override: e.target.value }))} />
+          <Input label="SKU (optional)" placeholder="VAR-001" value={variantForm.sku} onChange={(e) => setVariantForm(p => ({ ...p, sku: e.target.value }))} />
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditVariant(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSubmitEditVariant}>Save Changes</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

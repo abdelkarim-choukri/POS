@@ -291,7 +291,7 @@ GET /api/terminal/customers/lookup?phone=+212661001001
 
 ---
 
-## 12. Further Reading
+## 12. Further Readin`
 
 | Document | Description |
 |---|---|

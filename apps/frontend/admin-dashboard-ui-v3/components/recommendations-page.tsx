@@ -70,78 +70,7 @@ interface Product {
   price: number
 }
 
-// ============== MOCK DATA ==============
-const mockTemplates: RecommendationTemplate[] = [
-  {
-    id: "1",
-    name: "Chef's Picks",
-    type: "manual",
-    is_active: true,
-    items: [
-      { id: "i1", product_id: "p1", product_name: "Signature Tagine", category: "Main Courses", price: 95, sort_order: 1 },
-      { id: "i2", product_id: "p2", product_name: "Moroccan Couscous", category: "Main Courses", price: 85, sort_order: 2 },
-      { id: "i3", product_id: "p3", product_name: "Mint Tea Set", category: "Beverages", price: 35, sort_order: 3 },
-    ],
-    created_at: "2024-01-15",
-  },
-  {
-    id: "2",
-    name: "Ramadan Specials",
-    type: "seasonal",
-    is_active: false,
-    items: [
-      { id: "i4", product_id: "p4", product_name: "Harira Soup", category: "Soups", price: 25, sort_order: 1 },
-      { id: "i5", product_id: "p5", product_name: "Chebakia", category: "Desserts", price: 40, sort_order: 2 },
-    ],
-    created_at: "2024-02-01",
-  },
-  {
-    id: "3",
-    name: "Best Sellers",
-    type: "top_seller",
-    is_active: true,
-    created_at: "2024-01-10",
-  },
-  {
-    id: "4",
-    name: "High Margin Items",
-    type: "high_margin",
-    is_active: true,
-    created_at: "2024-01-10",
-  },
-  {
-    id: "5",
-    name: "Breakfast Menu",
-    type: "time_of_day",
-    is_active: true,
-    start_time: "07:00",
-    end_time: "11:00",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    created_at: "2024-01-20",
-  },
-  {
-    id: "6",
-    name: "Gold Member Exclusives",
-    type: "customer_grade_targeted",
-    is_active: true,
-    target_grade: "Gold",
-    items: [
-      { id: "i6", product_id: "p6", product_name: "Premium Lamb Mechoui", category: "Main Courses", price: 180, sort_order: 1 },
-    ],
-    created_at: "2024-02-10",
-  },
-]
-
-const mockProducts: Product[] = [
-  { id: "p1", name: "Signature Tagine", sku: "TAG-001", category: "Main Courses", price: 95 },
-  { id: "p2", name: "Moroccan Couscous", sku: "COU-001", category: "Main Courses", price: 85 },
-  { id: "p3", name: "Mint Tea Set", sku: "TEA-001", category: "Beverages", price: 35 },
-  { id: "p4", name: "Harira Soup", sku: "SOU-001", category: "Soups", price: 25 },
-  { id: "p5", name: "Chebakia", sku: "DES-001", category: "Desserts", price: 40 },
-  { id: "p6", name: "Premium Lamb Mechoui", sku: "LAM-001", category: "Main Courses", price: 180 },
-  { id: "p7", name: "Pastilla", sku: "PAS-001", category: "Main Courses", price: 75 },
-  { id: "p8", name: "Orange Juice Fresh", sku: "JUI-001", category: "Beverages", price: 20 },
-]
+// (mock data removed — all data loaded from API)
 
 // ============== REUSABLE COMPONENTS ==============
 function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "blue" | "yellow" | "gray" | "indigo" | "purple" | "pink" | "amber" }) {
@@ -367,23 +296,28 @@ function PaginationControls({ currentPage, totalPages, totalItems, pageSize, onP
 
 // ============== MAIN PAGE COMPONENT ==============
 export default function RecommendationsPage() {
-  const [templates, setTemplates] = useState<RecommendationTemplate[]>(mockTemplates)
+  const [templates, setTemplates] = useState<RecommendationTemplate[]>([])
+  const [featuredItems, setFeaturedItems] = useState<Product[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState<TemplateType | "all">("all")
   const [activeOnlyFilter, setActiveOnlyFilter] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isSavingItems, setIsSavingItems] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGINATION.defaultPageSize)
-  
+
   // Modals & Panels
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<RecommendationTemplate | null>(null)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: "",
@@ -395,31 +329,62 @@ export default function RecommendationsPage() {
     days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri"] as string[],
     target_grade: "Gold",
   })
-  
+
+  // Items panel state — tracks the working list of product_ids for the selected template
+  const [pendingItemIds, setPendingItemIds] = useState<string[]>([])
+
   // Product search for adding items
   const [productSearch, setProductSearch] = useState("")
+  const [productSearchResults, setProductSearchResults] = useState<Product[]>([])
 
-  useEffect(() => {
+  // ---- data fetching helpers ----
+
+  function mapTemplate(t: any): RecommendationTemplate {
+    return {
+      id: t.id,
+      name: t.name,
+      type: t.template_type ?? t.type,
+      is_active: t.is_active,
+      whole_price_tier: t.whole_price_tier,
+      start_time: t.start_time,
+      end_time: t.end_time,
+      days_of_week: t.days_of_week,
+      target_grade: t.target_grade,
+      items: t.items,
+      created_at: t.created_at ?? "",
+    }
+  }
+
+  function fetchTemplates() {
     setIsLoading(true)
+    setError(null)
     apiFetch<{ data: any[] }>("/api/business/recommendation-templates")
       .then(res => {
-        const mapped: RecommendationTemplate[] = res.data.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          type: t.template_type ?? t.type,
-          is_active: t.is_active,
-          whole_price_tier: t.whole_price_tier,
-          start_time: t.start_time,
-          end_time: t.end_time,
-          days_of_week: t.days_of_week,
-          target_grade: t.target_grade,
-          items: t.items,
-          created_at: t.created_at ?? "",
+        setTemplates((res.data ?? []).map(mapTemplate))
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to load templates"))
+      .finally(() => setIsLoading(false))
+  }
+
+  // Fetch featured items (GET /api/business/recommendation-templates/featured)
+  function fetchFeaturedItems() {
+    apiFetch<{ items: any[] }>("/api/business/recommendation-templates/featured")
+      .then(res => {
+        const items: Product[] = (res.items ?? []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku ?? "",
+          category: p.category_name ?? p.category ?? "",
+          price: p.price_ttc ?? p.price ?? 0,
         }))
-        setTemplates(mapped)
+        setFeaturedItems(items)
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false))
+  }
+
+  useEffect(() => {
+    fetchTemplates()
+    fetchFeaturedItems()
   }, [])
 
   // Filtered templates
@@ -449,13 +414,155 @@ export default function RecommendationsPage() {
     setShowAddModal(true)
   }
 
+  const handleEditTemplate = (template: RecommendationTemplate) => {
+    setIsEditing(true)
+    setFormData({
+      name: template.name,
+      type: template.type,
+      is_active: template.is_active,
+      whole_price_tier: template.whole_price_tier ?? "",
+      start_time: template.start_time ?? "09:00",
+      end_time: template.end_time ?? "17:00",
+      days_of_week: template.days_of_week ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      target_grade: template.target_grade ?? "Gold",
+    })
+    setShowAddModal(true)
+  }
+
   const handleViewTemplate = (template: RecommendationTemplate) => {
     setSelectedTemplate(template)
+    setPendingItemIds((template.items ?? []).map(i => i.product_id))
     setShowDetailPanel(true)
   }
 
+  // PATCH /api/business/recommendation-templates/:id (toggle active)
   const handleToggleActive = (templateId: string) => {
-    setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, is_active: !t.is_active } : t))
+    const template = templates.find(t => t.id === templateId)
+    if (!template) return
+    const newActive = !template.is_active
+    setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, is_active: newActive } : t))
+    apiFetch(`/api/business/recommendation-templates/${templateId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: newActive }),
+    }).catch((e: any) => {
+      // revert on failure
+      setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, is_active: !newActive } : t))
+      setError(e.message ?? "Failed to update template")
+    })
+  }
+
+  // POST or PATCH /api/business/recommendation-templates[/:id]
+  const handleSaveTemplate = () => {
+    setIsSaving(true)
+    setError(null)
+
+    const tierNum = formData.whole_price_tier ? parseInt(formData.whole_price_tier.replace("tier_", ""), 10) : undefined
+    const body: Record<string, any> = {
+      name: formData.name,
+      is_active: formData.is_active,
+      ...(tierNum ? { whole_price_tier: tierNum } : {}),
+    }
+    if (!isEditing) {
+      body.type = formData.type
+    }
+    if (formData.type === "time_of_day") {
+      body.schedule = {
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+        days_of_week: formData.days_of_week,
+      }
+    }
+    if (formData.type === "customer_grade_targeted") {
+      body.grade_target = formData.target_grade
+    }
+
+    const url = isEditing && selectedTemplate
+      ? `/api/business/recommendation-templates/${selectedTemplate.id}`
+      : "/api/business/recommendation-templates"
+    const method = isEditing ? "PATCH" : "POST"
+
+    apiFetch(url, { method, body: JSON.stringify(body) })
+      .then(() => {
+        setShowAddModal(false)
+        fetchTemplates()
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to save template"))
+      .finally(() => setIsSaving(false))
+  }
+
+  // DELETE /api/business/recommendation-templates/:id
+  const handleDeleteTemplate = (templateId: string) => {
+    setIsDeleting(true)
+    setError(null)
+    apiFetch(`/api/business/recommendation-templates/${templateId}`, { method: "DELETE" })
+      .then(() => {
+        setShowDetailPanel(false)
+        setSelectedTemplate(null)
+        fetchTemplates()
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to delete template"))
+      .finally(() => setIsDeleting(false))
+  }
+
+  // PUT /api/business/recommendation-templates/:id/items
+  const handleSaveItems = () => {
+    if (!selectedTemplate) return
+    setIsSavingItems(true)
+    setError(null)
+    apiFetch(`/api/business/recommendation-templates/${selectedTemplate.id}/items`, {
+      method: "PUT",
+      body: JSON.stringify({ items: pendingItemIds.map((product_id, idx) => ({ product_id, sort_order: idx + 1 })) }),
+    })
+      .then(() => {
+        fetchTemplates()
+        // Sync selectedTemplate.items locally for immediate feedback
+        setSelectedTemplate(prev => prev ? { ...prev, items: pendingItemIds.map((pid, idx) => ({
+          id: pid,
+          product_id: pid,
+          product_name: productSearchResults.find(p => p.id === pid)?.name ?? pid,
+          category: productSearchResults.find(p => p.id === pid)?.category ?? "",
+          price: productSearchResults.find(p => p.id === pid)?.price ?? 0,
+          sort_order: idx + 1,
+        })) } : prev)
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to save items"))
+      .finally(() => setIsSavingItems(false))
+  }
+
+  // Product search (uses business products endpoint)
+  useEffect(() => {
+    if (!productSearch.trim()) {
+      setProductSearchResults([])
+      return
+    }
+    const timeout = setTimeout(() => {
+      apiFetch<{ data: any[] }>(`/api/business/products?search=${encodeURIComponent(productSearch)}&limit=10`)
+        .then(res => {
+          setProductSearchResults((res.data ?? []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku ?? "",
+            category: p.category_name ?? p.category ?? "",
+            price: p.price_ttc ?? p.price ?? 0,
+          })))
+        })
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [productSearch])
+
+  const handleAddItemToTemplate = (product: Product) => {
+    if (pendingItemIds.includes(product.id)) return
+    setPendingItemIds(prev => [...prev, product.id])
+    setProductSearchResults(prev => {
+      if (prev.find(p => p.id === product.id)) return prev
+      return [...prev, product]
+    })
+    setProductSearch("")
+  }
+
+  const handleRemoveItemFromTemplate = (productId: string) => {
+    setPendingItemIds(prev => prev.filter(id => id !== productId))
   }
 
   const handleDayToggle = (day: string) => {
@@ -476,13 +583,16 @@ export default function RecommendationsPage() {
     setCurrentPage(1)
   }
 
-  const filteredProducts = mockProducts.filter(p =>
-    p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-    p.sku.toLowerCase().includes(productSearch.toLowerCase())
-  )
-
   return (
     <div className="h-full">
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
+          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+          <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded"><X className="w-4 h-4 text-red-500" /></button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -817,10 +927,10 @@ export default function RecommendationsPage() {
           )}
           
           <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddModal(false)}>{LABELS.cancel}</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAddModal(false)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowAddModal(false)} disabled={isSaving}>{LABELS.cancel}</Button>
+            <Button variant="primary" className="flex-1" onClick={handleSaveTemplate} disabled={isSaving || !formData.name.trim()}>
               <Check className="w-4 h-4" />
-              {isEditing ? COMMON_LABELS.update : COMMON_LABELS.create} Template
+              {isSaving ? "Saving..." : `${isEditing ? COMMON_LABELS.update : COMMON_LABELS.create} Template`}
             </Button>
           </div>
         </div>
@@ -841,10 +951,16 @@ export default function RecommendationsPage() {
                   <Eye className="w-4 h-4" />
                   {LABELS.preview}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setIsEditing(true); setShowAddModal(true); }}>
+                <Button variant="ghost" size="sm" onClick={() => selectedTemplate && handleEditTemplate(selectedTemplate)}>
                   <Pencil className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  disabled={isDeleting}
+                  onClick={() => selectedTemplate && handleDeleteTemplate(selectedTemplate.id)}
+                >
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
@@ -902,10 +1018,14 @@ export default function RecommendationsPage() {
                   {/* Product Search Results */}
                   {productSearch && (
                     <div className="bg-gray-50 dark:bg-[#0F0F12] rounded-lg p-2 mb-4 max-h-40 overflow-y-auto">
-                      {filteredProducts.slice(0, 5).map(product => (
+                      {productSearchResults.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-2">No products found</p>
+                      ) : productSearchResults.slice(0, 5).map(product => (
                         <button
                           key={product.id}
-                          className="w-full flex items-center justify-between p-2 hover:bg-white dark:hover:bg-[#2a2a32] rounded-lg text-left"
+                          onClick={() => handleAddItemToTemplate(product)}
+                          disabled={pendingItemIds.includes(product.id)}
+                          className="w-full flex items-center justify-between p-2 hover:bg-white dark:hover:bg-[#2a2a32] rounded-lg text-left disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <div>
                             <p className="text-sm font-medium text-gray-900 dark:text-white">{product.name}</p>
@@ -913,36 +1033,49 @@ export default function RecommendationsPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-mono text-gray-600 dark:text-gray-300">{formatPrice(product.price)}</span>
-                            <Plus className="w-4 h-4 text-indigo-500" />
+                            {pendingItemIds.includes(product.id)
+                              ? <Check className="w-4 h-4 text-green-500" />
+                              : <Plus className="w-4 h-4 text-indigo-500" />}
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
-                  
-                  {/* Current Items */}
+
+                  {/* Current Items (driven by pendingItemIds) */}
                   <div className="space-y-2">
-                    {selectedTemplate.items?.map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 p-3 bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-lg"
-                      >
-                        <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
-                        <span className="w-6 h-6 bg-gray-100 dark:bg-[#1F1F23] rounded text-xs flex items-center justify-center text-gray-500 dark:text-gray-400">
-                          {index + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-white truncate">{item.product_name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{item.category}</p>
+                    {pendingItemIds.map((productId, index) => {
+                      // Try to resolve display info from saved items first, then from search results
+                      const savedItem = selectedTemplate.items?.find(i => i.product_id === productId)
+                      const searchItem = productSearchResults.find(p => p.id === productId)
+                      const displayName = savedItem?.product_name ?? searchItem?.name ?? productId
+                      const displayCategory = savedItem?.category ?? searchItem?.category ?? ""
+                      const displayPrice = savedItem?.price ?? searchItem?.price ?? 0
+                      return (
+                        <div
+                          key={productId}
+                          className="flex items-center gap-3 p-3 bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-lg"
+                        >
+                          <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
+                          <span className="w-6 h-6 bg-gray-100 dark:bg-[#1F1F23] rounded text-xs flex items-center justify-center text-gray-500 dark:text-gray-400">
+                            {index + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 dark:text-white truncate">{displayName}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{displayCategory}</p>
+                          </div>
+                          <span className="font-mono text-sm text-gray-600 dark:text-gray-300">{formatPrice(displayPrice)}</span>
+                          <button
+                            onClick={() => handleRemoveItemFromTemplate(productId)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                        <span className="font-mono text-sm text-gray-600 dark:text-gray-300">{formatPrice(item.price)}</span>
-                        <button className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    
-                    {(!selectedTemplate.items || selectedTemplate.items.length === 0) && (
+                      )
+                    })}
+
+                    {pendingItemIds.length === 0 && (
                       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                         <Tag className="w-8 h-8 mx-auto mb-2 opacity-50" />
                         <p className="text-sm">No items added yet</p>
@@ -950,10 +1083,10 @@ export default function RecommendationsPage() {
                     )}
                   </div>
                 </div>
-                
-                <Button variant="primary" className="w-full">
+
+                <Button variant="primary" className="w-full" onClick={handleSaveItems} disabled={isSavingItems}>
                   <Check className="w-4 h-4" />
-                  {LABELS.save} Items
+                  {isSavingItems ? "Saving..." : `${LABELS.save} Items`}
                 </Button>
               </>
             )}
@@ -969,19 +1102,31 @@ export default function RecommendationsPage() {
           </p>
           
           <div className="grid grid-cols-2 gap-4">
-            {(selectedTemplate?.items || mockProducts.slice(0, 4)).map((item, i) => {
-              const product = "product_name" in item ? item : { product_name: item.name, category: item.category, price: item.price }
-              return (
+            {(() => {
+              // For auto-resolved types, show featured items; otherwise show template items
+              const isAutoType = selectedTemplate?.type === "top_seller" || selectedTemplate?.type === "high_margin"
+              const displayItems = isAutoType
+                ? featuredItems.map(p => ({ product_name: p.name, category: p.category, price: p.price }))
+                : (selectedTemplate?.items ?? []).map(i => ({ product_name: i.product_name, category: i.category, price: i.price }))
+              if (displayItems.length === 0) {
+                return (
+                  <div className="col-span-2 text-center py-8 text-gray-500 dark:text-gray-400">
+                    <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No items to preview</p>
+                  </div>
+                )
+              }
+              return displayItems.map((item, i) => (
                 <div key={i} className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-xl">
                   <div className="w-full h-24 bg-gray-200 dark:bg-[#1F1F23] rounded-lg mb-3 flex items-center justify-center">
                     <Tag className="w-8 h-8 text-gray-400 dark:text-gray-500" />
                   </div>
-                  <h4 className="font-medium text-gray-900 dark:text-white">{product.product_name}</h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{product.category}</p>
-                  <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{formatPrice(product.price)}</p>
+                  <h4 className="font-medium text-gray-900 dark:text-white">{item.product_name}</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{item.category}</p>
+                  <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{formatPrice(item.price)}</p>
                 </div>
-              )
-            })}
+              ))
+            })()}
           </div>
           
           <Button variant="secondary" className="w-full" onClick={() => setShowPreviewModal(false)}>{COMMON_LABELS.close} Preview</Button>

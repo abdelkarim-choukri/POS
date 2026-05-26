@@ -66,7 +66,7 @@ interface ValidationResult {
   total_products: number
 }
 
-// Mock chain data
+// TODO: chain rollout — mock chain data kept until chain endpoints are wired
 const mockCurrentBusiness = {
   id: "1",
   name: "Main Restaurant",
@@ -74,126 +74,12 @@ const mockCurrentBusiness = {
   tva_rate: 20,
 }
 
+// TODO: chain rollout — replace with GET /api/business/chain/children when wired
 const mockChildBusinesses: ChildBusiness[] = [
   { id: "2", name: "Branch - Casablanca", tva_rate: 20, products_mapped: 45, total_products: 50 },
   { id: "3", name: "Branch - Rabat", tva_rate: 20, products_mapped: 50, total_products: 50 },
   { id: "4", name: "Branch - Marrakech", tva_rate: 14, products_mapped: 38, total_products: 50 },
   { id: "5", name: "Branch - Agadir", tva_rate: 20, products_mapped: 42, total_products: 50 },
-]
-
-// ============== MOCK DATA ==============
-const mockCategories = [
-  { id: "1", name: "Beverages" },
-  { id: "2", name: "Food" },
-  { id: "3", name: "Desserts" },
-  { id: "4", name: "Snacks" },
-  { id: "5", name: "Merchandise" },
-]
-
-const mockProducts = [
-  { id: "1", name: "Cappuccino", category: "Beverages" },
-  { id: "2", name: "Latte", category: "Beverages" },
-  { id: "3", name: "Espresso", category: "Beverages" },
-  { id: "4", name: "Croissant", category: "Food" },
-  { id: "5", name: "Sandwich", category: "Food" },
-  { id: "6", name: "Cheesecake", category: "Desserts" },
-  { id: "7", name: "Brownie", category: "Desserts" },
-  { id: "8", name: "Chips", category: "Snacks" },
-]
-
-const mockPromotions: Promotion[] = [
-  {
-    id: "1",
-    name: "Summer Sale",
-    description: "20% off all beverages during summer season",
-    type: "percentage_discount",
-    discount_value: 20,
-    start_date: "2026-05-01",
-    end_date: "2026-05-31",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    min_order_amount: 50,
-    max_uses_total: 1000,
-    max_uses_per_customer: 5,
-    applicable_categories: ["Beverages"],
-    applicable_products: [],
-    status: "active",
-    usage_count: 142,
-  },
-  {
-    id: "2",
-    name: "Weekend Brunch Special",
-    description: "15 MAD off orders over 100 MAD on weekends",
-    type: "fixed_discount",
-    discount_value: 15,
-    start_date: "2026-05-01",
-    end_date: "2026-06-30",
-    days_of_week: ["Sat", "Sun"],
-    min_order_amount: 100,
-    applicable_categories: [],
-    applicable_products: [],
-    status: "active",
-    usage_count: 89,
-  },
-  {
-    id: "3",
-    name: "Buy 2 Get 1 Free Coffee",
-    description: "Buy any 2 coffees and get the 3rd one free",
-    type: "buy_x_get_y",
-    discount_value: 100,
-    buy_quantity: 2,
-    get_quantity: 1,
-    start_date: "2026-06-01",
-    end_date: "2026-06-15",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    applicable_categories: [],
-    applicable_products: ["Cappuccino", "Latte", "Espresso"],
-    status: "scheduled",
-    usage_count: 0,
-  },
-  {
-    id: "4",
-    name: "Happy Hour",
-    description: "30% off all items between 3-5 PM",
-    type: "percentage_discount",
-    discount_value: 30,
-    start_date: "2026-04-01",
-    end_date: "2026-04-30",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    applicable_categories: [],
-    applicable_products: [],
-    status: "paused",
-    usage_count: 256,
-  },
-  {
-    id: "5",
-    name: "Spring Promo 2025",
-    description: "10% off desserts - ended campaign",
-    type: "percentage_discount",
-    discount_value: 10,
-    start_date: "2025-03-01",
-    end_date: "2025-03-31",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    applicable_categories: ["Desserts"],
-    applicable_products: [],
-    status: "archived",
-    usage_count: 412,
-  },
-  {
-    id: "6",
-    name: "Loyalty Reward",
-    description: "25 MAD off for returning customers",
-    type: "fixed_discount",
-    discount_value: 25,
-    start_date: "2026-05-01",
-    end_date: "2026-12-31",
-    days_of_week: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    min_order_amount: 75,
-    max_uses_per_customer: 1,
-    applicable_categories: [],
-    applicable_products: [],
-    status: "active",
-    usage_count: 67,
-  },
 ]
 
 const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -347,7 +233,7 @@ function CreateEditModal({
   isOpen: boolean
   onClose: () => void
   promotion: Promotion | null
-  onSave: (data: Partial<Promotion>) => void
+  onSave: (data: Partial<Promotion>) => Promise<void>
 }) {
   const [formData, setFormData] = useState<Partial<Promotion>>(
     promotion || {
@@ -392,14 +278,14 @@ function CreateEditModal({
     )
   }
 
-  const handleSubmit = () => {
-    onSave({
+  const handleSubmit = async () => {
+    await onSave({
       ...formData,
       days_of_week: selectedDays,
       applicable_categories: selectedCategories,
       applicable_products: selectedProducts,
     })
-    onClose()
+    // onClose is called by parent after successful save
   }
 
   return (
@@ -622,7 +508,7 @@ function CreateEditModal({
               Applicable Categories
             </label>
             <div className="flex flex-wrap gap-2">
-              {mockCategories.map((cat) => {
+              {([] as { id: string; name: string }[]).map((cat) => {
                 const isSelected = selectedCategories.includes(cat.name)
                 return (
                   <button
@@ -648,7 +534,7 @@ function CreateEditModal({
               Applicable Products
             </label>
             <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-              {mockProducts.map((prod) => {
+              {([] as { id: string; name: string; category: string }[]).map((prod) => {
                 const isSelected = selectedProducts.includes(prod.name)
                 return (
                   <button
@@ -690,7 +576,7 @@ function CreateEditModal({
 
 // ============== MAIN COMPONENT ==============
 export default function PromotionsPage() {
-  const [promotions, setPromotions] = useState<Promotion[]>(mockPromotions)
+  const [promotions, setPromotions] = useState<Promotion[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"all" | PromotionStatus>("all")
@@ -756,8 +642,33 @@ export default function PromotionsPage() {
     return matchesTab && matchesSearch
   })
 
-  const handleEdit = (promotion: Promotion) => {
-    setEditingPromotion(promotion)
+  const handleEdit = async (promotion: Promotion) => {
+    try {
+      const detail = await apiFetch<any>(`/api/business/promotions/${promotion.id}`)
+      const mapped: Promotion = {
+        id: detail.id,
+        name: detail.name,
+        description: detail.description ?? "",
+        type: detail.type,
+        discount_value: detail.value ?? detail.discount_value ?? 0,
+        buy_quantity: detail.buy_quantity,
+        get_quantity: detail.get_quantity,
+        start_date: detail.start_date,
+        end_date: detail.end_date,
+        days_of_week: detail.days_of_week ?? [],
+        min_order_amount: detail.min_order_amount,
+        max_uses_total: detail.max_uses,
+        max_uses_per_customer: detail.max_uses_per_customer,
+        applicable_categories: detail.applicable_categories ?? [],
+        applicable_products: detail.applicable_products ?? [],
+        status: detail.status,
+        usage_count: detail.current_uses ?? 0,
+      }
+      setEditingPromotion(mapped)
+    } catch {
+      // Fall back to the list-row data if detail fetch fails
+      setEditingPromotion(promotion)
+    }
     setIsModalOpen(true)
   }
 
@@ -787,32 +698,44 @@ export default function PromotionsPage() {
     }
   }
 
-  const handleSave = (data: Partial<Promotion>) => {
-    if (editingPromotion) {
-      setPromotions((prev) =>
-        prev.map((p) => (p.id === editingPromotion.id ? { ...p, ...data } : p))
-      )
-    } else {
-      const newPromotion: Promotion = {
-        id: String(Date.now()),
-        name: data.name || "New Promotion",
-        description: data.description || "",
-        type: data.type || "percentage_discount",
-        discount_value: data.discount_value || 10,
-        buy_quantity: data.buy_quantity,
-        get_quantity: data.get_quantity,
-        start_date: data.start_date || new Date().toISOString().split("T")[0],
-        end_date: data.end_date || new Date().toISOString().split("T")[0],
-        days_of_week: data.days_of_week || DAYS_OF_WEEK,
-        min_order_amount: data.min_order_amount,
-        max_uses_total: data.max_uses_total,
-        max_uses_per_customer: data.max_uses_per_customer,
-        applicable_categories: data.applicable_categories || [],
-        applicable_products: data.applicable_products || [],
-        status: "scheduled",
-        usage_count: 0,
+  const handleSave = async (data: Partial<Promotion>) => {
+    // Map frontend type names to backend type values
+    const typeMap: Record<string, string> = {
+      percentage_discount: "percentage",
+      fixed_discount: "fixed",
+      buy_x_get_y: "bogo",
+    }
+    const payload = {
+      name: data.name,
+      description: data.description,
+      type: typeMap[data.type ?? "percentage_discount"] ?? data.type,
+      discount_value: data.discount_value,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      days_of_week: data.days_of_week,
+      min_purchase: data.min_order_amount,
+      max_uses_total: data.max_uses_total,
+      max_uses_per_customer: data.max_uses_per_customer,
+      applicable_categories: data.applicable_categories,
+      applicable_products: data.applicable_products,
+    }
+    try {
+      if (editingPromotion) {
+        await apiFetch(`/api/business/promotions/${editingPromotion.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        })
+      } else {
+        await apiFetch("/api/business/promotions", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
       }
-      setPromotions((prev) => [newPromotion, ...prev])
+      await fetchPromotions()
+      setIsModalOpen(false)
+      setEditingPromotion(null)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save promotion")
     }
   }
 

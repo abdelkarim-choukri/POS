@@ -54,173 +54,6 @@ interface Customer {
   phone: string
 }
 
-// ============== MOCK DATA ==============
-const mockCustomers: Customer[] = [
-  { id: "1", name: "Ahmed Ben Ali", email: "ahmed@email.com", phone: "+212 612 345 678" },
-  { id: "2", name: "Fatima Zahra", email: "fatima@email.com", phone: "+212 623 456 789" },
-  { id: "3", name: "Youssef Amrani", email: "youssef@email.com", phone: "+212 634 567 890" },
-  { id: "4", name: "Sara Benkirane", email: "sara@email.com", phone: "+212 645 678 901" },
-  { id: "5", name: "Omar Tazi", email: "omar@email.com", phone: "+212 656 789 012" },
-]
-
-const mockCouponTypes: CouponType[] = [
-  {
-    id: "1",
-    name: "Welcome Discount",
-    discount_type: "percentage",
-    value: 15,
-    validity_days: 30,
-    max_uses: 1,
-    description: "Welcome discount for new customers",
-    is_active: true,
-    created_at: "2026-01-15",
-  },
-  {
-    id: "2",
-    name: "Loyalty Reward",
-    discount_type: "fixed",
-    value: 50,
-    validity_days: 60,
-    max_uses: 1,
-    description: "Reward coupon for loyal customers",
-    is_active: true,
-    created_at: "2026-02-01",
-  },
-  {
-    id: "3",
-    name: "Birthday Special",
-    discount_type: "percentage",
-    value: 25,
-    validity_days: 7,
-    max_uses: 1,
-    description: "Special birthday discount",
-    is_active: true,
-    created_at: "2026-02-15",
-  },
-  {
-    id: "4",
-    name: "Flash Sale",
-    discount_type: "fixed",
-    value: 20,
-    validity_days: 3,
-    max_uses: 1,
-    description: "Limited time flash sale coupon",
-    is_active: false,
-    created_at: "2026-03-01",
-  },
-  {
-    id: "5",
-    name: "Referral Bonus",
-    discount_type: "percentage",
-    value: 10,
-    validity_days: 45,
-    max_uses: 3,
-    description: "Discount for customer referrals",
-    is_active: true,
-    created_at: "2026-03-10",
-  },
-]
-
-const mockIssuedCoupons: IssuedCoupon[] = [
-  {
-    id: "1",
-    code: "WELCOME-A1B2C3",
-    coupon_type_id: "1",
-    coupon_type_name: "Welcome Discount",
-    customer_id: "1",
-    customer_name: "Ahmed Ben Ali",
-    discount_type: "percentage",
-    value: 15,
-    status: "active",
-    issued_at: "2026-05-01",
-    expires_at: "2026-05-31",
-    used_at: null,
-  },
-  {
-    id: "2",
-    code: "LOYALTY-D4E5F6",
-    coupon_type_id: "2",
-    coupon_type_name: "Loyalty Reward",
-    customer_id: "2",
-    customer_name: "Fatima Zahra",
-    discount_type: "fixed",
-    value: 50,
-    status: "used",
-    issued_at: "2026-04-15",
-    expires_at: "2026-06-14",
-    used_at: "2026-05-05",
-  },
-  {
-    id: "3",
-    code: "BDAY-G7H8I9",
-    coupon_type_id: "3",
-    coupon_type_name: "Birthday Special",
-    customer_id: "3",
-    customer_name: "Youssef Amrani",
-    discount_type: "percentage",
-    value: 25,
-    status: "expired",
-    issued_at: "2026-04-01",
-    expires_at: "2026-04-08",
-    used_at: null,
-  },
-  {
-    id: "4",
-    code: "WELCOME-J0K1L2",
-    coupon_type_id: "1",
-    coupon_type_name: "Welcome Discount",
-    customer_id: "4",
-    customer_name: "Sara Benkirane",
-    discount_type: "percentage",
-    value: 15,
-    status: "voided",
-    issued_at: "2026-04-20",
-    expires_at: "2026-05-20",
-    used_at: null,
-  },
-  {
-    id: "5",
-    code: "REFER-M3N4O5",
-    coupon_type_id: "5",
-    coupon_type_name: "Referral Bonus",
-    customer_id: "5",
-    customer_name: "Omar Tazi",
-    discount_type: "percentage",
-    value: 10,
-    status: "active",
-    issued_at: "2026-05-05",
-    expires_at: "2026-06-19",
-    used_at: null,
-  },
-  {
-    id: "6",
-    code: "BULK-P6Q7R8",
-    coupon_type_id: "2",
-    coupon_type_name: "Loyalty Reward",
-    customer_id: null,
-    customer_name: null,
-    discount_type: "fixed",
-    value: 50,
-    status: "active",
-    issued_at: "2026-05-08",
-    expires_at: "2026-07-07",
-    used_at: null,
-  },
-  {
-    id: "7",
-    code: "BULK-S9T0U1",
-    coupon_type_id: "2",
-    coupon_type_name: "Loyalty Reward",
-    customer_id: null,
-    customer_name: null,
-    discount_type: "fixed",
-    value: 50,
-    status: "active",
-    issued_at: "2026-05-08",
-    expires_at: "2026-07-07",
-    used_at: null,
-  },
-]
 
 // ============== COMPONENTS ==============
 
@@ -372,10 +205,15 @@ function Dropdown({
 // ============== MAIN PAGE ==============
 export default function CouponsPage() {
   // State
-  const [couponTypes, setCouponTypes] = useState<CouponType[]>(mockCouponTypes)
-  const [issuedCoupons, setIssuedCoupons] = useState<IssuedCoupon[]>(mockIssuedCoupons)
+  const [couponTypes, setCouponTypes] = useState<CouponType[]>([])
+  const [issuedCoupons, setIssuedCoupons] = useState<IssuedCoupon[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Lookup state
+  const [lookupCode, setLookupCode] = useState("")
+  const [lookupLoading, setLookupLoading] = useState(false)
+  // Void reason state
+  const [voidReason, setVoidReason] = useState<{ id: string; reason: string } | null>(null)
   
   // Filter state for issued coupons
   const [searchQuery, setSearchQuery] = useState("")
@@ -406,12 +244,13 @@ export default function CouponsPage() {
   const [customerSearch, setCustomerSearch] = useState("")
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
 
-  useEffect(() => {
+  const fetchCouponTypes = () => {
     setLoading(true)
     setError(null)
-    apiFetch<{ data: any[] }>("/api/business/coupon-types")
-      .then(res => {
-        const mapped: CouponType[] = res.data.map((t: any) => ({
+    apiFetch<any[]>("/api/business/coupon-types")
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data as any).data ?? []
+        const mapped: CouponType[] = list.map((t: any) => ({
           id: t.id,
           name: t.name,
           discount_type: t.type === "fixed" ? "fixed" : "percentage",
@@ -426,6 +265,10 @@ export default function CouponsPage() {
       })
       .catch(e => setError(e.message ?? "Failed to load coupon types"))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchCouponTypes()
   }, [])
 
   // Filter issued coupons
@@ -437,11 +280,8 @@ export default function CouponsPage() {
     return matchesSearch && matchesStatus
   })
   
-  // Filtered customers for search
-  const filteredCustomers = mockCustomers.filter((c) =>
-    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-    c.email.toLowerCase().includes(customerSearch.toLowerCase())
-  )
+  // Filtered customers for search (no local mock — customer_id must be entered directly)
+  const filteredCustomers: Customer[] = []
   
   // Handlers
   const handleOpenCreateType = () => {
@@ -457,55 +297,68 @@ export default function CouponsPage() {
     setShowCreateTypeModal(true)
   }
   
-  const handleEditType = (type: CouponType) => {
-    setEditingType(type)
+  const handleEditType = async (type: CouponType) => {
+    let detail = type
+    try {
+      const res = await apiFetch<any>(`/api/business/coupon-types/${type.id}`)
+      detail = {
+        id: res.id,
+        name: res.name,
+        discount_type: res.type === "fixed" ? "fixed" : "percentage",
+        value: res.value ?? 0,
+        validity_days: res.validity_days ?? 30,
+        max_uses: res.max_uses ?? 1,
+        description: res.description ?? "",
+        is_active: res.is_active,
+        created_at: res.created_at ?? "",
+      }
+    } catch {
+      // Fall back to the list-row data if detail fetch fails
+    }
+    setEditingType(detail)
     setTypeForm({
-      name: type.name,
-      discount_type: type.discount_type,
-      value: type.value.toString(),
-      validity_days: type.validity_days.toString(),
-      max_uses: type.max_uses.toString(),
-      description: type.description,
+      name: detail.name,
+      discount_type: detail.discount_type,
+      value: detail.value.toString(),
+      validity_days: detail.validity_days.toString(),
+      max_uses: detail.max_uses.toString(),
+      description: detail.description,
     })
     setShowCreateTypeModal(true)
   }
   
   const handleSaveType = () => {
-    if (editingType) {
-      setCouponTypes(couponTypes.map(t => 
-        t.id === editingType.id 
-          ? {
-              ...t,
-              name: typeForm.name,
-              discount_type: typeForm.discount_type,
-              value: parseFloat(typeForm.value) || 0,
-              validity_days: parseInt(typeForm.validity_days) || 30,
-              max_uses: parseInt(typeForm.max_uses) || 1,
-              description: typeForm.description,
-            }
-          : t
-      ))
-    } else {
-      const newType: CouponType = {
-        id: Date.now().toString(),
-        name: typeForm.name,
-        discount_type: typeForm.discount_type,
-        value: parseFloat(typeForm.value) || 0,
-        validity_days: parseInt(typeForm.validity_days) || 30,
-        max_uses: parseInt(typeForm.max_uses) || 1,
-        description: typeForm.description,
-        is_active: true,
-        created_at: new Date().toISOString().split("T")[0],
-      }
-      setCouponTypes([...couponTypes, newType])
+    const body = {
+      name: typeForm.name,
+      type: typeForm.discount_type,
+      value: parseFloat(typeForm.value) || 0,
+      validity_days: parseInt(typeForm.validity_days) || 30,
+      max_uses: parseInt(typeForm.max_uses) || 1,
+      description: typeForm.description,
     }
-    setShowCreateTypeModal(false)
+    const call = editingType
+      ? apiFetch(`/api/business/coupon-types/${editingType.id}`, { method: "PATCH", body: JSON.stringify(body) })
+      : apiFetch("/api/business/coupon-types", { method: "POST", body: JSON.stringify(body) })
+    call
+      .then(() => {
+        setShowCreateTypeModal(false)
+        fetchCouponTypes()
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to save coupon type"))
   }
   
   const handleToggleTypeStatus = (id: string) => {
-    setCouponTypes(couponTypes.map(t =>
-      t.id === id ? { ...t, is_active: !t.is_active } : t
-    ))
+    const type = couponTypes.find(t => t.id === id)
+    if (!type) return
+    if (type.is_active) {
+      apiFetch(`/api/business/coupon-types/${id}/deactivate`, { method: "POST" })
+        .then(() => fetchCouponTypes())
+        .catch((e: any) => setError(e.message ?? "Failed to deactivate coupon type"))
+    } else {
+      apiFetch(`/api/business/coupon-types/${id}`, { method: "PATCH", body: JSON.stringify({ is_active: true }) })
+        .then(() => fetchCouponTypes())
+        .catch((e: any) => setError(e.message ?? "Failed to activate coupon type"))
+    }
   }
   
   const handleOpenIssueCoupon = () => {
@@ -519,64 +372,97 @@ export default function CouponsPage() {
     setShowIssueCouponModal(true)
   }
   
-  const generateCouponCode = (typeName: string) => {
-    const prefix = typeName.toUpperCase().replace(/\s+/g, "").slice(0, 6)
-    const suffix = Math.random().toString(36).substring(2, 8).toUpperCase()
-    return `${prefix}-${suffix}`
-  }
-  
   const handleIssueCoupons = () => {
-    const selectedType = couponTypes.find(t => t.id === issueForm.coupon_type_id)
-    if (!selectedType) return
-    
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + selectedType.validity_days)
-    const expiresAtStr = expiresAt.toISOString().split("T")[0]
-    const issuedAt = new Date().toISOString().split("T")[0]
-    
-    if (issueForm.issue_mode === "single" && issueForm.customer_id) {
-      const customer = mockCustomers.find(c => c.id === issueForm.customer_id)
-      const newCoupon: IssuedCoupon = {
-        id: Date.now().toString(),
-        code: generateCouponCode(selectedType.name),
-        coupon_type_id: selectedType.id,
-        coupon_type_name: selectedType.name,
-        customer_id: customer?.id || null,
-        customer_name: customer?.name || null,
-        discount_type: selectedType.discount_type,
-        value: selectedType.value,
-        status: "active",
-        issued_at: issuedAt,
-        expires_at: expiresAtStr,
-        used_at: null,
-      }
-      setIssuedCoupons([newCoupon, ...issuedCoupons])
-    } else if (issueForm.issue_mode === "bulk") {
+    if (!issueForm.coupon_type_id) return
+    if (issueForm.issue_mode === "single") {
+      const body: Record<string, string> = {}
+      if (issueForm.customer_id) body.customer_id = issueForm.customer_id
+      apiFetch(`/api/business/coupon-types/${issueForm.coupon_type_id}/issue`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+        .then((res: any) => {
+          const issued = res.coupon ?? res
+          const newCoupon: IssuedCoupon = {
+            id: issued.id,
+            code: res.code ?? issued.code ?? "",
+            coupon_type_id: issueForm.coupon_type_id,
+            coupon_type_name: couponTypes.find(t => t.id === issueForm.coupon_type_id)?.name ?? "",
+            customer_id: issued.customer_id ?? null,
+            customer_name: null,
+            discount_type: issued.discount_type ?? "percentage",
+            value: issued.value ?? 0,
+            status: (issued.status as CouponStatus) ?? "active",
+            issued_at: issued.created_at ?? new Date().toISOString().split("T")[0],
+            expires_at: issued.expires_at ?? "",
+            used_at: issued.used_at ?? null,
+          }
+          setIssuedCoupons(prev => [newCoupon, ...prev])
+          setShowIssueCouponModal(false)
+          fetchCouponTypes()
+        })
+        .catch((e: any) => setError(e.message ?? "Failed to issue coupon"))
+    } else {
       const count = parseInt(issueForm.bulk_count) || 1
-      const newCoupons: IssuedCoupon[] = Array.from({ length: count }, (_, i) => ({
-        id: `${Date.now()}-${i}`,
-        code: generateCouponCode(selectedType.name),
-        coupon_type_id: selectedType.id,
-        coupon_type_name: selectedType.name,
-        customer_id: null,
-        customer_name: null,
-        discount_type: selectedType.discount_type,
-        value: selectedType.value,
-        status: "active" as CouponStatus,
-        issued_at: issuedAt,
-        expires_at: expiresAtStr,
-        used_at: null,
-      }))
-      setIssuedCoupons([...newCoupons, ...issuedCoupons])
+      const customerIds = Array.from({ length: count }, () => issueForm.customer_id).filter(Boolean)
+      apiFetch("/api/business/coupons/bulk-issue", {
+        method: "POST",
+        body: JSON.stringify({
+          coupon_type_id: issueForm.coupon_type_id,
+          customer_ids: customerIds,
+        }),
+      })
+        .then(() => {
+          setShowIssueCouponModal(false)
+          fetchCouponTypes()
+        })
+        .catch((e: any) => setError(e.message ?? "Failed to bulk-issue coupons"))
     }
-    
-    setShowIssueCouponModal(false)
   }
   
   const handleVoidCoupon = (id: string) => {
-    setIssuedCoupons(issuedCoupons.map(c =>
-      c.id === id ? { ...c, status: "voided" as CouponStatus } : c
-    ))
+    const reason = voidReason?.id === id ? voidReason.reason : "Voided by admin"
+    apiFetch(`/api/business/coupons/${id}/void`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    })
+      .then(() => {
+        setIssuedCoupons(prev => prev.map(c =>
+          c.id === id ? { ...c, status: "voided" as CouponStatus } : c
+        ))
+        setVoidReason(null)
+      })
+      .catch((e: any) => setError(e.message ?? "Failed to void coupon"))
+  }
+
+  const handleLookupCoupon = () => {
+    if (!lookupCode.trim()) return
+    setLookupLoading(true)
+    setError(null)
+    apiFetch<any>(`/api/business/coupons/lookup?code=${encodeURIComponent(lookupCode.trim())}`)
+      .then(data => {
+        const mapped: IssuedCoupon = {
+          id: data.id ?? data.code,
+          code: data.code,
+          coupon_type_id: data.coupon_type_id ?? "",
+          coupon_type_name: data.coupon_type_name ?? data.type ?? "",
+          customer_id: data.customer_id ?? null,
+          customer_name: data.customer_name ?? null,
+          discount_type: data.discount_type ?? "percentage",
+          value: data.value ?? 0,
+          status: (data.status as CouponStatus) ?? "active",
+          issued_at: data.issued_at ?? data.created_at ?? "",
+          expires_at: data.expires_at ?? "",
+          used_at: data.used_at ?? null,
+        }
+        setIssuedCoupons(prev => {
+          const exists = prev.find(c => c.code === mapped.code)
+          if (exists) return prev.map(c => c.code === mapped.code ? mapped : c)
+          return [mapped, ...prev]
+        })
+      })
+      .catch((e: any) => setError(e.message ?? "Coupon not found"))
+      .finally(() => setLookupLoading(false))
   }
   
   const copyToClipboard = (code: string) => {
@@ -675,12 +561,25 @@ export default function CouponsPage() {
                     />
                   </td>
                   <td className="px-4 py-4">
-                    <button
-                      onClick={() => handleEditType(type)}
-                      className="text-sm text-primary hover:text-primary/80 font-medium"
-                    >
-                      Edit
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleEditType(type)}
+                        className="text-sm text-primary hover:text-primary/80 font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          apiFetch(`/api/business/coupon-types/${type.id}/clone`, { method: "POST" })
+                            .then(() => fetchCouponTypes())
+                            .catch((e: any) => setError(e.message ?? "Failed to clone coupon type"))
+                        }}
+                        className="text-sm text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Clone
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -700,6 +599,27 @@ export default function CouponsPage() {
             </span>
           </div>
           
+          {/* Lookup Bar */}
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Lookup coupon by exact code..."
+                value={lookupCode}
+                onChange={(e) => setLookupCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleLookupCoupon() }}
+                className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+            <button
+              onClick={handleLookupCoupon}
+              disabled={lookupLoading || !lookupCode.trim()}
+              className="px-3 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {lookupLoading ? "..." : "Lookup"}
+            </button>
+          </div>
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -782,13 +702,41 @@ export default function CouponsPage() {
                   </td>
                   <td className="px-4 py-4">
                     {coupon.status === "active" && (
-                      <button
-                        onClick={() => handleVoidCoupon(coupon.id)}
-                        className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
-                      >
-                        <Ban className="w-3.5 h-3.5" />
-                        Void
-                      </button>
+                      voidReason?.id === coupon.id ? (
+                        <div className="flex flex-col gap-1.5">
+                          <input
+                            type="text"
+                            value={voidReason.reason}
+                            onChange={(e) => setVoidReason({ id: coupon.id, reason: e.target.value })}
+                            placeholder="Void reason..."
+                            className="w-40 px-2 py-1 text-xs border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-red-400"
+                          />
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleVoidCoupon(coupon.id)}
+                              disabled={!voidReason.reason.trim()}
+                              className="text-xs text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+                            >
+                              Confirm
+                            </button>
+                            <span className="text-muted-foreground">·</span>
+                            <button
+                              onClick={() => setVoidReason(null)}
+                              className="text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setVoidReason({ id: coupon.id, reason: "" })}
+                          className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Void
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>
@@ -981,10 +929,11 @@ export default function CouponsPage() {
                   value={customerSearch}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value)
+                    setIssueForm({ ...issueForm, customer_id: e.target.value })
                     setShowCustomerDropdown(true)
                   }}
                   onFocus={() => setShowCustomerDropdown(true)}
-                  placeholder="Search customer by name or email..."
+                  placeholder="Enter customer ID..."
                   className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
                 {showCustomerDropdown && customerSearch && (
@@ -1016,7 +965,7 @@ export default function CouponsPage() {
               </div>
               {issueForm.customer_id && (
                 <p className="mt-2 text-xs text-green-600">
-                  Customer selected: {mockCustomers.find(c => c.id === issueForm.customer_id)?.name}
+                  Customer ID selected: {issueForm.customer_id}
                 </p>
               )}
             </div>

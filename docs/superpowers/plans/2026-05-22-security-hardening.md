@@ -1748,7 +1748,8 @@ docker compose exec backend npm test --workspace=apps/backend 2>&1 | tail -10
 
 ---
 
-### Task 4.4 — MaxLength on VoidTransactionDto
+
+ 4.4 — MaxLength on VoidTransactionDto
 
 **Files:**
 - Modify: `apps/backend/src/modules/terminal/dto/transaction.dto.ts`

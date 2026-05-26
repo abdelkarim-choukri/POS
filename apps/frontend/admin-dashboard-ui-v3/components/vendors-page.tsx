@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
@@ -27,14 +27,12 @@ import {
 } from "lucide-react"
 
 // Types
-interface VendorCheck {
+interface VendorCheckDetail {
   id: string
-  check_number: string
-  bank_name: string
-  amount: number
-  issue_date: string
-  due_date: string
-  status: "pending" | "cleared" | "bounced"
+  checked_at: string
+  checked_by: string
+  status: string
+  notes?: string
 }
 
 interface VendorPayment {
@@ -71,46 +69,6 @@ interface Vendor {
   total_orders: number
   total_spent: number
   created_at: string
-}
-
-// Mock Data
-const mockVendors: Vendor[] = [
-  { id: "1", name: "Fresh Farms Produce", contact_name: "Ahmed Benali", email: "ahmed@freshfarms.ma", phone: "+212 6 12 34 56 78", address: "123 Agriculture Zone, Casablanca", payment_terms: "Net 30", status: "active", total_orders: 45, total_spent: 125000, created_at: "2024-01-15" },
-  { id: "2", name: "Ocean Seafood Co.", contact_name: "Fatima Alami", email: "fatima@oceanseafood.ma", phone: "+212 6 22 33 44 55", address: "Port District, Agadir", payment_terms: "Net 15", status: "active", total_orders: 28, total_spent: 89000, created_at: "2024-02-20" },
-  { id: "3", name: "Bakery Supplies Ltd", contact_name: "Karim Idrissi", email: "karim@bakerysupplies.ma", phone: "+212 6 33 44 55 66", address: "Industrial Zone, Rabat", payment_terms: "COD", status: "active", total_orders: 62, total_spent: 45000, created_at: "2024-01-05" },
-  { id: "4", name: "Beverage Distributors", contact_name: "Sara Tazi", email: "sara@bevdist.ma", phone: "+212 6 44 55 66 77", address: "Commercial District, Marrakech", payment_terms: "Net 45", status: "inactive", total_orders: 15, total_spent: 32000, created_at: "2024-03-10" },
-]
-
-const mockVendorChecks: Record<string, VendorCheck[]> = {
-  "1": [
-    { id: "1", check_number: "CHK-001234", bank_name: "Attijariwafa Bank", amount: 15000, issue_date: "2024-01-10", due_date: "2024-02-10", status: "cleared" },
-    { id: "2", check_number: "CHK-001235", bank_name: "BMCE Bank", amount: 22500, issue_date: "2024-01-20", due_date: "2024-02-20", status: "pending" },
-    { id: "3", check_number: "CHK-001236", bank_name: "Attijariwafa Bank", amount: 8000, issue_date: "2024-01-25", due_date: "2024-02-25", status: "bounced" },
-  ],
-  "2": [
-    { id: "1", check_number: "CHK-002001", bank_name: "CIH Bank", amount: 18000, issue_date: "2024-02-01", due_date: "2024-03-01", status: "pending" },
-  ],
-}
-
-const mockVendorPayments: Record<string, VendorPayment[]> = {
-  "1": [
-    { id: "1", payment_number: "VP-2024-00001", po_number: "PO-2024001", payment_method: "bank_transfer", amount: 15000, status: "confirmed", payment_date: "2024-01-15", confirmed_by: "Admin" },
-    { id: "2", payment_number: "VP-2024-00002", po_number: "PO-2024003", payment_method: "check", amount: 22500, status: "pending", payment_date: "2024-01-20", reference_number: "CHK-001235" },
-    { id: "3", payment_number: "VP-2024-00003", po_number: "PO-2024005", payment_method: "cash", amount: 5000, status: "voided", payment_date: "2024-01-22", notes: "Voided due to incorrect amount" },
-  ],
-  "2": [
-    { id: "1", payment_number: "VP-2024-00010", po_number: "PO-2024010", payment_method: "mobile", amount: 12000, status: "confirmed", payment_date: "2024-02-05", confirmed_by: "Manager" },
-  ],
-}
-
-const mockOutstandingPOs: Record<string, OutstandingPO[]> = {
-  "1": [
-    { id: "1", po_number: "PO-2024008", total_ttc: 35000, amount_paid: 15000, balance_due: 20000, expected_delivery_date: "2024-01-10" },
-    { id: "2", po_number: "PO-2024012", total_ttc: 18500, amount_paid: 0, balance_due: 18500, expected_delivery_date: "2024-02-01" },
-  ],
-  "2": [
-    { id: "1", po_number: "PO-2024015", total_ttc: 25000, amount_paid: 12000, balance_due: 13000, expected_delivery_date: "2024-02-15" },
-  ],
 }
 
 // Reusable Components
@@ -188,51 +146,83 @@ function SlidePanel({ isOpen, onClose, title, children }: { isOpen: boolean; onC
   )
 }
 
+const emptyAddForm = { name: "", contact_name: "", email: "", phone: "", address: "", payment_terms_days: "", notes: "" }
+const emptyCheckDetailForm = { checked_at: new Date().toISOString().slice(0, 16), checked_by: "", status: "ok", notes: "" }
+
 export default function VendorsPage() {
-  const [vendors, setVendors] = useState<Vendor[]>(mockVendors)
+  const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+
+  // Add vendor modal
   const [showAddModal, setShowAddModal] = useState(false)
+  const [addFormData, setAddFormData] = useState(emptyAddForm)
+  const [addLoading, setAddLoading] = useState(false)
+
+  // Edit vendor modal
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editFormData, setEditFormData] = useState(emptyAddForm)
+  const [editVendorId, setEditVendorId] = useState<string | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+
+  // Delete confirm
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteVendorId, setDeleteVendorId] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  // Detail panel
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [showDropdown, setShowDropdown] = useState<string | null>(null)
   const [vendorTab, setVendorTab] = useState<"info" | "checks" | "payments" | "outstanding">("info")
+
+  // Check details
+  const [vendorCheckDetails, setVendorCheckDetails] = useState<VendorCheckDetail[]>([])
+  const [checkDetailsLoading, setCheckDetailsLoading] = useState(false)
   const [showAddCheckModal, setShowAddCheckModal] = useState(false)
+  const [checkDetailFormData, setCheckDetailFormData] = useState(emptyCheckDetailForm)
+  const [addCheckLoading, setAddCheckLoading] = useState(false)
+
+  // Payments / outstanding — not in scope for this wiring pass; kept as empty lists
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false)
-  const [checkFormData, setCheckFormData] = useState({ check_number: "", bank_name: "", amount: "", issue_date: "", due_date: "" })
   const [paymentFormData, setPaymentFormData] = useState({ po_number: "", amount: "", payment_method: "cash" as const, payment_date: new Date().toISOString().split("T")[0], reference_number: "", notes: "" })
 
-  // Fetch vendors from API with debounced search
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const mapVendor = (v: any): Vendor => ({
+    id: v.id,
+    name: v.name,
+    contact_name: v.contact_name ?? "",
+    email: v.email ?? "",
+    phone: v.phone ?? "",
+    address: v.address ?? "",
+    payment_terms: v.payment_terms_days ? `Net ${v.payment_terms_days}` : "COD",
+    status: v.is_active === false ? "inactive" : "active",
+    total_orders: 0,
+    total_spent: 0,
+    created_at: v.created_at ?? "",
+  })
+
+  const fetchVendors = async (search = searchQuery) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams()
+      if (search) params.set("search", search)
+      const res = await apiFetch<{ data: any[] }>(`/api/business/vendors?${params}`)
+      setVendors(res.data.map(mapVendor))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load vendors")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Fetch vendors from API with debounced search ──────────────────────────
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const params = new URLSearchParams()
-        if (searchQuery) params.set("search", searchQuery)
-        const res = await apiFetch<{ data: any[] }>(`/api/business/inventory/vendors?${params}`)
-        const mapped: Vendor[] = res.data.map((v: any) => ({
-          id: v.id,
-          name: v.name,
-          contact_name: v.contact_name ?? "",
-          email: v.email ?? "",
-          phone: v.phone ?? "",
-          address: v.address ?? "",
-          payment_terms: v.payment_terms_days ? `Net ${v.payment_terms_days}` : "COD",
-          status: v.is_active === false ? "inactive" : "active",
-          total_orders: 0,
-          total_spent: 0,
-          created_at: v.created_at ?? "",
-        }))
-        setVendors(mapped)
-      } catch (e: any) {
-        setError(e.message ?? "Failed to load vendors")
-      } finally {
-        setLoading(false)
-      }
-    }, 300)
+    const timer = setTimeout(() => fetchVendors(searchQuery), 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
@@ -242,19 +232,163 @@ export default function VendorsPage() {
     return matchesSearch && matchesStatus
   })
 
-  const handleViewVendor = (vendor: Vendor) => {
+  // ── View vendor detail → GET /api/business/vendors/:id ───────────────────
+  const handleViewVendor = async (vendor: Vendor) => {
     setSelectedVendor(vendor)
     setVendorTab("info")
     setShowDetailPanel(true)
     setShowDropdown(null)
+    setDetailLoading(true)
+    try {
+      const v = await apiFetch<any>(`/api/business/vendors/${vendor.id}`)
+      setSelectedVendor(mapVendor(v))
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load vendor details")
+    } finally {
+      setDetailLoading(false)
+    }
   }
 
-  const getVendorChecks = (vendorId: string) => mockVendorChecks[vendorId] || []
-  const getVendorPayments = (vendorId: string) => mockVendorPayments[vendorId] || []
-  const getOutstandingPOs = (vendorId: string) => mockOutstandingPOs[vendorId] || []
-  
-  const getTotalOutstanding = (vendorId: string) => {
-    return getOutstandingPOs(vendorId).reduce((sum, po) => sum + po.balance_due, 0)
+  // ── Load check details → GET /api/business/vendors/:id/check-details ─────
+  const fetchCheckDetails = async (vendorId: string) => {
+    setCheckDetailsLoading(true)
+    try {
+      const data = await apiFetch<VendorCheckDetail[]>(`/api/business/vendors/${vendorId}/check-details`)
+      setVendorCheckDetails(data)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load check details")
+    } finally {
+      setCheckDetailsLoading(false)
+    }
+  }
+
+  // Trigger check-details fetch when that tab is selected
+  useEffect(() => {
+    if (vendorTab === "checks" && selectedVendor) {
+      fetchCheckDetails(selectedVendor.id)
+    }
+  }, [vendorTab, selectedVendor?.id])
+
+  // ── Create vendor → POST /api/business/vendors ───────────────────────────
+  const handleCreateVendor = async () => {
+    setAddLoading(true)
+    setError(null)
+    try {
+      const body: Record<string, any> = { name: addFormData.name }
+      if (addFormData.contact_name) body.contact_name = addFormData.contact_name
+      if (addFormData.email) body.email = addFormData.email
+      if (addFormData.phone) body.phone = addFormData.phone
+      if (addFormData.address) body.address = addFormData.address
+      if (addFormData.payment_terms_days) body.payment_terms_days = Number(addFormData.payment_terms_days)
+      if (addFormData.notes) body.notes = addFormData.notes
+      await apiFetch(`/api/business/vendors`, { method: "POST", body: JSON.stringify(body) })
+      setShowAddModal(false)
+      setAddFormData(emptyAddForm)
+      await fetchVendors()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to create vendor")
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  // ── Open edit modal ───────────────────────────────────────────────────────
+  const handleOpenEdit = (vendor: Vendor) => {
+    setEditVendorId(vendor.id)
+    const terms = vendor.payment_terms.startsWith("Net ") ? vendor.payment_terms.replace("Net ", "") : ""
+    setEditFormData({
+      name: vendor.name,
+      contact_name: vendor.contact_name,
+      email: vendor.email,
+      phone: vendor.phone,
+      address: vendor.address,
+      payment_terms_days: terms,
+      notes: "",
+    })
+    setShowEditModal(true)
+    setShowDropdown(null)
+  }
+
+  // ── Edit vendor → PATCH /api/business/vendors/:id ────────────────────────
+  const handleEditVendor = async () => {
+    if (!editVendorId) return
+    setEditLoading(true)
+    setError(null)
+    try {
+      const body: Record<string, any> = {}
+      if (editFormData.name) body.name = editFormData.name
+      if (editFormData.contact_name !== undefined) body.contact_name = editFormData.contact_name
+      if (editFormData.email !== undefined) body.email = editFormData.email
+      if (editFormData.phone !== undefined) body.phone = editFormData.phone
+      if (editFormData.address !== undefined) body.address = editFormData.address
+      if (editFormData.payment_terms_days) body.payment_terms_days = Number(editFormData.payment_terms_days)
+      if (editFormData.notes) body.notes = editFormData.notes
+      await apiFetch(`/api/business/vendors/${editVendorId}`, { method: "PATCH", body: JSON.stringify(body) })
+      setShowEditModal(false)
+      setEditVendorId(null)
+      await fetchVendors()
+      // Refresh detail panel if this vendor is open
+      if (selectedVendor?.id === editVendorId) {
+        const v = await apiFetch<any>(`/api/business/vendors/${editVendorId}`)
+        setSelectedVendor(mapVendor(v))
+      }
+    } catch (e: any) {
+      setError(e.message ?? "Failed to update vendor")
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  // ── Delete vendor → DELETE /api/business/vendors/:id ─────────────────────
+  const handleOpenDelete = (vendorId: string) => {
+    setDeleteVendorId(vendorId)
+    setShowDeleteConfirm(true)
+    setShowDropdown(null)
+  }
+
+  const handleDeleteVendor = async () => {
+    if (!deleteVendorId) return
+    setDeleteLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/vendors/${deleteVendorId}`, { method: "DELETE" })
+      setShowDeleteConfirm(false)
+      setDeleteVendorId(null)
+      if (selectedVendor?.id === deleteVendorId) {
+        setShowDetailPanel(false)
+        setSelectedVendor(null)
+      }
+      await fetchVendors()
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete vendor")
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  // ── Add check detail → POST /api/business/vendors/:id/check-details ──────
+  const handleAddCheckDetail = async () => {
+    if (!selectedVendor) return
+    setAddCheckLoading(true)
+    setError(null)
+    try {
+      await apiFetch(`/api/business/vendors/${selectedVendor.id}/check-details`, {
+        method: "POST",
+        body: JSON.stringify({
+          checked_at: checkDetailFormData.checked_at,
+          checked_by: checkDetailFormData.checked_by,
+          status: checkDetailFormData.status,
+          ...(checkDetailFormData.notes ? { notes: checkDetailFormData.notes } : {}),
+        }),
+      })
+      setShowAddCheckModal(false)
+      setCheckDetailFormData(emptyCheckDetailForm)
+      await fetchCheckDetails(selectedVendor.id)
+    } catch (e: any) {
+      setError(e.message ?? "Failed to add check detail")
+    } finally {
+      setAddCheckLoading(false)
+    }
   }
 
   const getDaysOverdue = (dateStr: string) => {
@@ -267,11 +401,6 @@ export default function VendorsPage() {
   const getPaymentMethodBadgeColor = (method: string): "green" | "blue" | "yellow" | "gray" => {
     const colors: Record<string, "green" | "blue" | "yellow" | "gray"> = { cash: "green", check: "blue", bank_transfer: "yellow", mobile: "gray" }
     return colors[method] || "gray"
-  }
-
-  const getCheckStatusColor = (status: string): "green" | "yellow" | "red" => {
-    const colors: Record<string, "green" | "yellow" | "red"> = { cleared: "green", pending: "yellow", bounced: "red" }
-    return colors[status] || "gray" as "green"
   }
 
   return (
@@ -422,10 +551,10 @@ export default function VendorsPage() {
                           <button onClick={() => handleViewVendor(vendor)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
                             <Eye className="w-4 h-4" /> View Details
                           </button>
-                          <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
+                          <button onClick={() => handleOpenEdit(vendor)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]">
                             <Pencil className="w-4 h-4" /> Edit
                           </button>
-                          <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                          <button onClick={() => handleOpenDelete(vendor.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
                             <Trash2 className="w-4 h-4" /> Delete
                           </button>
                         </div>
@@ -443,33 +572,67 @@ export default function VendorsPage() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Vendor" size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Vendor Name" placeholder="Enter company name" />
-            <Input label="Contact Name" placeholder="Enter contact person" />
+            <Input label="Vendor Name" placeholder="Enter company name" value={addFormData.name} onChange={(e) => setAddFormData(prev => ({ ...prev, name: e.target.value }))} />
+            <Input label="Contact Name" placeholder="Enter contact person" value={addFormData.contact_name} onChange={(e) => setAddFormData(prev => ({ ...prev, contact_name: e.target.value }))} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Email" type="email" placeholder="vendor@example.com" />
-            <Input label="Phone" placeholder="+212 6 XX XX XX XX" />
+            <Input label="Email" type="email" placeholder="vendor@example.com" value={addFormData.email} onChange={(e) => setAddFormData(prev => ({ ...prev, email: e.target.value }))} />
+            <Input label="Phone" placeholder="+212 6 XX XX XX XX" value={addFormData.phone} onChange={(e) => setAddFormData(prev => ({ ...prev, phone: e.target.value }))} />
           </div>
-          <Input label="Address" placeholder="Enter full address" />
+          <Input label="Address" placeholder="Enter full address" value={addFormData.address} onChange={(e) => setAddFormData(prev => ({ ...prev, address: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Payment Terms" options={[
-              { value: "cod", label: "Cash on Delivery" },
-              { value: "net15", label: "Net 15" },
-              { value: "net30", label: "Net 30" },
-              { value: "net45", label: "Net 45" },
-            ]} />
-            <Select label="Status" options={[
-              { value: "active", label: "Active" },
-              { value: "inactive", label: "Inactive" },
-            ]} />
+            <Input label="Payment Terms (days)" type="number" placeholder="e.g. 30" value={addFormData.payment_terms_days} onChange={(e) => setAddFormData(prev => ({ ...prev, payment_terms_days: e.target.value }))} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
-            <textarea className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm h-24 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" placeholder="Additional notes about vendor..." />
+            <textarea className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm h-24 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" placeholder="Additional notes about vendor..." value={addFormData.notes} onChange={(e) => setAddFormData(prev => ({ ...prev, notes: e.target.value }))} />
           </div>
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1">Add Vendor</Button>
+            <Button variant="primary" className="flex-1" onClick={handleCreateVendor} disabled={addLoading || !addFormData.name}>
+              {addLoading ? "Adding..." : "Add Vendor"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Vendor Modal */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Vendor" size="lg">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Vendor Name" placeholder="Enter company name" value={editFormData.name} onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))} />
+            <Input label="Contact Name" placeholder="Enter contact person" value={editFormData.contact_name} onChange={(e) => setEditFormData(prev => ({ ...prev, contact_name: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Email" type="email" placeholder="vendor@example.com" value={editFormData.email} onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))} />
+            <Input label="Phone" placeholder="+212 6 XX XX XX XX" value={editFormData.phone} onChange={(e) => setEditFormData(prev => ({ ...prev, phone: e.target.value }))} />
+          </div>
+          <Input label="Address" placeholder="Enter full address" value={editFormData.address} onChange={(e) => setEditFormData(prev => ({ ...prev, address: e.target.value }))} />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Payment Terms (days)" type="number" placeholder="e.g. 30" value={editFormData.payment_terms_days} onChange={(e) => setEditFormData(prev => ({ ...prev, payment_terms_days: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm h-24 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" placeholder="Additional notes about vendor..." value={editFormData.notes} onChange={(e) => setEditFormData(prev => ({ ...prev, notes: e.target.value }))} />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditModal(false)}>Cancel</Button>
+            <Button variant="primary" className="flex-1" onClick={handleEditVendor} disabled={editLoading || !editFormData.name}>
+              {editLoading ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirm Modal */}
+      <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Vendor" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">Are you sure you want to delete this vendor? This action cannot be undone.</p>
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="danger" className="flex-1" onClick={handleDeleteVendor} disabled={deleteLoading}>
+              {deleteLoading ? "Deleting..." : "Delete Vendor"}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -478,6 +641,7 @@ export default function VendorsPage() {
       <SlidePanel isOpen={showDetailPanel} onClose={() => setShowDetailPanel(false)} title="Vendor Details">
         {selectedVendor && (
           <div className="space-y-6">
+            {detailLoading && <div className="text-center text-sm text-gray-400 py-2">Loading details...</div>}
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold">
                 {selectedVendor.name.charAt(0)}
@@ -497,8 +661,8 @@ export default function VendorsPage() {
                     key={tab}
                     onClick={() => setVendorTab(tab)}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${
-                      vendorTab === tab 
-                        ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" 
+                      vendorTab === tab
+                        ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
                         : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                     }`}
                   >
@@ -543,7 +707,7 @@ export default function VendorsPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="secondary" className="flex-1">Edit Vendor</Button>
+                  <Button variant="secondary" className="flex-1" onClick={() => handleOpenEdit(selectedVendor)}>Edit Vendor</Button>
                   <Button variant="primary" className="flex-1">Create Order</Button>
                 </div>
               </div>
@@ -557,43 +721,40 @@ export default function VendorsPage() {
                     <Plus className="w-4 h-4" /> Add Check
                   </Button>
                 </div>
-                {getVendorChecks(selectedVendor.id).length > 0 ? (
+                {checkDetailsLoading && <div className="text-center text-sm text-gray-400 py-4">Loading...</div>}
+                {!checkDetailsLoading && vendorCheckDetails.length > 0 ? (
                   <div className="space-y-2">
-                    {getVendorChecks(selectedVendor.id).map((check) => (
+                    {vendorCheckDetails.map((check) => (
                       <div key={check.id} className="p-4 bg-gray-50 dark:bg-[#0F0F12]/50 rounded-lg">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-gray-400" />
-                            <span className="font-medium text-gray-900 dark:text-white">{check.check_number}</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{check.checked_by}</span>
                           </div>
-                          <Badge color={getCheckStatusColor(check.status)}>{check.status}</Badge>
+                          <Badge color={check.status === "ok" ? "green" : check.status === "pending" ? "yellow" : "red"}>{check.status}</Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
-                            <p className="text-gray-500 dark:text-gray-400">Bank</p>
-                            <p className="text-gray-900 dark:text-white">{check.bank_name}</p>
+                            <p className="text-gray-500 dark:text-gray-400">Checked At</p>
+                            <p className="text-gray-900 dark:text-white">{new Date(check.checked_at).toLocaleString()}</p>
                           </div>
-                          <div>
-                            <p className="text-gray-500 dark:text-gray-400">Amount</p>
-                            <p className="text-gray-900 dark:text-white font-mono">{check.amount.toLocaleString()} MAD</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 dark:text-gray-400">Issue Date</p>
-                            <p className="text-gray-900 dark:text-white">{check.issue_date}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 dark:text-gray-400">Due Date</p>
-                            <p className="text-gray-900 dark:text-white">{check.due_date}</p>
-                          </div>
+                          {check.notes && (
+                            <div>
+                              <p className="text-gray-500 dark:text-gray-400">Notes</p>
+                              <p className="text-gray-900 dark:text-white">{check.notes}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <CreditCard className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">No checks recorded for this vendor</p>
-                  </div>
+                  !checkDetailsLoading && (
+                    <div className="text-center py-8">
+                      <CreditCard className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                      <p className="text-gray-500 dark:text-gray-400">No check details recorded for this vendor</p>
+                    </div>
+                  )
                 )}
               </div>
             )}
@@ -606,145 +767,79 @@ export default function VendorsPage() {
                     <Plus className="w-4 h-4" /> Record Payment
                   </Button>
                 </div>
-                {getVendorPayments(selectedVendor.id).length > 0 ? (
-                  <div className="space-y-2">
-                    {getVendorPayments(selectedVendor.id).map((payment) => (
-                      <div key={payment.id} className="p-4 bg-gray-50 dark:bg-[#0F0F12]/50 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <span className="font-medium text-gray-900 dark:text-white">{payment.payment_number}</span>
-                            <span className="text-gray-500 dark:text-gray-400 text-sm ml-2">({payment.po_number})</span>
-                          </div>
-                          <Badge color={payment.status === "confirmed" ? "green" : payment.status === "pending" ? "yellow" : "red"}>
-                            {payment.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Badge color={getPaymentMethodBadgeColor(payment.payment_method)}>{payment.payment_method.replace("_", " ")}</Badge>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">{payment.payment_date}</span>
-                          </div>
-                          <span className="font-mono font-medium text-gray-900 dark:text-white">{payment.amount.toLocaleString()} MAD</span>
-                        </div>
-                        {payment.confirmed_by && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Confirmed by: {payment.confirmed_by}</p>
-                        )}
-                        <div className="flex gap-2 mt-3">
-                          {payment.status === "pending" && (
-                            <Button variant="primary" className="text-xs px-2 py-1">
-                              <CheckCircle className="w-3 h-3" /> Confirm
-                            </Button>
-                          )}
-                          {payment.status !== "voided" && (
-                            <Button variant="danger" className="text-xs px-2 py-1">
-                              <X className="w-3 h-3" /> Void
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Banknote className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400">No payments recorded for this vendor</p>
-                  </div>
-                )}
+                <div className="text-center py-8">
+                  <Banknote className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No payments recorded for this vendor</p>
+                </div>
               </div>
             )}
 
             {/* Outstanding Tab */}
             {vendorTab === "outstanding" && (
               <div className="space-y-4">
-                {/* Summary Card */}
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
                     <span className="text-sm font-medium text-red-800 dark:text-red-300">Total Outstanding</span>
                   </div>
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{getTotalOutstanding(selectedVendor.id).toLocaleString()} MAD</p>
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">0 MAD</p>
                 </div>
-
-                {getOutstandingPOs(selectedVendor.id).length > 0 ? (
-                  <div className="space-y-2">
-                    {getOutstandingPOs(selectedVendor.id).map((po) => {
-                      const daysOverdue = getDaysOverdue(po.expected_delivery_date)
-                      return (
-                        <div key={po.id} className="p-4 bg-gray-50 dark:bg-[#0F0F12]/50 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-gray-900 dark:text-white">{po.po_number}</span>
-                            {daysOverdue > 0 && (
-                              <Badge color="red">{daysOverdue} days overdue</Badge>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div>
-                              <p className="text-gray-500 dark:text-gray-400">Total TTC</p>
-                              <p className="text-gray-900 dark:text-white font-mono">{po.total_ttc.toLocaleString()} MAD</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 dark:text-gray-400">Amount Paid</p>
-                              <p className="text-green-600 dark:text-green-400 font-mono">{po.amount_paid.toLocaleString()} MAD</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 dark:text-gray-400">Balance Due</p>
-                              <p className="text-red-600 dark:text-red-400 font-mono font-medium">{po.balance_due.toLocaleString()} MAD</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" /> Expected: {po.expected_delivery_date}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
-                    <p className="text-green-600 dark:text-green-400 font-medium">All invoices paid</p>
-                  </div>
-                )}
+                <div className="text-center py-8">
+                  <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
+                  <p className="text-green-600 dark:text-green-400 font-medium">All invoices paid</p>
+                </div>
               </div>
             )}
           </div>
         )}
       </SlidePanel>
 
-      {/* Add Check Modal */}
-      <Modal isOpen={showAddCheckModal} onClose={() => setShowAddCheckModal(false)} title="Add Check" size="md">
+      {/* Add Check Detail Modal */}
+      <Modal isOpen={showAddCheckModal} onClose={() => setShowAddCheckModal(false)} title="Add Check Detail" size="md">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Check Number" value={checkFormData.check_number} onChange={(e) => setCheckFormData(prev => ({ ...prev, check_number: e.target.value }))} placeholder="CHK-XXXXXX" />
-            <Input label="Bank Name" value={checkFormData.bank_name} onChange={(e) => setCheckFormData(prev => ({ ...prev, bank_name: e.target.value }))} placeholder="Bank name" />
-          </div>
-          <Input label="Amount (MAD)" type="number" value={checkFormData.amount} onChange={(e) => setCheckFormData(prev => ({ ...prev, amount: e.target.value }))} placeholder="0.00" />
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Issue Date" type="date" value={checkFormData.issue_date} onChange={(e) => setCheckFormData(prev => ({ ...prev, issue_date: e.target.value }))} />
-            <Input label="Due Date" type="date" value={checkFormData.due_date} onChange={(e) => setCheckFormData(prev => ({ ...prev, due_date: e.target.value }))} />
+          <Input
+            label="Checked At"
+            type="datetime-local"
+            value={checkDetailFormData.checked_at}
+            onChange={(e) => setCheckDetailFormData(prev => ({ ...prev, checked_at: e.target.value }))}
+          />
+          <Input
+            label="Checked By"
+            placeholder="Inspector name"
+            value={checkDetailFormData.checked_by}
+            onChange={(e) => setCheckDetailFormData(prev => ({ ...prev, checked_by: e.target.value }))}
+          />
+          <Select
+            label="Status"
+            value={checkDetailFormData.status}
+            onChange={(e) => setCheckDetailFormData(prev => ({ ...prev, status: e.target.value }))}
+            options={[
+              { value: "ok", label: "OK" },
+              { value: "pending", label: "Pending" },
+              { value: "issue", label: "Issue" },
+            ]}
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
+            <textarea
+              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm h-20 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
+              placeholder="Additional notes..."
+              value={checkDetailFormData.notes}
+              onChange={(e) => setCheckDetailFormData(prev => ({ ...prev, notes: e.target.value }))}
+            />
           </div>
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddCheckModal(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1">Add Check</Button>
+            <Button variant="primary" className="flex-1" onClick={handleAddCheckDetail} disabled={addCheckLoading || !checkDetailFormData.checked_by}>
+              {addCheckLoading ? "Adding..." : "Add Check Detail"}
+            </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Add Payment Modal */}
+      {/* Add Payment Modal (placeholder — payment endpoints not in scope) */}
       <Modal isOpen={showAddPaymentModal} onClose={() => setShowAddPaymentModal(false)} title="Record Payment" size="md">
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Purchase Order</label>
-            <select
-              value={paymentFormData.po_number}
-              onChange={(e) => setPaymentFormData(prev => ({ ...prev, po_number: e.target.value }))}
-              className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-            >
-              <option value="">Select PO...</option>
-              {selectedVendor && getOutstandingPOs(selectedVendor.id).map(po => (
-                <option key={po.id} value={po.po_number}>{po.po_number} - Balance: {po.balance_due.toLocaleString()} MAD</option>
-              ))}
-            </select>
-          </div>
           <Input label="Amount (MAD)" type="number" value={paymentFormData.amount} onChange={(e) => setPaymentFormData(prev => ({ ...prev, amount: e.target.value }))} placeholder="0.00" />
           <Select
             label="Payment Method"
@@ -777,5 +872,3 @@ export default function VendorsPage() {
     </div>
   )
 }
-
-
