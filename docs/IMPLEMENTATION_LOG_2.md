@@ -443,3 +443,71 @@ Ending state: 252 endpoints wired (88%), 0 active bugs, 5 endpoints still pendin
 | ✅ WIRED | 257 |
 | ⚡ NOT NEEDED | 28 |
 | **Total** | **285** |
+
+---
+
+## Dev Environment Fixes — 2026-05-26
+
+### Fix 1 — CORS blocking all API calls (root cause)
+
+**File:** `apps/backend/src/main.ts`
+
+**Problem:** `ALLOWED_ORIGINS` defaulted to `http://localhost:5173,http://localhost:5174` (old Vite
+ports). No override in `docker-compose.yml`. Frontend apps are on ports 3001/3002. Every fetch from
+the browser was blocked by CORS before reaching NestJS.
+
+**Fix:** Updated default fallback to:
+```
+http://localhost:3001,http://localhost:3002,http://127.0.0.1:3001,http://127.0.0.1:3002
+```
+Both `localhost` and `127.0.0.1` variants included — Windows browsers with Clash VPN active
+sometimes resolve one but not the other; mismatched origins would still be blocked.
+
+**Why no rebuild needed:** `docker-compose.yml` mounts `./apps/backend:/workspace/apps/backend`
+as a volume. Editing `src/main.ts` on the host is immediately visible inside the container and
+NestJS `--watch` hot-reloads automatically. Confirmed: backend restarted at 12:51:53 UTC+1.
+
+**Production note:** Set `ALLOWED_ORIGINS` explicitly in the production env — the default is
+intentionally permissive for local dev only.
+
+---
+
+### Fix 2 — 404 on /login
+
+**File:** `scripts/start-dev.sh`
+
+**Problem:** Ready-message printed `http://localhost:3001/login`. The dashboard is a Next.js SPA
+with only `app/page.tsx` — `/login` is not a Next.js route; it returns a 404. Login is rendered
+by React state inside the root component when no auth token is present.
+
+**Fix:** Changed printed URL to `http://localhost:3001/`. The app shows the login UI automatically
+when unauthenticated.
+
+---
+
+### Fix 3 — Next.js HMR cross-origin warnings
+
+**Files:** `apps/frontend/admin-dashboard-ui-v3/next.config.mjs`,
+`apps/frontend/pos-terminal-ui-v3/next.config.mjs`
+
+**Problem:** Next.js dev server logged cross-origin warnings when the HMR WebSocket connection
+originated from a host not in `allowedDevOrigins`. Cosmetic in WSL2, but noisy.
+
+**Fix:** Added `allowedDevOrigins: ['localhost', '127.0.0.1']` to both configs.
+
+---
+
+### Remaining known risk — Clash VPN proxy
+
+If API calls still fail after the CORS fix, Clash VPN is likely intercepting `localhost` traffic
+from the Windows browser. Symptoms: Network tab shows a **network error** (not a CORS error), and
+the request never reaches the backend.
+
+Workaround options (try in order):
+1. In Clash: add `localhost` and `127.0.0.1` to the bypass list (Settings → Bypass).
+2. Use `http://127.0.0.1:3001` in the browser instead of `http://localhost:3001` — some proxy
+   configurations bypass `127.0.0.1` but not `localhost`.
+3. Temporarily disable Clash to confirm it is the cause.
+
+The CORS fix covers both `localhost` and `127.0.0.1` origins so either URL will work once the
+proxy is bypassed.

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."
@@ -63,6 +63,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@next/swc-linux-x64-gnu": "^16.2.6",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "^19",
