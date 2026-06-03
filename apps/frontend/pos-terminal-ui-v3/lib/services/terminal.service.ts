@@ -45,17 +45,15 @@ export interface ActiveEmployee extends Employee {
   session_id: string;
 }
 
+// Matches the backend terminal customer payload (lookup / quick-add):
+// { id, customer_code, first_name, last_name, grade: {name,color_hex}|null, points_balance }
 export interface Customer {
   id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  grade: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
-  points: number;
-  total_spent: number;
-  visit_count: number;
-  last_visit?: string;
-  notes?: string;
+  customer_code: string;
+  first_name: string;
+  last_name: string;
+  grade: { name: string; color_hex: string } | null;
+  points_balance: number;
 }
 
 export interface Category {
@@ -301,17 +299,60 @@ class TerminalService {
   // ACTIVATION & CONFIGURATION
   // ============================================================
 
+  private readonly CONFIG_KEY = 'terminal_config';
+
   /**
-   * Activate terminal with activation code
+   * Persist the resolved terminal config to memory + localStorage so it
+   * survives page reloads (the backend issues no token at activation, so the
+   * config is the only record of which terminal/location/business this is).
+   */
+  private persistConfig(cfg: TerminalConfig): void {
+    this.config = cfg;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(this.CONFIG_KEY, JSON.stringify(cfg));
+      } catch {
+        // localStorage unavailable (private mode / quota) — memory copy still works for this session
+      }
+    }
+  }
+
+  /**
+   * Activate terminal with activation code.
+   *
+   * The backend returns a NESTED payload { terminal, business, location } and
+   * mints no token here. We flatten it into TerminalConfig and persist it; the
+   * identity-bearing JWT is obtained later at pin-login.
    */
   async activate(activationCode: string): Promise<{ success: boolean; config?: TerminalConfig; error?: string }> {
     try {
-      const data = await apiFetch<TerminalConfig>('/api/terminal/activate', {
+      const data = await apiFetch<{
+        terminal: { id: string; terminal_code: string; device_name?: string };
+        business: { id: string; name: string; currency?: string };
+        location: { id: string; name: string };
+      }>('/api/terminal/activate', {
         method: 'POST',
         body: JSON.stringify({ terminal_code: activationCode }),
       });
-      this.config = data;
-      return { success: true, config: data };
+
+      const cfg: TerminalConfig = {
+        terminal_id: data.terminal.id,
+        terminal_code: data.terminal.terminal_code,
+        business_id: data.business.id,
+        business_name: data.business.name,
+        location_id: data.location.id,
+        location_name: data.location.name,
+        currency: data.business.currency ?? 'MAD',
+        tax_rate: 0,
+        receipt_header: '',
+        receipt_footer: '',
+        offline_mode_enabled: false,
+        auto_sync_interval: 60,
+        printer_enabled: false,
+        cash_drawer_enabled: false,
+      };
+      this.persistConfig(cfg);
+      return { success: true, config: cfg };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Activation failed';
       return { success: false, error: message };
@@ -319,10 +360,29 @@ class TerminalService {
   }
 
   /**
-   * Get current terminal configuration
+   * Get current terminal configuration (memory, falling back to localStorage
+   * so a reloaded tab is still "activated").
    */
   getConfig(): TerminalConfig | null {
+    if (this.config) return this.config;
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem(this.CONFIG_KEY);
+      if (raw) {
+        try {
+          this.config = JSON.parse(raw) as TerminalConfig;
+        } catch {
+          // corrupt config — ignore, caller will treat as not activated
+        }
+      }
+    }
     return this.config;
+  }
+
+  /**
+   * True when the terminal has been activated (config present).
+   */
+  isActivated(): boolean {
+    return this.getConfig() !== null;
   }
 
   // ============================================================
@@ -352,24 +412,53 @@ class TerminalService {
    */
   async clockIn(employeeId: string, pin: string): Promise<{ success: boolean; employee?: ActiveEmployee; error?: string }> {
     try {
-      if (!this.config) {
+      const cfg = this.getConfig();
+      if (!cfg) {
         return { success: false, error: 'Terminal not configured' };
       }
-      const auth = await apiFetch<{ token: string }>('/api/auth/pin-login', {
-        method: 'POST',
-        body: JSON.stringify({ pin, terminal_code: this.config.terminal_code }),
-      });
-      setToken(auth.token);
 
-      const data = await apiFetch<{ employee: Employee; session_id: string; clock_in_time: string }>(
-        '/api/terminal/clock-in',
-        { method: 'POST' },
-      );
+      // pin-login resolves the employee against the terminal's business and
+      // mints the JWT (business_id / terminal_id / location_id claims). The
+      // backend field is `access_token`, NOT `token`.
+      const auth = await apiFetch<{
+        access_token: string;
+        user: {
+          id: string;
+          first_name: string;
+          last_name: string;
+          role: string;
+          business_id: string;
+          permissions?: Record<string, boolean> | null;
+        };
+      }>('/api/auth/pin-login', {
+        method: 'POST',
+        body: JSON.stringify({ pin, terminal_code: cfg.terminal_code }),
+      });
+      setToken(auth.access_token);
+
+      // Record the clock entry (best-effort; auth already succeeded above).
+      try {
+        await apiFetch('/api/terminal/clock-in', {
+          method: 'POST',
+          body: JSON.stringify({ terminal_id: cfg.terminal_id }),
+        });
+      } catch {
+        // clock entry is non-critical for the session; token is already set
+      }
+
+      const perms = auth.user.permissions ?? {};
       const active: ActiveEmployee = {
-        ...data.employee,
+        id: auth.user.id,
+        first_name: auth.user.first_name,
+        last_name: auth.user.last_name,
         pin_hash: '',
-        clock_in_time: data.clock_in_time,
-        session_id: data.session_id,
+        role: auth.user.role as Employee['role'],
+        can_void: perms.can_void ?? false,
+        can_discount: perms.can_discount ?? false,
+        can_refund: perms.can_refund ?? false,
+        is_active: true,
+        clock_in_time: new Date().toISOString(),
+        session_id: '',
       };
       this.activeEmployees.set(active.id, active);
       return { success: true, employee: active };
@@ -507,10 +596,11 @@ class TerminalService {
    * Create a new transaction
    */
   async createTransaction(
-    employeeId: string,
+    _employeeId: string,
     items: TransactionItem[],
-    paymentMethod: Transaction['payment_method'],
-    paymentDetails?: Transaction['payment_details'],
+    // Backend PaymentMethod enum: 'cash' | 'card_cmi' | 'card_payzone' | 'other'.
+    paymentMethod: string,
+    _paymentDetails?: Transaction['payment_details'],
     customerId?: string,
     appliedPromotions?: AppliedPromotion[],
     appliedCoupon?: string,
@@ -522,6 +612,9 @@ class TerminalService {
       const promotionDiscount = appliedPromotions?.reduce((s, p) => s + p.discount_amount, 0) ?? 0;
       const total = subtotal - promotionDiscount;
 
+      // Body must conform exactly to CreateTransactionDto — the backend uses
+      // forbidNonWhitelisted, so any extra field (payment_details, per-item
+      // notes, …) is rejected with a 400.
       const body: Record<string, unknown> = {
         items: items.map((i) => ({
           product_id: i.product_id,
@@ -530,12 +623,10 @@ class TerminalService {
           unit_price: i.unit_price,
           line_total: i.line_total,
           ...(i.variant_id ? { variant_id: i.variant_id } : {}),
-          ...(i.notes ? { notes: i.notes } : {}),
         })),
         subtotal,
         total,
         payment_method: paymentMethod,
-        ...(paymentDetails ? { payment_details: paymentDetails } : {}),
         ...(customerId ? { customer_id: customerId } : {}),
         ...(appliedPromotions?.length
           ? { promotion_ids: appliedPromotions.map((p) => p.promotion_id) }
@@ -565,7 +656,7 @@ class TerminalService {
     try {
       await apiFetch(`/api/terminal/transactions/${transactionId}/void`, {
         method: 'POST',
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason, ...(managerPin ? { manager_pin: managerPin } : {}) }),
       });
       return { success: true };
     } catch (err) {
@@ -579,10 +670,12 @@ class TerminalService {
    */
   async getTodayTransactions(): Promise<Transaction[]> {
     try {
-      const data = await apiFetch<{ data: Transaction[] }>(
-        '/api/terminal/transactions/today',
-      );
-      const serverTxns = data.data ?? [];
+      // The backend requires terminal_id as a query param and returns a raw
+      // array (not { data: [...] }).
+      const cfg = this.getConfig();
+      const qs = cfg?.terminal_id ? `?terminal_id=${encodeURIComponent(cfg.terminal_id)}` : '';
+      const data = await apiFetch<Transaction[]>(`/api/terminal/transactions/today${qs}`);
+      const serverTxns = Array.isArray(data) ? data : [];
       return [...serverTxns, ...this.offlineTransactions];
     } catch {
       return this.offlineTransactions;

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  ShoppingCart,
   Trash2,
   Plus,
   Minus,
@@ -15,43 +14,36 @@ import {
   ArrowRight,
   Banknote,
   CreditCard,
-  WifiOff,
   X,
   ChevronLeft,
   Monitor,
   Bell,
-  Coffee,
-  Wine,
   UtensilsCrossed,
-  Salad,
-  Cake,
-  Grid3X3,
   UserPlus,
   Search,
   Star,
   Gift,
-  LayoutGrid,
   Users,
   Clock,
-  ChefHat,
   ArrowLeft,
   Scale,
   List,
   Sliders,
-  Pencil,
   Flame,
   Truck,
-  MoveRight,
   ArrowRightLeft,
   Smartphone,
   Box,
   Eye,
 } from "lucide-react";
 import { terminalService } from '../lib/services/terminal.service';
+import { getToken, clearToken } from '../lib/api';
 import type {
   FloorPlanTable,
   OpenedSession,
   SessionItem,
+  Customer,
+  Transaction,
 } from '../lib/services/terminal.service';
 
 // ============================================================
@@ -70,181 +62,6 @@ const MOCK_CUSTOMERS = [
   { id: "3", name: "Mohammed Ali", phone: "0654321098", grade: "Bronze", points: 450, color: "bg-orange-600" },
   { id: "4", name: "Salma Bennani", phone: "0676543210", grade: "Gold", points: 3100, color: "bg-yellow-500" },
   { id: "5", name: "Youssef Amrani", phone: "0687654321", grade: "Silver", points: 890, color: "bg-gray-400" },
-];
-
-const MOCK_MAIN_CATEGORIES = [
-  { id: "coffee", name: "Coffee", icon: Coffee },
-  { id: "beverages", name: "Beverages", icon: Wine },
-  { id: "food", name: "Food", icon: UtensilsCrossed },
-  { id: "appetizer", name: "Appetizer", icon: Salad },
-  { id: "bakeries", name: "Bakeries", icon: Cake },
-  { id: "table", name: "Table", icon: Grid3X3 },
-];
-
-const MOCK_SUB_CATEGORIES = [
-  { id: "all", name: "All" },
-  { id: "ice-coffee", name: "Ice Coffee" },
-  { id: "american", name: "American" },
-  { id: "cafe-noir", name: "Café Noir" },
-  { id: "brewed-coffee", name: "Brewed Coffee" },
-  { id: "iced-coffee", name: "Iced Coffee" },
-  { id: "flavored-coffee", name: "Flavored Coffee" },
-];
-
-const MOCK_PRODUCTS = [
-  {
-    id: "1",
-    name: "Cortado",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "2",
-    name: "Frappé Mocha",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-    variants: [
-      { id: "v1", name: "Small", price_override: 6.50 },
-      { id: "v2", name: "Medium", price_override: 8.50 },
-      { id: "v3", name: "Large", price_override: 10.50 },
-    ],
-    product_modifier_groups: [
-      {
-        modifier_group: {
-          id: "mg1",
-          name: "Extras",
-          is_required: false,
-          modifiers: [
-            { id: "m1", name: "Whipped cream", price: 1.00 },
-            { id: "m2", name: "Extra shot", price: 1.50 },
-          ],
-        },
-      },
-    ],
-  },
-  {
-    id: "3",
-    name: "Cappuccino",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "4",
-    name: "Mocha Cortado",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "5",
-    name: "Americano",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1521302080334-4bebac2763a6?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "6",
-    name: "Flat White",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1577968897966-3d4325b36b61?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "7",
-    name: "Mocha",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1578314675249-a6910f80cc4e?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "8",
-    name: "Flat Black",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1497636577773-f1231844b336?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "9",
-    name: "Ice Coffee",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "10",
-    name: "Frappé Mocha",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1592663527359-cf6642f54cff?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "11",
-    name: "Espresso",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1510707577719-ae7c14805e3a?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-  {
-    id: "12",
-    name: "Cortado",
-    price: 8.50,
-    image_url: "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=200&h=200&fit=crop",
-    is_sold_out: false,
-    category_id: "coffee",
-  },
-];
-
-const MOCK_CART_ITEMS = [
-  {
-    id: "c1",
-    productId: "1",
-    name: "Poached Egg",
-    originalPrice: 20,
-    quantity: 2,
-    unitPrice: 40,
-    lineTotal: 40,
-    size: "large",
-    image: "https://images.unsplash.com/photo-1482049016gy-2c3b16db88c7?w=100&h=100&fit=crop",
-    modifiers: [],
-  },
-  {
-    id: "c2",
-    productId: "2",
-    name: "Cortado",
-    originalPrice: 8.50,
-    quantity: 2,
-    unitPrice: 17,
-    lineTotal: 17,
-    size: "large",
-    image: "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=100&h=100&fit=crop",
-    modifiers: [],
-  },
-  {
-    id: "c3",
-    productId: "3",
-    name: "Coronation",
-    originalPrice: 10,
-    quantity: 2,
-    unitPrice: 20,
-    lineTotal: 20,
-    size: "large",
-    image: "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=100&h=100&fit=crop",
-    modifiers: [],
-  },
 ];
 
 const MOCK_EMPLOYEE = {
@@ -269,17 +86,16 @@ function SetupScreen({ onNext }: { onNext: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
-  const handleActivate = () => {
+  const handleActivate = async () => {
     setLoading(true);
     setError(false);
-    setTimeout(() => {
-      setLoading(false);
-      if (code.toUpperCase() === "T-001") {
-        onNext();
-      } else {
-        setError(true);
-      }
-    }, 1500);
+    const result = await terminalService.activate(code.trim());
+    setLoading(false);
+    if (result.success) {
+      onNext();
+    } else {
+      setError(true);
+    }
   };
 
   return (
@@ -456,9 +272,9 @@ function PinLoginScreen({ onLogin }: { onLogin: () => void }) {
 // ============================================================
 
 interface ProductDetailModalProps {
-  product: (typeof MOCK_PRODUCTS)[1];
+  product: CatalogProduct;
   onClose: () => void;
-  onAdd: () => void;
+  onAdd: (variant: CatalogVariant | null, modifiers: { id: string; name: string; price: number }[]) => void;
 }
 
 function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps) {
@@ -467,16 +283,18 @@ function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps
   );
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
 
-  const basePrice =
-    product.variants?.find((v) => v.id === selectedVariant)?.price_override ||
-    product.price;
+  const variantObj = product.variants?.find((v) => v.id === selectedVariant) ?? null;
+  const basePrice = num(variantObj?.price_override ?? product.price);
 
-  const modifierTotal = selectedModifiers.reduce((sum, modId) => {
-    const mod = product.product_modifier_groups
-      ?.flatMap((g) => g.modifier_group.modifiers)
-      .find((m) => m.id === modId);
-    return sum + (mod?.price || 0);
-  }, 0);
+  const allModifiers = (product.product_modifier_groups ?? []).flatMap(
+    (g) => g.modifier_group.modifiers,
+  );
+  const selectedModifierObjs = selectedModifiers
+    .map((id) => allModifiers.find((m) => m.id === id))
+    .filter((m): m is CatalogModifier => !!m)
+    .map((m) => ({ id: m.id, name: m.name, price: num(m.price) }));
+
+  const modifierTotal = selectedModifierObjs.reduce((sum, m) => sum + m.price, 0);
 
   const totalPrice = basePrice + modifierTotal;
 
@@ -521,7 +339,7 @@ function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-gray-900">{product.name}</h2>
           <span className="font-semibold text-orange-500 text-lg">
-            ${totalPrice.toFixed(2)}
+            {totalPrice.toFixed(2)} MAD
           </span>
         </div>
 
@@ -573,7 +391,7 @@ function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps
                 >
                   <span className="text-gray-900">{mod.name}</span>
                   <span className="text-orange-500 font-medium">
-                    +${mod.price.toFixed(2)}
+                    +{num(mod.price).toFixed(2)} MAD
                   </span>
                 </button>
               ))}
@@ -582,11 +400,11 @@ function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps
         ))}
 
         <button
-          onClick={onAdd}
+          onClick={() => onAdd(variantObj, selectedModifierObjs)}
           disabled={!requiredGroupsSatisfied}
           className="w-full bg-orange-500 text-white font-bold py-4 rounded-xl h-14 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-600 active:scale-[0.98] transition"
         >
-          Add to Order — ${totalPrice.toFixed(2)}
+          Add to Order — {totalPrice.toFixed(2)} MAD
         </button>
       </div>
 
@@ -607,67 +425,260 @@ function ProductDetailModal({ product, onClose, onAdd }: ProductDetailModalProps
 // SALES SCREEN - Matching the exact design
 // ============================================================
 
+// Catalog shapes are the raw backend rows from GET /api/terminal/catalog.
+// NUMERIC columns (price, price_override) arrive as strings — always coerce.
+interface CatalogVariant {
+  id: string;
+  name: string;
+  price_override: string | number | null;
+}
+interface CatalogModifier { id: string; name: string; price: string | number }
+interface CatalogModifierGroupLink {
+  modifier_group: {
+    id: string;
+    name: string;
+    is_required: boolean;
+    modifiers: CatalogModifier[];
+  };
+}
+interface CatalogProduct {
+  id: string;
+  name: string;
+  price: string | number;
+  image_url: string | null;
+  is_sold_out: boolean;
+  category_id: string;
+  variants?: CatalogVariant[];
+  product_modifier_groups?: CatalogModifierGroupLink[];
+}
+interface CatalogCategory { id: string; name: string; sort_order: number }
+
+interface CartLine {
+  id: string;
+  productId: string;
+  name: string;
+  originalPrice: number;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  size: string;
+  image: string;
+  modifiers: { id: string; name: string; price: number }[];
+}
+
+const num = (v: string | number | null | undefined): number => {
+  const n = typeof v === 'string' ? parseFloat(v) : v ?? 0;
+  return Number.isFinite(n) ? (n as number) : 0;
+};
+
 function SalesScreen({
   onCheckout,
+  onTotalChange,
+  onCartChange,
   screen,
-  setScreen,
+  go,
+  reset,
 }: {
   onCheckout: () => void;
+  onTotalChange: (total: number) => void;
+  onCartChange: (items: CartLine[]) => void;
   screen: Screen;
-  setScreen: (screen: Screen) => void;
+  go: (screen: Screen) => void;
+  reset: (screen: Screen) => void;
 }) {
-  const [activeMainCategory, setActiveMainCategory] = useState("coffee");
-  const [activeSubCategory, setActiveSubCategory] = useState("all");
-  const [cart, setCart] = useState(MOCK_CART_ITEMS);
-  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({
-    "1": 2,
-    "7": 2,
-  });
-  const [detailProduct, setDetailProduct] = useState<(typeof MOCK_PRODUCTS)[1] | null>(null);
+  const [catalog, setCatalog] = useState<{ categories: CatalogCategory[]; products: CatalogProduct[] } | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [activeMainCategory, setActiveMainCategory] = useState<string>("");
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [detailProduct, setDetailProduct] = useState<CatalogProduct | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<(typeof MOCK_CUSTOMERS)[0] | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerSearching, setCustomerSearching] = useState(false);
+  const [customerSearched, setCustomerSearched] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // End the session: best-effort clock-out of the active employee, then clear
+  // the JWT and return to the PIN login screen. clearToken() is the safety net —
+  // after a page refresh the in-memory activeEmployees map is empty, so the
+  // clock-out is skipped but the token (in localStorage) must still be dropped.
+  const handleLogout = async () => {
+    const active = terminalService.getActiveEmployees()[0];
+    if (active) {
+      await terminalService.clockOut(active.id);
+    }
+    clearToken();
+    setShowProfileMenu(false);
+    reset("login");
+  };
+
+  // Load the real product catalog (scoped to this terminal's business by the JWT).
+  useEffect(() => {
+    let cancelled = false;
+    setCatalogLoading(true);
+    terminalService
+      .getCatalog()
+      .then((data) => {
+        if (cancelled) return;
+        const cats = (data.categories ?? []) as unknown as CatalogCategory[];
+        setCatalog({ categories: cats, products: (data.products ?? []) as unknown as CatalogProduct[] });
+        setActiveMainCategory((prev) => prev || (cats[0]?.id ?? ""));
+        setCatalogError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCatalogError(err instanceof Error ? err.message : "Unable to load catalog");
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categories = catalog?.categories ?? [];
+  const products = (catalog?.products ?? []).filter(
+    (p) => !activeMainCategory || p.category_id === activeMainCategory,
+  );
 
   const cartTotal = cart.reduce((sum, item) => sum + item.lineTotal, 0);
   const pointsEarned = Math.floor(cartTotal * 10); // 10 points per $1
 
-  const filteredCustomers = MOCK_CUSTOMERS.filter(
-    (c) =>
-      c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-      c.phone.includes(customerSearchQuery)
-  );
+  // Report the live cart total up to App so the payment screens render the real
+  // amount due (they mount after this screen unmounts and can't read the cart).
+  useEffect(() => {
+    onTotalChange(cartTotal);
+  }, [cartTotal, onTotalChange]);
+
+  // Report the live cart lines up to App so the sale can be persisted at payment
+  // time (this screen has unmounted by then).
+  useEffect(() => {
+    onCartChange(cart);
+  }, [cart, onCartChange]);
+
   const cartQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const updateProductQuantity = (productId: string, delta: number) => {
-    setProductQuantities((prev) => {
-      const current = prev[productId] || 0;
-      const newQty = Math.max(0, current + delta);
-      if (newQty === 0) {
-        const { [productId]: _, ...rest } = prev;
-        return rest;
+  // Customer display helpers (backend returns first_name/last_name, not a full name).
+  const custName = (c: Customer) => `${c.first_name} ${c.last_name}`.trim();
+  const custInitials = (c: Customer) =>
+    `${c.first_name?.[0] ?? ""}${c.last_name?.[0] ?? ""}`.toUpperCase();
+
+  // Look up a customer by exact phone (backend lookup is phone-based).
+  const searchCustomer = async () => {
+    const phone = customerSearchQuery.trim();
+    if (!phone) return;
+    setCustomerSearching(true);
+    const results = await terminalService.lookupCustomer(phone);
+    setCustomerResults(results);
+    setCustomerSearched(true);
+    setCustomerSearching(false);
+  };
+
+  // Create a new customer (prompt for a name; phone comes from the search box).
+  const quickAddCustomer = async () => {
+    const phone = customerSearchQuery.trim();
+    if (!phone) return;
+    const name = window.prompt("New customer name:")?.trim();
+    if (!name) return;
+    const res = await terminalService.quickAddCustomer(name, phone);
+    if (res.success && res.customer) {
+      setSelectedCustomer(res.customer);
+      setShowCustomerSearch(false);
+      setCustomerSearchQuery("");
+      setCustomerResults([]);
+      setCustomerSearched(false);
+    } else {
+      window.alert(`Could not create customer: ${res.error ?? "Unknown error"}`);
+    }
+  };
+
+  // Quantity of a given product currently in the cart (sum across its lines).
+  const productCartQty = (productId: string) =>
+    cart.filter((c) => c.productId === productId).reduce((s, i) => s + i.quantity, 0);
+
+  // Add a product to the cart. variant/modifiers come from the detail modal;
+  // a plain product (no variants/modifiers) is added directly with quantity 1.
+  const addToCart = (
+    product: CatalogProduct,
+    variant?: CatalogVariant | null,
+    selectedModifiers: { id: string; name: string; price: number }[] = [],
+  ) => {
+    const unit = num(variant?.price_override ?? product.price);
+    const modTotal = selectedModifiers.reduce((s, m) => s + num(m.price), 0);
+    const unitPrice = unit + modTotal;
+    const lineId = `${product.id}-${variant?.id ?? "base"}-${Date.now()}`;
+    setCart((prev) => [
+      ...prev,
+      {
+        id: lineId,
+        productId: product.id,
+        name: variant ? `${product.name} (${variant.name})` : product.name,
+        originalPrice: unit,
+        quantity: 1,
+        unitPrice,
+        lineTotal: unitPrice,
+        size: variant?.name ?? "",
+        image: product.image_url ?? "",
+        modifiers: selectedModifiers,
+      },
+    ]);
+  };
+
+  // Open the detail modal when there are choices to make; otherwise add directly.
+  const handleProductTap = (product: CatalogProduct) => {
+    const hasChoices =
+      (product.variants?.length ?? 0) > 0 || (product.product_modifier_groups?.length ?? 0) > 0;
+    if (hasChoices) {
+      setDetailProduct(product);
+    } else {
+      addToCart(product);
+    }
+  };
+
+  // Remove one unit of a product from the cart (decrement the last matching line).
+  const decrementProduct = (productId: string) => {
+    setCart((prev) => {
+      const idx = [...prev].reverse().findIndex((c) => c.productId === productId);
+      if (idx === -1) return prev;
+      const realIdx = prev.length - 1 - idx;
+      const line = prev[realIdx];
+      if (line.quantity <= 1) {
+        return prev.filter((_, i) => i !== realIdx);
       }
-      return { ...prev, [productId]: newQty };
+      const nextQty = line.quantity - 1;
+      return prev.map((c, i) =>
+        i === realIdx ? { ...c, quantity: nextQty, lineTotal: nextQty * c.unitPrice } : c,
+      );
     });
   };
 
   const updateCartQuantity = (itemId: string, delta: number) => {
     setCart((prev) =>
-      prev
-        .map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                quantity: Math.max(1, item.quantity + delta),
-                lineTotal: (Math.max(1, item.quantity + delta)) * item.unitPrice / item.quantity * Math.max(1, item.quantity + delta),
-              }
-            : item
-        )
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              quantity: Math.max(1, item.quantity + delta),
+              lineTotal: Math.max(1, item.quantity + delta) * item.unitPrice,
+            }
+          : item,
+      ),
     );
   };
 
   const removeCartItem = (itemId: string) => {
     setCart((prev) => prev.filter((item) => item.id !== itemId));
   };
+
+  const screens: { id: Screen; label: string }[] = [
+    { id: "sales", label: "Sales" },
+    { id: "payment", label: "Payment" },
+    { id: "void", label: "Void" },
+    { id: "floor-plan", label: "Floor Plan" },
+  ];
 
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
@@ -685,7 +696,7 @@ function SalesScreen({
           {screens.map((s) => (
             <button
               key={s.id}
-              onClick={() => setScreen(s.id)}
+              onClick={() => go(s.id)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition ${
                 screen === s.id
                   ? "bg-orange-500 text-white"
@@ -704,17 +715,45 @@ function SalesScreen({
           <button className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200">
             <Bell className="w-5 h-5" />
           </button>
-          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-white font-medium text-sm">
-            A
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowProfileMenu((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={showProfileMenu}
+              className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-white font-medium text-sm hover:bg-gray-700"
+            >
+              A
+            </button>
+            {showProfileMenu && (
+              <>
+                {/* Click-away backdrop closes the menu */}
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowProfileMenu(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50"
+                >
+                  <button
+                    role="menuitem"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Log out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left Category Sidebar */}
         <aside className="w-20 bg-white border-r border-gray-200 flex flex-col py-4">
-          {MOCK_MAIN_CATEGORIES.map((cat) => {
-            const Icon = cat.icon;
+          {categories.map((cat) => {
             const isActive = activeMainCategory === cat.id;
             return (
               <button
@@ -726,7 +765,7 @@ function SalesScreen({
                     : "text-gray-500 hover:bg-gray-100"
                 }`}
               >
-                <Icon className="w-6 h-6 mb-1" />
+                <UtensilsCrossed className="w-6 h-6 mb-1" />
                 <span className="text-[10px] font-medium">{cat.name}</span>
               </button>
             );
@@ -737,53 +776,58 @@ function SalesScreen({
         <main className="flex-1 flex flex-col overflow-hidden">
           {/* Sub-category Pills */}
           <div className="px-6 py-4 flex items-center gap-2 flex-wrap">
-            {MOCK_SUB_CATEGORIES.map((sub) => (
-              <button
-                key={sub.id}
-                onClick={() => setActiveSubCategory(sub.id)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
-                  activeSubCategory === sub.id
-                    ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-700 border border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                {sub.name}
-              </button>
-            ))}
+            <span className="px-4 py-1.5 rounded-full text-sm font-medium bg-orange-500 text-white">
+              {categories.find((c) => c.id === activeMainCategory)?.name ?? "All"}
+            </span>
+            <span className="text-xs text-gray-400">{products.length} items</span>
           </div>
 
           {/* Product Grid */}
           <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {catalogLoading ? (
+              <div className="py-20 text-center text-gray-400 text-sm">Loading catalog…</div>
+            ) : catalogError ? (
+              <div className="py-20 text-center text-red-500 text-sm">{catalogError}</div>
+            ) : products.length === 0 ? (
+              <div className="py-20 text-center text-gray-400 text-sm">No products in this category.</div>
+            ) : (
             <div className="grid grid-cols-4 gap-4">
-              {MOCK_PRODUCTS.map((product) => {
-                const qty = productQuantities[product.id] || 0;
+              {products.map((product) => {
+                const qty = productCartQty(product.id);
                 return (
                   <div
                     key={product.id}
-                    className="bg-white rounded-lg p-2 shadow-sm border border-gray-100"
+                    className={`bg-white rounded-lg p-2 shadow-sm border border-gray-100 ${product.is_sold_out ? "opacity-50" : ""}`}
                   >
                     <div
-                      className="aspect-square w-full mb-2 rounded-md overflow-hidden bg-gray-50 cursor-pointer"
-                      onClick={() => product.variants && setDetailProduct(product as (typeof MOCK_PRODUCTS)[1])}
+                      className="aspect-square w-full mb-2 rounded-md overflow-hidden bg-gray-50 cursor-pointer flex items-center justify-center"
+                      onClick={() => !product.is_sold_out && handleProductTap(product)}
                     >
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        crossOrigin="anonymous"
-                      />
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <UtensilsCrossed className="w-8 h-8 text-gray-300" />
+                      )}
                     </div>
                     <h3 className="font-medium text-gray-900 text-xs mb-0.5 truncate">{product.name}</h3>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[9px] text-gray-400">Price</p>
-                        <p className="text-orange-500 font-bold text-xs">$ {product.price.toFixed(2)}</p>
+                        <p className="text-orange-500 font-bold text-xs">{num(product.price).toFixed(2)} MAD</p>
                       </div>
                       <div className="flex items-center gap-0.5">
                         {qty > 0 ? (
                           <>
                             <button
-                              onClick={() => updateProductQuantity(product.id, -1)}
+                              onClick={() => decrementProduct(product.id)}
                               className="w-5 h-5 bg-orange-500 text-white rounded flex items-center justify-center hover:bg-orange-600"
                             >
                               <Minus className="w-2.5 h-2.5" />
@@ -792,24 +836,20 @@ function SalesScreen({
                               {qty}
                             </span>
                             <button
-                              onClick={() => updateProductQuantity(product.id, 1)}
+                              onClick={() => handleProductTap(product)}
                               className="w-5 h-5 bg-orange-500 text-white rounded flex items-center justify-center hover:bg-orange-600"
                             >
                               <Plus className="w-2.5 h-2.5" />
                             </button>
                           </>
                         ) : (
-                          <>
-                            <span className="w-5 h-5 bg-gray-100 text-gray-600 rounded flex items-center justify-center text-[10px] font-medium">
-                              {qty || 1}
-                            </span>
-                            <button
-                              onClick={() => updateProductQuantity(product.id, 1)}
-                              className="w-5 h-5 bg-gray-100 text-gray-600 rounded flex items-center justify-center hover:bg-gray-200"
-                            >
-                              <Plus className="w-2.5 h-2.5" />
-                            </button>
-                          </>
+                          <button
+                            onClick={() => handleProductTap(product)}
+                            disabled={product.is_sold_out}
+                            className="w-5 h-5 bg-gray-100 text-gray-600 rounded flex items-center justify-center hover:bg-gray-200 disabled:opacity-40"
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -817,6 +857,7 @@ function SalesScreen({
                 );
               })}
             </div>
+            )}
           </div>
         </main>
 
@@ -848,17 +889,22 @@ function SalesScreen({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold text-xs">
-                    {selectedCustomer.name.split(" ").map(n => n[0]).join("")}
+                    {custInitials(selectedCustomer)}
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900 text-sm">{selectedCustomer.name}</p>
+                    <p className="font-medium text-gray-900 text-sm">{custName(selectedCustomer)}</p>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full text-white ${selectedCustomer.color}`}>
-                        {selectedCustomer.grade}
-                      </span>
+                      {selectedCustomer.grade && (
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: selectedCustomer.grade.color_hex }}
+                        >
+                          {selectedCustomer.grade.name}
+                        </span>
+                      )}
                       <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
                         <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                        {selectedCustomer.points} pts
+                        {selectedCustomer.points_balance} pts
                       </span>
                     </div>
                   </div>
@@ -898,7 +944,7 @@ function SalesScreen({
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-gray-900 text-xs leading-tight">{item.name}</h4>
-                  <p className="text-orange-500 text-[10px]">${item.originalPrice}</p>
+                  <p className="text-orange-500 text-[10px]">{num(item.originalPrice).toFixed(2)} MAD</p>
                   <p className="text-gray-400 text-[9px]">Size: {item.size}</p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -919,7 +965,7 @@ function SalesScreen({
                   </button>
                 </div>
                 <div className="text-right flex-shrink-0 w-12">
-                  <p className="font-bold text-orange-500 text-xs">${item.lineTotal}</p>
+                  <p className="font-bold text-orange-500 text-xs">{num(item.lineTotal).toFixed(2)} MAD</p>
                 </div>
                 <button
                   onClick={() => removeCartItem(item.id)}
@@ -935,7 +981,7 @@ function SalesScreen({
           <div className="border-t border-gray-200 px-4 py-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-gray-900 font-semibold">Total</span>
-              <span className="text-orange-500 font-bold text-xl">${cartTotal}</span>
+              <span className="text-orange-500 font-bold text-xl">{num(cartTotal).toFixed(2)} MAD</span>
             </div>
             <p className="text-gray-400 text-xs mb-2">Items: {cart.length}, Quantity : {cartQuantity}</p>
             
@@ -955,10 +1001,10 @@ function SalesScreen({
               Print Invoice
             </button>
             
-            {selectedCustomer && selectedCustomer.points >= 500 && (
+            {selectedCustomer && selectedCustomer.points_balance >= 500 && (
               <button className="w-full border border-orange-200 bg-orange-50 text-orange-600 font-medium py-2.5 rounded-lg mb-2 hover:bg-orange-100 transition text-sm flex items-center justify-center gap-2">
                 <Gift className="w-4 h-4" />
-                Redeem Points ({selectedCustomer.points} available)
+                Redeem Points ({selectedCustomer.points_balance} available)
               </button>
             )}
             
@@ -979,7 +1025,10 @@ function SalesScreen({
         <ProductDetailModal
           product={detailProduct}
           onClose={() => setDetailProduct(null)}
-          onAdd={() => setDetailProduct(null)}
+          onAdd={(variant, modifiers) => {
+            addToCart(detailProduct, variant, modifiers);
+            setDetailProduct(null);
+          }}
         />
       )}
 
@@ -1078,24 +1127,25 @@ function SalesScreen({
 // ============================================================
 
 function PaymentScreen({
+  total,
   onCash,
   onCard,
   onBack,
 }: {
+  total: number;
   onCash: () => void;
   onCard: () => void;
   onBack: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [cashAmount, setCashAmount] = useState("0");
-  const total = 77;
   const enteredAmount = parseFloat(cashAmount) || 0;
   const change = enteredAmount - total;
 
   const methods = [
     { id: "cash", icon: Banknote, label: "Cash", desc: "Pay with cash" },
     { id: "card", icon: CreditCard, label: "Card", desc: "Tap or insert" },
-    { id: "mobile", icon: Smartphone, label: "Mobile", desc: "Scan QR code" },
+    { id: "mobile", icon: Smartphone, label: "Mobile", desc: "Unavailable" },
   ];
 
   const handleDigit = (digit: string) => {
@@ -1186,16 +1236,14 @@ function PaymentScreen({
         </div>
       )}
 
-      {/* Mobile Flow */}
+      {/* Mobile Flow — not yet available (no backend mobile-payment endpoint) */}
       {selected === "mobile" && (
         <div className="bg-gray-800 rounded-2xl p-8 w-full max-w-sm mb-6 text-center">
-          <div className="w-40 h-40 bg-white rounded-xl flex items-center justify-center mx-auto mb-4">
-            <div className="w-32 h-32 bg-gray-200 rounded-lg flex items-center justify-center">
-              <span className="text-gray-400 text-xs">QR Code</span>
-            </div>
+          <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Smartphone className="w-8 h-8 text-gray-400" />
           </div>
-          <p className="text-white font-semibold mb-1">Scan QR Code</p>
-          <p className="text-gray-400 text-sm">Use your mobile payment app</p>
+          <p className="text-white font-semibold mb-1">Mobile payment not available</p>
+          <p className="text-gray-400 text-sm">Please use cash or card for now.</p>
         </div>
       )}
 
@@ -1213,11 +1261,15 @@ function PaymentScreen({
         onClick={() => {
           if (selected === "cash" && enteredAmount >= total) {
             onCash();
-          } else if (selected === "card" || selected === "mobile") {
+          } else if (selected === "card") {
             onCard();
           }
         }}
-        disabled={!selected || (selected === "cash" && enteredAmount < total)}
+        disabled={
+          !selected ||
+          selected === "mobile" ||
+          (selected === "cash" && enteredAmount < total)
+        }
         className="w-full max-w-md bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-2xl h-14 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition"
       >
         Process Payment
@@ -1232,14 +1284,15 @@ function PaymentScreen({
 // ============================================================
 
 function CashNumpad({
+  total,
   onConfirm,
   onBack,
 }: {
+  total: number;
   onConfirm: () => void;
   onBack: () => void;
 }) {
   const [cashAmount, setCashAmount] = useState("0");
-  const total = 77;
   const enteredAmount = parseFloat(cashAmount) || 0;
   const change = enteredAmount - total;
 
@@ -1320,15 +1373,16 @@ function CashNumpad({
 // ============================================================
 
 function SuccessScreen({
+  transaction,
   onVoid,
   onNewSale,
 }: {
+  transaction: { transaction_number: string; total: number } | null;
   onVoid: () => void;
   onNewSale: () => void;
 }) {
   const [countdown, setCountdown] = useState(30);
   const [voidCountdown] = useState(59);
-  const transaction = { ...MOCK_TRANSACTION, total: 77 };
 
   // Auto countdown
   useState(() => {
@@ -1382,18 +1436,11 @@ function SuccessScreen({
       </div>
 
       <h1 className="text-4xl font-bold text-white mb-2">Payment Complete</h1>
-      <p className="font-mono text-white/80 mb-6">{transaction.transaction_number}</p>
+      <p className="font-mono text-white/80 mb-6">{transaction?.transaction_number ?? "—"}</p>
 
       <p className="text-6xl font-bold font-mono text-white mb-8">
-        {transaction.total.toFixed(2)} MAD
+        {(transaction?.total ?? 0).toFixed(2)} MAD
       </p>
-
-      {transaction.is_offline && (
-        <div className="bg-white/20 backdrop-blur text-white text-sm px-4 py-2 rounded-full inline-flex items-center gap-2 mb-6">
-          <WifiOff className="w-4 h-4" />
-          Offline — will sync when reconnected
-        </div>
-      )}
 
       {/* Action Buttons */}
       <div className="flex gap-4 mb-8">
@@ -2792,47 +2839,124 @@ function SplitBillScreen({
 type Screen = "setup" | "login" | "sales" | "payment" | "cash" | "success" | "void" | "floor-plan" | "table-session" | "split-bill";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("sales");
+  // Boot to setup; a useEffect below resumes a previously activated terminal.
+  // (Default to "setup" rather than reading localStorage in the initializer to
+  // avoid a server/client hydration mismatch.)
+  const [screen, setScreen] = useState<Screen>("setup");
+  // Current cart total, lifted out of SalesScreen so the payment screens (which
+  // render after SalesScreen unmounts) can show the real amount due, not a literal.
+  const [orderTotal, setOrderTotal] = useState(0);
+  // Live cart lines lifted out of SalesScreen so the sale can be persisted at
+  // payment time (SalesScreen has unmounted by then).
+  const [orderItems, setOrderItems] = useState<CartLine[]>([]);
+  // The transaction returned by the backend after a successful sale, shown on
+  // the Success screen (real transaction_number/total, not a literal).
+  const [lastTransaction, setLastTransaction] = useState<
+    { transaction_number: string; total: number } | null
+  >(null);
   // Restaurant session state threaded through screens
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<OpenedSession | null>(null);
   const [splitSession, setSplitSession] = useState<LiveSession | null>(null);
 
+  // Navigation back-stack: every forward move via go() remembers where it came
+  // from, so back() returns to the actual previous screen instead of a hardcoded
+  // one. reset() jumps to a screen and clears history (used for login and for
+  // "new order" / completed flows, where you must not be able to go "back" into
+  // a finished transaction).
+  const [navStack, setNavStack] = useState<Screen[]>([]);
+  const go = (next: Screen) => {
+    setNavStack((stack) => [...stack, screen]);
+    setScreen(next);
+  };
+  const back = () => {
+    const prev = navStack.length ? navStack[navStack.length - 1] : "sales";
+    setNavStack((stack) => stack.slice(0, -1));
+    setScreen(prev);
+  };
+  const reset = (next: Screen) => {
+    setNavStack([]);
+    setScreen(next);
+  };
+
+  // Persist the current cart as a real Transaction, then show the Success screen
+  // with the backend's transaction number/total. paymentMethod must be a backend
+  // PaymentMethod enum value ('cash' | 'card_cmi' | 'card_payzone' | 'other').
+  const completeSale = async (paymentMethod: string) => {
+    if (orderItems.length === 0) {
+      window.alert("Cart is empty — add items before taking payment.");
+      return;
+    }
+    const items = orderItems.map((line) => ({
+      id: line.id,
+      product_id: line.productId,
+      product_name: line.name,
+      quantity: line.quantity,
+      unit_price: line.unitPrice,
+      line_total: line.lineTotal,
+    }));
+    const employeeId = terminalService.getActiveEmployees()[0]?.id ?? "";
+    const result = await terminalService.createTransaction(employeeId, items, paymentMethod);
+    if (result.success && result.transaction) {
+      setLastTransaction({
+        transaction_number: result.transaction.transaction_number,
+        total: Number(result.transaction.total),
+      });
+      go("success");
+    } else {
+      window.alert(`Could not save the sale: ${result.error ?? "Unknown error"}`);
+    }
+  };
+
+  useEffect(() => {
+    // Resume: if the terminal is already activated, skip setup. If a clocked-in
+    // session token also exists, go straight to sales; otherwise to PIN login.
+    if (terminalService.isActivated()) {
+      setScreen(getToken() ? "sales" : "login");
+    }
+  }, []);
+
   return (
     <>
       <div>
-        {screen === "setup" && <SetupScreen onNext={() => setScreen("login")} />}
-        {screen === "login" && <PinLoginScreen onLogin={() => setScreen("sales")} />}
+        {screen === "setup" && <SetupScreen onNext={() => go("login")} />}
+        {screen === "login" && <PinLoginScreen onLogin={() => reset("sales")} />}
         {screen === "sales" && (
           <SalesScreen
-            onCheckout={() => setScreen("payment")}
+            onCheckout={() => go("payment")}
+            onTotalChange={setOrderTotal}
+            onCartChange={setOrderItems}
             screen={screen}
-            setScreen={setScreen}
+            go={go}
+            reset={reset}
           />
         )}
         {screen === "payment" && (
           <PaymentScreen
-            onCash={() => setScreen("cash")}
-            onCard={() => setScreen("success")}
-            onBack={() => setScreen("sales")}
+            total={orderTotal}
+            onCash={() => go("cash")}
+            onCard={() => completeSale("card_cmi")}
+            onBack={back}
           />
         )}
         {screen === "cash" && (
           <CashNumpad
-            onConfirm={() => setScreen("success")}
-            onBack={() => setScreen("payment")}
+            total={orderTotal}
+            onConfirm={() => completeSale("cash")}
+            onBack={back}
           />
         )}
         {screen === "success" && (
           <SuccessScreen
-            onVoid={() => setScreen("void")}
-            onNewSale={() => setScreen("sales")}
+            transaction={lastTransaction}
+            onVoid={() => go("void")}
+            onNewSale={() => reset("sales")}
           />
         )}
         {screen === "void" && (
           <VoidScreen
-            onConfirm={() => setScreen("sales")}
-            onCancel={() => setScreen("success")}
+            onConfirm={() => reset("sales")}
+            onCancel={back}
           />
         )}
         {screen === "floor-plan" && (
@@ -2840,28 +2964,28 @@ export default function App() {
             onSelectTable={(tableId, session) => {
               setActiveTableId(tableId);
               setActiveSession(session);
-              setScreen("table-session");
+              go("table-session");
             }}
-            onBack={() => setScreen("sales")}
+            onBack={back}
           />
         )}
         {screen === "table-session" && activeTableId && (
           <TableSessionScreen
             tableId={activeTableId}
             initialSession={activeSession}
-            onBack={() => setScreen("floor-plan")}
-            onPay={(_sessionId) => setScreen("payment")}
+            onBack={back}
+            onPay={(_sessionId) => go("payment")}
             onSplit={(sess) => {
               setSplitSession(sess);
-              setScreen("split-bill");
+              go("split-bill");
             }}
           />
         )}
         {screen === "split-bill" && splitSession && (
           <SplitBillScreen
             session={splitSession}
-            onConfirm={() => setScreen("payment")}
-            onBack={() => setScreen("table-session")}
+            onConfirm={() => go("payment")}
+            onBack={back}
           />
         )}
       </div>

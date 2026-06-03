@@ -51,14 +51,46 @@ export class SuperAdminService {
     return new PaginatedResult(data, total, page, limit);
   }
 
-  async createBusiness(dto: CreateBusinessDto) {
-    // Create business
+  /** Generate a unique business_code (<= 10 chars) from the business name. */
+  private async generateBusinessCode(name: string): Promise<string> {
+    const base = (name || 'BIZ').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'BIZ';
+    for (let i = 0; i < 25; i++) {
+      const rand = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+      const code = `${base}${rand}`.slice(0, 10);
+      if ((await this.businessRepo.count({ where: { business_code: code } })) === 0) return code;
+    }
+    // Extremely unlikely fallback: timestamp-based code.
+    return `B${Date.now().toString(36).toUpperCase()}`.slice(0, 10);
+  }
+
+  /** Write a platform audit-log entry. Never blocks the main operation. */
+  private async audit(userId: string, action: string, entityType: string, entityId: string, businessId?: string | null, details?: Record<string, any>) {
+    try {
+      await this.auditLogRepo.save(this.auditLogRepo.create({
+        business_id: businessId ?? undefined,
+        user_id: userId,
+        action,
+        entity_type: entityType,
+        entity_id: entityId,
+        details_json: details ?? undefined,
+      }));
+    } catch {
+      /* audit failure must not break the action */
+    }
+  }
+
+  async createBusiness(dto: CreateBusinessDto, superAdminId?: string) {
+    // Create business. business_code is varchar(10) NOT NULL UNIQUE and has no
+    // DB default — generate a unique one (derive a short prefix from the name,
+    // append random chars, verify uniqueness) so concurrent/repeated creates
+    // don't collide on an empty string.
     const business = this.businessRepo.create({
       business_type_id: dto.business_type_id,
       name: dto.name,
       legal_name: dto.legal_name,
       email: dto.email,
       phone: dto.phone,
+      business_code: await this.generateBusinessCode(dto.name),
     });
     const saved = await this.businessRepo.save(business);
 
@@ -93,6 +125,10 @@ export class SuperAdminService {
     });
     await this.locationRepo.save(location);
 
+    if (superAdminId) {
+      await this.audit(superAdminId, 'create', 'business', saved.id, saved.id, { name: dto.name });
+    }
+
     return this.businessRepo.findOne({
       where: { id: saved.id },
       relations: ['business_type', 'subscription', 'locations', 'users'],
@@ -114,10 +150,14 @@ export class SuperAdminService {
     return this.businessRepo.save(business);
   }
 
-  async updateBusinessStatus(id: string, dto: UpdateBusinessStatusDto) {
+  async updateBusinessStatus(id: string, dto: UpdateBusinessStatusDto, superAdminId?: string) {
     const business = await this.getBusiness(id);
     business.is_active = dto.is_active;
-    return this.businessRepo.save(business);
+    const saved = await this.businessRepo.save(business);
+    if (superAdminId) {
+      await this.audit(superAdminId, dto.is_active ? 'activate' : 'suspend', 'business', id, id);
+    }
+    return saved;
   }
 
   // ---- Business Type Management ----
@@ -216,9 +256,26 @@ export class SuperAdminService {
     return this.subscriptionRepo.find({ relations: ['business'], order: { created_at: 'DESC' } });
   }
 
-  async createSubscription(dto: CreateSubscriptionDto) {
+  async createSubscription(dto: CreateSubscriptionDto, superAdminId?: string) {
+    // A business may have at most one subscription (UQ_subscriptions_business).
+    // Surface the conflict cleanly instead of leaking a raw 500.
+    const existing = await this.subscriptionRepo.count({ where: { business_id: dto.business_id } });
+    if (existing > 0) {
+      throw new ConflictException({ error: 'SA_SUBSCRIPTION_EXISTS', message: 'This business already has a subscription' });
+    }
     const sub = this.subscriptionRepo.create({ ...dto, status: SubscriptionStatus.ACTIVE });
-    return this.subscriptionRepo.save(sub);
+    try {
+      const saved = await this.subscriptionRepo.save(sub);
+      if (superAdminId) {
+        await this.audit(superAdminId, 'create', 'subscription', saved.id, dto.business_id, { plan_name: dto.plan_name });
+      }
+      return saved;
+    } catch (e: any) {
+      if (e?.code === '23505' || e?.driverError?.code === '23505') {
+        throw new ConflictException({ error: 'SA_SUBSCRIPTION_EXISTS', message: 'This business already has a subscription' });
+      }
+      throw e;
+    }
   }
 
   async updateSubscription(id: string, dto: UpdateSubscriptionDto) {

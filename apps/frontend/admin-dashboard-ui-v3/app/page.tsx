@@ -25,9 +25,7 @@ import NotificationsPage from "@/components/notifications-page"
 import CommunicationsPage from "@/components/communications-page"
 import AnnouncementsPage from "@/components/announcements-page"
 import SettingsPage from "@/components/settings-page"
-import SuperAdminPage from "@/components/super-admin-page"
 import RecommendationsPage from "@/components/recommendations-page"
-import TerminalsPage from "@/components/terminals-page"
 import ChainPage from "@/components/chain-page"
 import VendorPaymentsPage from "@/components/vendor-payments-page"
 import CategoriesPage from "@/components/categories-page"
@@ -54,13 +52,20 @@ import NotificationTemplatesPage from "@/components/notification-templates-page"
 import NotificationSendPage from "@/components/notification-send-page"
 import PlatformAnnouncementsPage from "@/components/platform-announcements-page"
 import RecommendationItemsPage from "@/components/recommendation-items-page"
-import TradeCategoriesPage from "@/components/trade-categories-page"
-import CouriersPage from "@/components/couriers-page"
-import SystemParametersPage from "@/components/system-parameters-page"
-import VersionLogPage from "@/components/version-log-page"
-import CustomAuthorityPage from "@/components/custom-authority-page"
-import AdminAnnouncementsPage from "@/components/admin-announcements-page"
+import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { apiFetch, clearToken, setToken, setRefreshToken, loadToken, getToken } from "@/lib/api"
+import { isPlatformOperator, type Me } from "@/lib/super-admin/types"
+import { QueryProvider } from "@/components/providers/query-provider"
+import { reportsApi, transactionsApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import {
+  SALES_SUMMARY_INDEX,
+  type ReportPeriodType,
+  type SalesByDayRow,
+  type TopProductRow,
+} from "@/lib/merchant/types"
 import {
   LayoutDashboard,
   Package,
@@ -104,7 +109,6 @@ import {
   Tag,
   Ticket,
   ArrowRight,
-  Monitor,
   FileText,
   Layers,
   Sun,
@@ -137,11 +141,6 @@ import {
   AlertCircle,
   Radio,
   Globe,
-  FolderTree,
-  Bike,
-  SlidersHorizontal,
-  BookOpen,
-  KeyRound,
 } from "lucide-react"
 import {
   AreaChart,
@@ -502,7 +501,6 @@ function Sidebar({ activeItem, onNavigate, menuState, onToggleMenuState, onHover
       title: "OPERATIONS",
       items: [
         { icon: Box, label: "Locations", page: "locations" },
-        { icon: Monitor, label: "Terminals", page: "terminals" },
         { icon: UtensilsCrossed, label: "Tables", page: "tables" },
         { icon: LayoutGrid, label: "Floor Plan", page: "floor-plan-setup" },
         { icon: ChefHat, label: "Kitchen Display", page: "kds" },
@@ -563,21 +561,9 @@ function Sidebar({ activeItem, onNavigate, menuState, onToggleMenuState, onHover
       ]
     },
     {
-      title: "ADMIN",
-      items: [
-        { icon: FolderTree, label: "Trade Categories", page: "trade-categories" },
-        { icon: Bike, label: "Couriers", page: "couriers" },
-        { icon: SlidersHorizontal, label: "System Params", page: "system-parameters" },
-        { icon: BookOpen, label: "Version Log", page: "version-log" },
-        { icon: KeyRound, label: "Custom Authority", page: "custom-authority" },
-        { icon: Megaphone, label: "Admin Notices", page: "admin-announcements" },
-      ]
-    },
-    {
       title: "SYSTEM",
       items: [
         { icon: Settings, label: "Settings", page: "settings" },
-        { icon: Shield, label: "Super Admin", page: "super-dashboard" },
       ]
     },
   ]
@@ -880,22 +866,94 @@ function Header({ title, subtitle, onMobileMenuToggle }: { title: string; subtit
 }
 
 // ============== DASHBOARD PAGE ==============
-function DashboardPage() {
+const DASHBOARD_PERIODS: { key: ReportPeriodType; label: string }[] = [
+  { key: "last_7days", label: "7 Days" },
+  { key: "this_month", label: "Month" },
+  { key: "this_year", label: "Year" },
+]
+
+// NUMERIC columns arrive as strings over JSON — coerce before any math/format.
+function toNum(v: unknown): number {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""))
+  return Number.isFinite(n) ? n : 0
+}
+
+function DashboardPage({ onNavigate }: { onNavigate: (page: string, id?: string) => void }) {
+  const [period, setPeriod] = useState<ReportPeriodType>("last_7days")
+
+  const summaryQuery = useQuery({
+    queryKey: merchantKeys.reports.salesSummary(period),
+    queryFn: () => reportsApi.salesSummary(period),
+  })
+  const txnQuery = useQuery({
+    queryKey: merchantKeys.transactions.recent(),
+    queryFn: () => transactionsApi.recent(),
+  })
+
+  const summary = summaryQuery.data?.summary ?? []
+  const kpiValue = (idx: number) => toNum(summary[idx]?.value)
+
+  const dayRows = ((summaryQuery.data?.tables?.[0]?.rows ?? []) as unknown as SalesByDayRow[])
+  const productRows = ((summaryQuery.data?.tables?.[1]?.rows ?? []) as unknown as TopProductRow[]).slice(0, 5)
+  const transactions = (txnQuery.data?.data ?? []).slice(0, 8)
+
+  const kpis = [
+    { title: "Total Revenue", value: kpiValue(SALES_SUMMARY_INDEX.totalTtc).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), suffix: "MAD", icon: DollarSign, color: "indigo" },
+    { title: "Transactions", value: kpiValue(SALES_SUMMARY_INDEX.orders).toLocaleString(), icon: ShoppingCart, color: "emerald" },
+    { title: "Customers", value: kpiValue(SALES_SUMMARY_INDEX.customers).toLocaleString(), icon: Users, color: "sky" },
+    { title: "Avg Order", value: kpiValue(SALES_SUMMARY_INDEX.avgOrderValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), suffix: "MAD", icon: CreditCard, color: "violet" },
+  ]
+
+  const quickActions = [
+    { icon: Package, label: "Add Product", color: "emerald", page: "products" },
+    { icon: UserPlus, label: "Add Customer", color: "sky", page: "customers" },
+    { icon: BarChart3, label: "View Reports", color: "violet", page: "reports" },
+    { icon: Tag, label: "Promotions", color: "indigo", page: "promotions" },
+    { icon: Ticket, label: "Issue Coupon", color: "amber", page: "coupons" },
+    { icon: Boxes, label: "Inventory", color: "rose", page: "stock" },
+  ]
+
+  const summaryError = summaryQuery.isError ? humanizeError(summaryQuery.error, "Failed to load dashboard metrics.") : null
+  const loadingSummary = summaryQuery.isLoading
+
   return (
-    <motion.div 
+    <motion.div
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
       className="space-y-6"
     >
+      {summaryError && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+          {summaryError}
+        </div>
+      )}
+
+      {/* Period selector */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {summaryQuery.data ? `Period: ${summaryQuery.data.period.from} → ${summaryQuery.data.period.to}` : " "}
+        </p>
+        <div className="flex gap-2">
+          {DASHBOARD_PERIODS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                period === p.key
+                  ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
+                  : "text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a32]"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-5">
-        {[
-          { title: "Total Revenue", value: "48,320.00", suffix: "MAD", change: 12.5, icon: DollarSign, color: "indigo" },
-          { title: "Transactions", value: "312", change: 8.2, icon: ShoppingCart, color: "emerald" },
-          { title: "Customers", value: "1,847", change: -2.4, icon: Users, color: "sky" },
-          { title: "Avg Order", value: "154.87", suffix: "MAD", change: 5.1, icon: CreditCard, color: "violet" },
-        ].map((kpi, index) => (
+        {kpis.map((kpi, index) => (
           <motion.div
             key={kpi.title}
             custom={index}
@@ -903,10 +961,10 @@ function DashboardPage() {
             initial="hidden"
             animate="visible"
             whileHover="hover"
-            className="bg-white dark:bg-[#0F0F12] rounded-2xl p-5 border border-gray-200 dark:border-[#1F1F23] shadow-sm cursor-pointer"
+            className="bg-white dark:bg-[#0F0F12] rounded-2xl p-5 border border-gray-200 dark:border-[#1F1F23] shadow-sm"
           >
             <div className="flex items-start justify-between mb-4">
-              <motion.div 
+              <motion.div
                 whileHover={{ rotate: [0, -10, 10, 0] }}
                 transition={{ duration: 0.4 }}
                 className={`p-3 rounded-xl ${
@@ -923,17 +981,15 @@ function DashboardPage() {
                   "text-violet-600 dark:text-violet-400"
                 }`} />
               </motion.div>
-              <div className={`flex items-center gap-1 text-xs font-semibold ${
-                kpi.change >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-              }`}>
-                {kpi.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                {Math.abs(kpi.change)}%
-              </div>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{kpi.title}</p>
             <p className="text-2xl font-bold font-mono text-gray-900 dark:text-white tabular-nums">
-              {kpi.value}
-              {kpi.suffix && <span className="text-sm font-normal text-gray-400 ml-1">{kpi.suffix}</span>}
+              {loadingSummary ? <span className="text-gray-300 dark:text-gray-600">—</span> : (
+                <>
+                  {kpi.value}
+                  {kpi.suffix && <span className="text-sm font-normal text-gray-400 ml-1">{kpi.suffix}</span>}
+                </>
+              )}
             </p>
           </motion.div>
         ))}
@@ -949,54 +1005,46 @@ function DashboardPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Trend</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Last 7 days</p>
-            </div>
-            <div className="flex gap-2">
-              {["Daily", "Weekly", "Monthly"].map((period) => (
-                <button
-                  key={period}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                    period === "Daily"
-                      ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
-                      : "text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a32]"
-                  }`}
-                >
-                  {period}
-                </button>
-              ))}
+              <p className="text-sm text-gray-500 dark:text-gray-400">Sales by day (TTC)</p>
             </div>
           </div>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v / 1000}k`} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0F0F12",
-                    border: "none",
-                    borderRadius: "12px",
-                    color: "#fff",
-                    padding: "12px 16px",
-                  }}
-                  formatter={(value: number) => [`${value.toLocaleString()} MAD`, "Revenue"]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#4f46e5"
-                  strokeWidth={3}
-                  fill="url(#revenueGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {loadingSummary ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">Loading…</div>
+            ) : dayRows.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">No sales in this period</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dayRows}>
+                  <defs>
+                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#0F0F12",
+                      border: "none",
+                      borderRadius: "12px",
+                      color: "#fff",
+                      padding: "12px 16px",
+                    }}
+                    formatter={(value: number) => [`${Number(value).toLocaleString()} MAD`, "Revenue"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total_ttc"
+                    stroke="#4f46e5"
+                    strokeWidth={3}
+                    fill="url(#revenueGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </motion.div>
 
@@ -1007,31 +1055,32 @@ function DashboardPage() {
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Top Products</h3>
-            <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">View All</button>
+            <button onClick={() => onNavigate("reports")} className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">View All</button>
           </div>
           <div className="space-y-3">
-            {topProducts.map((product, index) => (
+            {loadingSummary ? (
+              <p className="text-sm text-gray-400 py-8 text-center">Loading…</p>
+            ) : productRows.length === 0 ? (
+              <p className="text-sm text-gray-400 py-8 text-center">No product sales yet</p>
+            ) : productRows.map((product, index) => (
               <motion.div
-                key={product.name}
+                key={product.product_name + index}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
                 whileHover={{ x: 4 }}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#2a2a32]/50 transition-colors cursor-pointer"
+                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#2a2a32]/50 transition-colors"
               >
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-100 to-blue-100 dark:from-indigo-900/30 dark:to-blue-900/30 rounded-lg flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-400">
                   {index + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{product.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{product.sold} sold</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{product.product_name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{toNum(product.quantity_sold).toLocaleString()} sold</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white">{product.revenue.toLocaleString()}</p>
-                  <div className={`flex items-center justify-end gap-0.5 text-xs ${product.trend >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    {product.trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {Math.abs(product.trend)}%
-                  </div>
+                  <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white">{toNum(product.total_ttc).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">MAD</p>
                 </div>
               </motion.div>
             ))}
@@ -1048,7 +1097,7 @@ function DashboardPage() {
         >
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-[#1F1F23]">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Transactions</h3>
-            <button className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">View All</button>
+            <button onClick={() => onNavigate("reports")} className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">View All</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1063,21 +1112,25 @@ function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentTransactions.map((txn, index) => (
+                {txnQuery.isLoading ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">Loading…</td></tr>
+                ) : transactions.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">No transactions yet</td></tr>
+                ) : transactions.map((txn, index) => (
                   <motion.tr
                     key={txn.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.05 }}
-                    className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#2a2a32]/30 transition-colors cursor-pointer"
+                    className="border-b border-gray-100 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#2a2a32]/30 transition-colors"
                   >
-                    <td className="px-6 py-4 font-mono text-xs text-gray-900 dark:text-white">{txn.id}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{txn.time}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{txn.items} items</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{txn.method}</td>
-                    <td className="px-6 py-4 font-mono font-semibold text-gray-900 dark:text-white">{txn.amount.toFixed(2)} MAD</td>
+                    <td className="px-6 py-4 font-mono text-xs text-gray-900 dark:text-white">{txn.transaction_number}</td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{new Date(txn.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{txn.items?.length ?? 0} items</td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 capitalize">{txn.payment_method}</td>
+                    <td className="px-6 py-4 font-mono font-semibold text-gray-900 dark:text-white">{toNum(txn.total_ttc || txn.total).toFixed(2)} MAD</td>
                     <td className="px-6 py-4">
-                      <Badge color={txn.status === "completed" ? "green" : "yellow"}>{txn.status}</Badge>
+                      <Badge color={txn.status === "completed" ? "green" : txn.status === "refunded" || txn.status === "partial_refund" ? "red" : "yellow"}>{txn.status}</Badge>
                     </td>
                   </motion.tr>
                 ))}
@@ -1093,22 +1146,16 @@ function DashboardPage() {
         >
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { icon: Plus, label: "New Sale", color: "indigo" },
-              { icon: UserPlus, label: "Add Customer", color: "sky" },
-              { icon: Package, label: "Add Product", color: "emerald" },
-              { icon: BarChart3, label: "View Reports", color: "violet" },
-              { icon: Ticket, label: "Issue Coupon", color: "amber" },
-              { icon: RotateCcw, label: "Refund", color: "rose" },
-            ].map((action, index) => (
+            {quickActions.map((action, index) => (
               <motion.button
                 key={action.label}
+                onClick={() => onNavigate(action.page)}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.05 }}
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.95 }}
-                className={`flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 dark:border-[#1F1F23] hover:border-${action.color}-300 dark:hover:border-${action.color}-700 hover:bg-${action.color}-50 dark:hover:bg-${action.color}-900/20 transition-all`}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#2a2a32]/50 transition-all"
               >
                 <div className={`p-2 rounded-lg ${
                   action.color === "indigo" ? "bg-indigo-100 dark:bg-indigo-900/30" :
@@ -1419,7 +1466,6 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
     "floor-plan-setup": { title: "Floor Plan", subtitle: "Visual layout setup" },
     modifiers: { title: "Modifiers", subtitle: "Product modifiers" },
     recommendations: { title: "Recommendations", subtitle: "AI-powered suggestions" },
-    terminals: { title: "Terminals", subtitle: "POS terminals" },
     kds: { title: "Kitchen Display", subtitle: "Order management" },
     pex: { title: "Point Exchange", subtitle: "Loyalty rewards" },
     warehouses: { title: "Warehouses", subtitle: "Inventory locations" },
@@ -1452,12 +1498,6 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
     "notification-send": { title: "Send Notification", subtitle: "Compose and deliver messages" },
     "platform-announcements": { title: "Platform Announcements", subtitle: "System-wide notices" },
     "recommendation-items": { title: "Template Items", subtitle: "Products in recommendation template" },
-    "trade-categories": { title: "Trade Categories", subtitle: "Business sector classification" },
-    couriers: { title: "Couriers", subtitle: "Delivery partner management" },
-    "system-parameters": { title: "System Parameters", subtitle: "Platform-wide configuration" },
-    "version-log": { title: "Version Log", subtitle: "Release notes and changelog" },
-    "custom-authority": { title: "Custom Authority", subtitle: "Per-business feature overrides" },
-    "admin-announcements": { title: "Admin Announcements", subtitle: "Manage platform announcements" },
     announcements: { title: "Announcements", subtitle: "Staff communications" },
     communications: { title: "Communications", subtitle: "Customer messaging" },
     notifications: { title: "Activity Feed", subtitle: "System notifications" },
@@ -1471,7 +1511,7 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
 
   const renderContent = () => {
     switch (activePage) {
-      case "dashboard": return <DashboardPage />
+      case "dashboard": return <DashboardPage onNavigate={onNavigate} />
       case "products": return <ProductsPageNew />
       case "customers": return <CustomersPage />
       case "employees": return <EmployeesPageNew />
@@ -1483,7 +1523,6 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
       case "floor-plan-setup": return <FloorPlanSetupPage />
       case "modifiers": return <ModifiersPage />
       case "recommendations": return <RecommendationsPage />
-      case "terminals": return <TerminalsPage />
       case "kds": return <KDSPage />
       case "pex": return <PointsExchangePage />
       case "warehouses": return <WarehousesPage />
@@ -1521,13 +1560,7 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
       case "notification-send": return <NotificationSendPage />
       case "platform-announcements": return <PlatformAnnouncementsPage />
       case "recommendation-items": return <RecommendationItemsPage id={selectedId ?? 'tmpl-1'} onBack={() => onNavigate('recommendations')} />
-      case "trade-categories": return <TradeCategoriesPage />
-      case "couriers": return <CouriersPage />
-      case "system-parameters": return <SystemParametersPage />
-      case "version-log": return <VersionLogPage />
-      case "custom-authority": return <CustomAuthorityPage />
-      case "admin-announcements": return <AdminAnnouncementsPage />
-      default: return <DashboardPage />
+      default: return <DashboardPage onNavigate={onNavigate} />
     }
   }
 
@@ -1845,37 +1878,59 @@ function LoginScreen({ onLoginSuccess }: { onLoginSuccess: (isSuperAdmin: boolea
 const PAGES = [
   "login", "dashboard", "products", "customers", "employees", "locations",
   "reports", "promotions", "coupons", "tables", "floor-plan-setup", "modifiers",
-  "recommendations", "terminals", "kds", "pex", "warehouses", "vendors",
+  "recommendations", "kds", "pex", "warehouses", "vendors",
   "vendor-payments", "purchase-orders", "stock-adjustments", "stock-transfers",
   "announcements", "communications", "notifications", "chain", "settings",
-  "super-login", "super-dashboard", "businesses", "terminals-admin",
   "categories", "brands", "units-of-measure", "product-detail",
   "customer-detail", "promotion-create", "promotion-detail", "coupon-bulk-issue",
   "dining-areas", "table-types", "stock", "stock-batches", "stock-movements",
   "purchase-order-create", "purchase-order-detail", "stock-templates",
   "vendor-detail", "expiration-alerts", "discrepancy-alerts",
   "notification-channels", "notification-templates", "notification-send",
-  "platform-announcements", "recommendation-items", "trade-categories",
-  "couriers", "system-parameters", "version-log", "custom-authority",
-  "admin-announcements",
+  "platform-announcements", "recommendation-items",
 ] as const
 type Page = typeof PAGES[number]
 
 export default function App() {
+  const router = useRouter()
   const [page, setPage] = useState<Page>("dashboard")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
 
-  // On mount, restore token from localStorage and treat as authenticated if present
+  // On mount, restore the token then verify the identity with the backend.
+  // A token alone is NOT proof of a merchant session: a leftover super-admin
+  // token (or an expired one) must never render the merchant shell. We resolve
+  // the real identity via /api/auth/me and route accordingly:
+  //   - no/invalid token  → clear it, show the login screen
+  //   - platform operator → send to the isolated /super-admin console
+  //   - merchant          → render the merchant dashboard
   useEffect(() => {
+    let cancelled = false
     loadToken()
-    if (getToken()) {
-      setIsAuthenticated(true)
+    if (!getToken()) {
+      setAuthChecked(true)
+      return
     }
-    setAuthChecked(true)
-  }, [])
+    apiFetch<Me>("/api/auth/me")
+      .then((me) => {
+        if (cancelled) return
+        if (isPlatformOperator(me)) {
+          router.replace("/super-admin")
+          return
+        }
+        setIsAuthenticated(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        clearToken()
+        setIsAuthenticated(false)
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecked(true)
+      })
+    return () => { cancelled = true }
+  }, [router])
 
   const navigate = (newPage: string, id?: string) => {
     setPage(newPage as Page)
@@ -1886,14 +1941,17 @@ export default function App() {
     try { await apiFetch("/api/auth/logout", { method: "POST" }) } catch {}
     clearToken()
     setIsAuthenticated(false)
-    setIsSuperAdmin(false)
     setPage("dashboard")
   }
 
+  // Super admins live in their own isolated route segment (/super-admin).
   const handleLoginSuccess = (superAdmin: boolean) => {
-    setIsSuperAdmin(superAdmin)
+    if (superAdmin) {
+      router.push("/super-admin")
+      return
+    }
     setIsAuthenticated(true)
-    setPage(superAdmin ? "super-dashboard" : "dashboard")
+    setPage("dashboard")
   }
 
   if (!authChecked) return null  // avoid flash before localStorage check
@@ -1902,10 +1960,10 @@ export default function App() {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />
   }
 
-  if (isSuperAdmin || page === "super-dashboard") {
-    return <SuperAdminPage onBack={() => { setIsSuperAdmin(false); navigate("dashboard") }} />
-  }
-
-  return <MainLayout activePage={page} selectedId={selectedId} onNavigate={navigate} onSignOut={handleSignOut} />
+  return (
+    <QueryProvider>
+      <MainLayout activePage={page} selectedId={selectedId} onNavigate={navigate} onSignOut={handleSignOut} />
+    </QueryProvider>
+  )
 }
 

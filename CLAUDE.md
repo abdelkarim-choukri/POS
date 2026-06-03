@@ -22,19 +22,10 @@ backend at `http://localhost:3000`.
 
 ## My role on this project
 
-I work ONLY on the backend (`apps/backend/`). My teammate handles the frontend
-(`apps/dashboard-web/` and `apps/terminal-app/`). When working with me, Claude should:
+I finish working on the backend (`apps/backend/`).now i'm workin with the frontend
+(`apps/dashboard-web/` and `apps/terminal-app/`).
 
-- NOT modify files in `apps/dashboard-web/` or `apps/terminal-app/`
-- NOT run frontend dev servers or build commands
-- When a feature touches both backend and frontend, implement only the backend
-  side and add a clear note in `packages/shared/` describing the API contract
-  the frontend will need to use
-- Tell me when something I'm asking for is actually frontend work, so I can
-  send it to my teammate instead
 
-The one exception: `packages/shared/` is shared territory. Adding DTOs and
-types there is part of backend work, since the backend defines the contract.
 
 ---
 

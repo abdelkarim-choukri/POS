@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsUUID, IsOptional, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsUUID, IsOptional, IsBoolean, MaxLength, MinLength } from 'class-validator';
 
 export class CreateBusinessDto {
   @IsUUID()
@@ -68,5 +68,8 @@ export class UpdateBusinessDto {
 }
 
 export class UpdateBusinessStatusDto {
+  // Needs a validator decorator — the global ValidationPipe runs
+  // forbidNonWhitelisted, which rejects any property lacking one.
+  @IsBoolean()
   is_active: boolean;
 }

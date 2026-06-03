@@ -15,7 +15,6 @@ coverage/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
-
 # ---- Logs and OS junk ----
 *.log
 .DS_Store

@@ -72,6 +72,12 @@ services:
       JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
       # App
       PORT: 3000
+      # WebSocket CORS — EventGateway (/events namespace) defaults to the old
+      # Vite port 5173 when unset. The admin dashboard now runs on :3001, so
+      # without this the browser's /events handshake is CORS-blocked and
+      # dashboard real-time alerts never arrive. KdsGateway uses origin '*'
+      # and is unaffected.
+      WS_CORS_ORIGIN: ${WS_CORS_ORIGIN:-http://localhost:3001}
     ports:
       - "3000:3000"
     volumes:

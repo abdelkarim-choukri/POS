@@ -28,8 +28,8 @@ export class SuperAdminController {
   }
 
   @Post('businesses')
-  createBusiness(@Body() dto: CreateBusinessDto) {
-    return this.service.createBusiness(dto);
+  createBusiness(@Body() dto: CreateBusinessDto, @CurrentUser('id') superAdminId: string) {
+    return this.service.createBusiness(dto, superAdminId);
   }
 
   @Get('businesses/:id')
@@ -43,8 +43,8 @@ export class SuperAdminController {
   }
 
   @Patch('businesses/:id/status')
-  updateBusinessStatus(@Param('id') id: string, @Body() dto: UpdateBusinessStatusDto) {
-    return this.service.updateBusinessStatus(id, dto);
+  updateBusinessStatus(@Param('id') id: string, @Body() dto: UpdateBusinessStatusDto, @CurrentUser('id') superAdminId: string) {
+    return this.service.updateBusinessStatus(id, dto, superAdminId);
   }
 
   // Business Types
@@ -91,8 +91,8 @@ export class SuperAdminController {
   }
 
   @Post('subscriptions')
-  createSubscription(@Body() dto: CreateSubscriptionDto) {
-    return this.service.createSubscription(dto);
+  createSubscription(@Body() dto: CreateSubscriptionDto, @CurrentUser('id') superAdminId: string) {
+    return this.service.createSubscription(dto, superAdminId);
   }
 
   @Put('subscriptions/:id')
