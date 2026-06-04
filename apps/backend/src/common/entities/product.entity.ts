@@ -101,6 +101,9 @@ export class Product {
   @Column({ type: 'boolean', default: false })
   track_stock: boolean;
 
+  @Column({ type: 'int', default: 0 })
+  reorder_point: number;
+
   @Column({ type: 'uuid', nullable: true })
   synced_from_parent_id: string | null;
 

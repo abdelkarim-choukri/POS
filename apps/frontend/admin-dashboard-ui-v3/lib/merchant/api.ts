@@ -24,6 +24,19 @@ import type {
   CreateEmployeeInput,
   Employee,
   UpdateEmployeeInput,
+  Warehouse,
+  CouponType,
+  CreateCouponTypeInput,
+  IssuedCoupon,
+  IssueToSegmentInput,
+  UpdateCouponTypeInput,
+  ChainChild,
+  CreatePromotionInput,
+  Promotion,
+  PromotionListResponse,
+  RolloutResult,
+  SubStoreValidation,
+  UpdatePromotionInput,
   Customer,
   CustomerAttribute,
   CustomerDetail,
@@ -44,6 +57,55 @@ const qs = (params: Record<string, string | number | undefined>) => {
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") sp.set(k, String(v))
   const s = sp.toString()
   return s ? `?${s}` : ""
+}
+
+export const promotionsApi = {
+  list: (params: { status?: string; search?: string; page?: number; limit?: number } = {}) =>
+    apiFetch<PromotionListResponse>(`/api/business/promotions${qs({ limit: 100, ...params })}`),
+  detail: (id: string) => apiFetch<Promotion>(`/api/business/promotions/${id}`),
+  create: (input: CreatePromotionInput) =>
+    apiFetch<Promotion>("/api/business/promotions", { method: "POST", body: JSON.stringify(input) }),
+  // verb is PATCH
+  update: (id: string, input: UpdatePromotionInput) =>
+    apiFetch<Promotion>(`/api/business/promotions/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  activate: (id: string) => apiFetch<Promotion>(`/api/business/promotions/${id}/activate`, { method: "POST" }),
+  pause: (id: string) => apiFetch<Promotion>(`/api/business/promotions/${id}/pause`, { method: "POST" }),
+  archive: (id: string) => apiFetch<Promotion>(`/api/business/promotions/${id}/archive`, { method: "POST" }),
+}
+
+export const chainApi = {
+  // children present ⇒ this business is a chain parent. Requires a date range.
+  dashboard: (from_date: string, to_date: string) =>
+    apiFetch<{ children: ChainChild[]; totals: unknown }>(`/api/business/chain/dashboard${qs({ from_date, to_date })}`),
+  validateSubStores: (promotionId: string, child_business_ids: string[]) =>
+    apiFetch<SubStoreValidation[]>(`/api/business/promotions/${promotionId}/validate-sub-stores`, {
+      method: "POST", body: JSON.stringify({ child_business_ids }),
+    }),
+  rollout: (promotionId: string, child_business_ids: string[], skip_validation = false) =>
+    apiFetch<RolloutResult[]>(`/api/business/promotions/${promotionId}/rollout-to-children`, {
+      method: "POST", body: JSON.stringify({ child_business_ids, skip_validation }),
+    }),
+}
+
+export const couponsApi = {
+  listTypes: () => apiFetch<CouponType[]>("/api/business/coupon-types"),
+  getType: (id: string) => apiFetch<CouponType>(`/api/business/coupon-types/${id}`),
+  createType: (input: CreateCouponTypeInput) =>
+    apiFetch<CouponType>("/api/business/coupon-types", { method: "POST", body: JSON.stringify(input) }),
+  // verb is PATCH
+  updateType: (id: string, input: UpdateCouponTypeInput) =>
+    apiFetch<CouponType>(`/api/business/coupon-types/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  deactivateType: (id: string) => apiFetch<CouponType>(`/api/business/coupon-types/${id}/deactivate`, { method: "POST" }),
+  cloneType: (id: string) => apiFetch<CouponType>(`/api/business/coupon-types/${id}/clone`, { method: "POST" }),
+  issue: (typeId: string, customer_id?: string) =>
+    apiFetch<IssuedCoupon>(`/api/business/coupon-types/${typeId}/issue`, {
+      method: "POST", body: JSON.stringify(customer_id ? { customer_id } : {}),
+    }),
+  issueToSegment: (input: IssueToSegmentInput) =>
+    apiFetch<{ issued_count?: number } | unknown>("/api/business/coupons/issue-to-segment", { method: "POST", body: JSON.stringify(input) }),
+  lookup: (code: string) => apiFetch<IssuedCoupon>(`/api/business/coupons/lookup?code=${encodeURIComponent(code)}`),
+  void: (id: string, reason: string) =>
+    apiFetch<unknown>(`/api/business/coupons/${id}/void`, { method: "POST", body: JSON.stringify({ reason }) }),
 }
 
 export const employeesApi = {
@@ -159,6 +221,16 @@ export const variantsApi = {
       method: "PUT",
       body: JSON.stringify(input),
     }),
+}
+
+export const warehousesApi = {
+  list: () => apiFetch<Warehouse[]>("/api/business/warehouses"),
+}
+
+export const inventoryReportsApi = {
+  // stock-position is a snapshot; `type` is required by the DTO but ignored by the SQL.
+  stockPosition: (params: { warehouse_id?: string; category_id?: string; low_stock_only?: boolean } = {}) =>
+    apiFetch<UniversalReportResponse>(`/api/business/reports/stock-position${qs({ type: "today", ...params, low_stock_only: params.low_stock_only ? "true" : undefined })}`),
 }
 
 export const transactionsApi = {

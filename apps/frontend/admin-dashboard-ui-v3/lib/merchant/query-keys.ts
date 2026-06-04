@@ -58,4 +58,22 @@ export const merchantKeys = {
     list: () => ["merchant", "employees", "list"] as const,
     clockHistory: (id: string) => ["merchant", "employees", id, "clock-history"] as const,
   },
+
+  promotions: {
+    all: ["merchant", "promotions"] as const,
+    list: (status: string) => ["merchant", "promotions", "list", status] as const,
+  },
+  chain: {
+    all: ["merchant", "chain"] as const,
+    children: () => ["merchant", "chain", "children"] as const,
+  },
+  coupons: {
+    all: ["merchant", "coupons"] as const,
+    types: () => ["merchant", "coupons", "types"] as const,
+  },
+  inventory: {
+    all: ["merchant", "inventory"] as const,
+    warehouses: () => ["merchant", "inventory", "warehouses"] as const,
+    stockPosition: (key: string) => ["merchant", "inventory", "stock-position", key] as const,
+  },
 } as const

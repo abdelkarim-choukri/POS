@@ -1,1013 +1,430 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect } from "react"
-import { apiFetch } from "@/lib/api"
-import {
-  Search,
-  Plus,
-  X,
-  Percent,
-  DollarSign,
-  Ticket,
-  Ban,
-  Users,
-  User,
-  Copy,
-  ChevronDown,
-} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Search, Plus, X, Percent, DollarSign, Gift, Package, Ticket, Ban, Users, User, Copy, ChevronDown } from "lucide-react"
+import { couponsApi, customersApi, gradesApi, labelsApi, productsApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import type { CouponType, CouponDiscountType, IssuedCoupon, CreateCouponTypeInput } from "@/lib/merchant/types"
 
-// ============== TYPES ==============
-type DiscountType = "percentage" | "fixed"
-type CouponStatus = "active" | "used" | "expired" | "voided"
+function n(v: unknown): number { const x = typeof v === "number" ? v : parseFloat(String(v ?? "")); return Number.isFinite(x) ? x : 0 }
 
-interface CouponType {
-  id: string
-  name: string
-  discount_type: DiscountType
-  value: number
-  validity_days: number
-  max_uses: number
-  description: string
-  is_active: boolean
-  created_at: string
+const DISCOUNT_TYPES: { value: CouponDiscountType; label: string; icon: typeof Percent }[] = [
+  { value: "percent_off", label: "Percentage off", icon: Percent },
+  { value: "fixed_off", label: "Fixed amount off", icon: DollarSign },
+  { value: "free_item", label: "Free item", icon: Gift },
+  { value: "bogo", label: "Buy one get one", icon: Package },
+]
+const DISC_ICON: Record<CouponDiscountType, typeof Percent> = { percent_off: Percent, fixed_off: DollarSign, free_item: Gift, bogo: Package }
+const DISC_LABEL: Record<CouponDiscountType, string> = { percent_off: "Percentage", fixed_off: "Fixed", free_item: "Free item", bogo: "BOGO" }
+const discValue = (t: CouponType) => t.discount_type === "percent_off" ? `${n(t.discount_value)}%` : t.discount_type === "fixed_off" ? `${n(t.discount_value)} MAD` : t.discount_type === "free_item" ? "Free item" : "BOGO"
+
+const STATUS_BADGE: Record<string, { label: string; variant: "success" | "info" | "warning" | "error" | "muted" }> = {
+  available: { label: "Active", variant: "success" },
+  redeemed: { label: "Used", variant: "info" },
+  used: { label: "Used", variant: "info" },
+  expired: { label: "Expired", variant: "warning" },
+  voided: { label: "Voided", variant: "error" },
 }
 
-interface IssuedCoupon {
-  id: string
-  code: string
-  coupon_type_id: string
-  coupon_type_name: string
-  customer_id: string | null
-  customer_name: string | null
-  discount_type: DiscountType
-  value: number
-  status: CouponStatus
-  issued_at: string
-  expires_at: string
-  used_at: string | null
-}
-
-interface Customer {
-  id: string
-  name: string
-  email: string
-  phone: string
-}
-
-
-// ============== COMPONENTS ==============
-
-// Badge Component
-function Badge({ 
-  children, 
-  variant = "default" 
-}: { 
-  children: React.ReactNode
-  variant?: "default" | "success" | "warning" | "error" | "info" | "muted"
-}) {
+function Badge({ children, variant = "muted" }: { children: React.ReactNode; variant?: "success" | "info" | "warning" | "error" | "muted" }) {
   const variants = {
-    default: "bg-gray-100 text-gray-700",
-    success: "bg-green-100 text-green-700",
-    warning: "bg-amber-100 text-amber-700",
-    error: "bg-red-100 text-red-700",
-    info: "bg-blue-100 text-blue-700",
-    muted: "bg-gray-100 text-gray-500",
+    success: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    info: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    warning: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    error: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+    muted: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
   }
-  
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant]}`}>
-      {children}
-    </span>
-  )
+  return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant]}`}>{children}</span>
 }
 
-// Toggle Component
-function Toggle({ 
-  checked, 
-  onChange 
-}: { 
-  checked: boolean
-  onChange: (checked: boolean) => void 
-}) {
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        checked ? "bg-primary" : "bg-gray-300"
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-          checked ? "translate-x-4.5" : "translate-x-0.5"
-        }`}
-      />
+    <button type="button" onClick={onChange} disabled={disabled} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${checked ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-600"}`}>
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
     </button>
   )
 }
 
-// Modal Component
-function Modal({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children,
-  size = "md"
-}: { 
-  isOpen: boolean
-  onClose: () => void
-  title: string
-  children: React.ReactNode
-  size?: "sm" | "md" | "lg"
-}) {
+function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; size?: "sm" | "md" | "lg" }) {
   if (!isOpen) return null
-  
-  const sizes = {
-    sm: "max-w-md",
-    md: "max-w-lg",
-    lg: "max-w-2xl",
-  }
-  
+  const sizes = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl" }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className={`relative bg-card rounded-xl shadow-xl w-full ${sizes[size]} mx-4 max-h-[90vh] overflow-auto`}>
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg hover:bg-muted transition-colors"
-          >
-            <X className="w-5 h-5 text-muted-foreground" />
-          </button>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative bg-white dark:bg-[#0F0F12] rounded-xl shadow-xl w-full ${sizes[size]} mx-4 max-h-[90vh] overflow-auto`}>
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-[#1F1F23]">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a20]"><X className="w-5 h-5 text-gray-400" /></button>
         </div>
-        <div className="p-4">
-          {children}
-        </div>
+        <div className="p-4">{children}</div>
       </div>
     </div>
   )
 }
 
-// Dropdown Component
-function Dropdown({
-  value,
-  onChange,
-  options,
-  placeholder = "Select...",
-}: {
-  value: string
-  onChange: (value: string) => void
-  options: { value: string; label: string }[]
-  placeholder?: string
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const selected = options.find(o => o.value === value)
-  
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-foreground hover:bg-muted/50 transition-colors"
-      >
-        <span className={selected ? "text-foreground" : "text-muted-foreground"}>
-          {selected?.label || placeholder}
-        </span>
-        <ChevronDown className="w-4 h-4 text-muted-foreground" />
-      </button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 max-h-48 overflow-auto">
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  onChange(option.value)
-                  setIsOpen(false)
-                }}
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors ${
-                  value === option.value ? "bg-primary/10 text-primary" : "text-foreground"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
+const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
 
-// ============== MAIN PAGE ==============
+type TypeForm = { name: string; discount_type: CouponDiscountType; discount_value: string; validity_days_from_issue: string; min_order_total_ttc: string; free_item_product_id: string; description: string }
+const emptyTypeForm = (): TypeForm => ({ name: "", discount_type: "percent_off", discount_value: "", validity_days_from_issue: "30", min_order_total_ttc: "", free_item_product_id: "", description: "" })
+
 export default function CouponsPage() {
-  // State
-  const [couponTypes, setCouponTypes] = useState<CouponType[]>([])
-  const [issuedCoupons, setIssuedCoupons] = useState<IssuedCoupon[]>([])
-  const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  // Lookup state
-  const [lookupCode, setLookupCode] = useState("")
-  const [lookupLoading, setLookupLoading] = useState(false)
-  // Void reason state
-  const [voidReason, setVoidReason] = useState<{ id: string; reason: string } | null>(null)
-  
-  // Filter state for issued coupons
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<CouponStatus | "all">("all")
-  
-  // Modal states
-  const [showCreateTypeModal, setShowCreateTypeModal] = useState(false)
-  const [showIssueCouponModal, setShowIssueCouponModal] = useState(false)
+
+  // coupon types
+  const typesQuery = useQuery({ queryKey: merchantKeys.coupons.types(), queryFn: () => couponsApi.listTypes() })
+  const types = typesQuery.data ?? []
+  const productsQuery = useQuery({ queryKey: merchantKeys.products.list(null), queryFn: () => productsApi.list() })
+  const products = productsQuery.data ?? []
+  const invalidateTypes = () => queryClient.invalidateQueries({ queryKey: merchantKeys.coupons.all })
+
+  // create/edit type
+  const [showTypeModal, setShowTypeModal] = useState(false)
   const [editingType, setEditingType] = useState<CouponType | null>(null)
-  
-  // Form state for Create/Edit Coupon Type
-  const [typeForm, setTypeForm] = useState({
-    name: "",
-    discount_type: "percentage" as DiscountType,
-    value: "",
-    validity_days: "",
-    max_uses: "",
-    description: "",
-  })
-  
-  // Form state for Issue Coupon
-  const [issueForm, setIssueForm] = useState({
-    coupon_type_id: "",
-    issue_mode: "single" as "single" | "bulk",
-    customer_id: "",
-    bulk_count: "",
-  })
-  const [customerSearch, setCustomerSearch] = useState("")
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
+  const [typeForm, setTypeForm] = useState<TypeForm>(emptyTypeForm())
+  const [typeError, setTypeError] = useState<string | null>(null)
 
-  const fetchCouponTypes = () => {
-    setLoading(true)
-    setError(null)
-    apiFetch<any[]>("/api/business/coupon-types")
-      .then(data => {
-        const list = Array.isArray(data) ? data : (data as any).data ?? []
-        const mapped: CouponType[] = list.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          discount_type: t.type === "fixed" ? "fixed" : "percentage",
-          value: t.value ?? 0,
-          validity_days: t.validity_days ?? 30,
-          max_uses: t.max_uses ?? 1,
-          description: t.description ?? "",
-          is_active: t.is_active,
-          created_at: t.created_at ?? "",
-        }))
-        setCouponTypes(mapped)
-      })
-      .catch(e => setError(e.message ?? "Failed to load coupon types"))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    fetchCouponTypes()
-  }, [])
-
-  // Filter issued coupons
-  const filteredCoupons = issuedCoupons.filter((coupon) => {
-    const matchesSearch = 
-      coupon.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (coupon.customer_name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-    const matchesStatus = statusFilter === "all" || coupon.status === statusFilter
-    return matchesSearch && matchesStatus
+  const createTypeMutation = useMutation({
+    mutationFn: (input: CreateCouponTypeInput) => couponsApi.createType(input),
+    onSuccess: () => { invalidateTypes(); setShowTypeModal(false) },
+    onError: (e) => setTypeError(humanizeError(e, "Failed to create coupon type.")),
   })
-  
-  // Filtered customers for search (no local mock — customer_id must be entered directly)
-  const filteredCustomers: Customer[] = []
-  
-  // Handlers
-  const handleOpenCreateType = () => {
-    setEditingType(null)
+  const updateTypeMutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof couponsApi.updateType>[1] }) => couponsApi.updateType(id, input),
+    onSuccess: () => { invalidateTypes(); setShowTypeModal(false) },
+    onError: (e) => setTypeError(humanizeError(e, "Failed to update coupon type.")),
+  })
+  const toggleTypeMutation = useMutation({
+    mutationFn: (t: CouponType) => t.is_active ? couponsApi.deactivateType(t.id) : couponsApi.updateType(t.id, { is_active: true }),
+    onSuccess: invalidateTypes,
+    onError: (e) => setError(humanizeError(e, "Failed to update status.")),
+  })
+  const cloneMutation = useMutation({
+    mutationFn: (id: string) => couponsApi.cloneType(id),
+    onSuccess: invalidateTypes,
+    onError: (e) => setError(humanizeError(e, "Failed to clone.")),
+  })
+
+  const openCreateType = () => { setEditingType(null); setTypeForm(emptyTypeForm()); setTypeError(null); setShowTypeModal(true) }
+  const openEditType = (t: CouponType) => {
+    setEditingType(t)
     setTypeForm({
-      name: "",
-      discount_type: "percentage",
-      value: "",
-      validity_days: "",
-      max_uses: "",
-      description: "",
+      name: t.name, discount_type: t.discount_type, discount_value: n(t.discount_value).toString(),
+      validity_days_from_issue: String(t.validity_days_from_issue ?? 30),
+      min_order_total_ttc: t.min_order_total_ttc != null ? n(t.min_order_total_ttc).toString() : "",
+      free_item_product_id: t.free_item_product_id ?? "", description: t.description ?? "",
     })
-    setShowCreateTypeModal(true)
+    setTypeError(null); setShowTypeModal(true)
   }
-  
-  const handleEditType = async (type: CouponType) => {
-    let detail = type
-    try {
-      const res = await apiFetch<any>(`/api/business/coupon-types/${type.id}`)
-      detail = {
-        id: res.id,
-        name: res.name,
-        discount_type: res.type === "fixed" ? "fixed" : "percentage",
-        value: res.value ?? 0,
-        validity_days: res.validity_days ?? 30,
-        max_uses: res.max_uses ?? 1,
-        description: res.description ?? "",
-        is_active: res.is_active,
-        created_at: res.created_at ?? "",
-      }
-    } catch {
-      // Fall back to the list-row data if detail fetch fails
-    }
-    setEditingType(detail)
-    setTypeForm({
-      name: detail.name,
-      discount_type: detail.discount_type,
-      value: detail.value.toString(),
-      validity_days: detail.validity_days.toString(),
-      max_uses: detail.max_uses.toString(),
-      description: detail.description,
-    })
-    setShowCreateTypeModal(true)
-  }
-  
-  const handleSaveType = () => {
-    const body = {
-      name: typeForm.name,
-      type: typeForm.discount_type,
-      value: parseFloat(typeForm.value) || 0,
-      validity_days: parseInt(typeForm.validity_days) || 30,
-      max_uses: parseInt(typeForm.max_uses) || 1,
-      description: typeForm.description,
-    }
-    const call = editingType
-      ? apiFetch(`/api/business/coupon-types/${editingType.id}`, { method: "PATCH", body: JSON.stringify(body) })
-      : apiFetch("/api/business/coupon-types", { method: "POST", body: JSON.stringify(body) })
-    call
-      .then(() => {
-        setShowCreateTypeModal(false)
-        fetchCouponTypes()
-      })
-      .catch((e: any) => setError(e.message ?? "Failed to save coupon type"))
-  }
-  
-  const handleToggleTypeStatus = (id: string) => {
-    const type = couponTypes.find(t => t.id === id)
-    if (!type) return
-    if (type.is_active) {
-      apiFetch(`/api/business/coupon-types/${id}/deactivate`, { method: "POST" })
-        .then(() => fetchCouponTypes())
-        .catch((e: any) => setError(e.message ?? "Failed to deactivate coupon type"))
+  const saveType = () => {
+    setTypeError(null)
+    if (!typeForm.name.trim()) { setTypeError("Name is required."); return }
+    if (editingType) {
+      // discount_type/value are locked once issued — only editable fields are sent
+      updateTypeMutation.mutate({ id: editingType.id, input: {
+        name: typeForm.name.trim(), description: typeForm.description.trim() || undefined,
+        validity_days_from_issue: typeForm.validity_days_from_issue ? parseInt(typeForm.validity_days_from_issue) : undefined,
+        min_order_total_ttc: typeForm.min_order_total_ttc ? n(typeForm.min_order_total_ttc) : undefined,
+      } })
     } else {
-      apiFetch(`/api/business/coupon-types/${id}`, { method: "PATCH", body: JSON.stringify({ is_active: true }) })
-        .then(() => fetchCouponTypes())
-        .catch((e: any) => setError(e.message ?? "Failed to activate coupon type"))
+      if (typeForm.discount_type !== "free_item" && typeForm.discount_type !== "bogo" && (typeForm.discount_value === "" || n(typeForm.discount_value) < 0)) { setTypeError("A valid discount value is required."); return }
+      if (typeForm.discount_type === "free_item" && !typeForm.free_item_product_id) { setTypeError("Select the free item product."); return }
+      createTypeMutation.mutate({
+        name: typeForm.name.trim(), discount_type: typeForm.discount_type,
+        discount_value: typeForm.discount_value ? n(typeForm.discount_value) : 0,
+        validity_days_from_issue: typeForm.validity_days_from_issue ? parseInt(typeForm.validity_days_from_issue) : undefined,
+        min_order_total_ttc: typeForm.min_order_total_ttc ? n(typeForm.min_order_total_ttc) : undefined,
+        free_item_product_id: typeForm.discount_type === "free_item" ? typeForm.free_item_product_id : undefined,
+        description: typeForm.description.trim() || undefined,
+      })
     }
-  }
-  
-  const handleOpenIssueCoupon = () => {
-    setIssueForm({
-      coupon_type_id: "",
-      issue_mode: "single",
-      customer_id: "",
-      bulk_count: "",
-    })
-    setCustomerSearch("")
-    setShowIssueCouponModal(true)
-  }
-  
-  const handleIssueCoupons = () => {
-    if (!issueForm.coupon_type_id) return
-    if (issueForm.issue_mode === "single") {
-      const body: Record<string, string> = {}
-      if (issueForm.customer_id) body.customer_id = issueForm.customer_id
-      apiFetch(`/api/business/coupon-types/${issueForm.coupon_type_id}/issue`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      })
-        .then((res: any) => {
-          const issued = res.coupon ?? res
-          const newCoupon: IssuedCoupon = {
-            id: issued.id,
-            code: res.code ?? issued.code ?? "",
-            coupon_type_id: issueForm.coupon_type_id,
-            coupon_type_name: couponTypes.find(t => t.id === issueForm.coupon_type_id)?.name ?? "",
-            customer_id: issued.customer_id ?? null,
-            customer_name: null,
-            discount_type: issued.discount_type ?? "percentage",
-            value: issued.value ?? 0,
-            status: (issued.status as CouponStatus) ?? "active",
-            issued_at: issued.created_at ?? new Date().toISOString().split("T")[0],
-            expires_at: issued.expires_at ?? "",
-            used_at: issued.used_at ?? null,
-          }
-          setIssuedCoupons(prev => [newCoupon, ...prev])
-          setShowIssueCouponModal(false)
-          fetchCouponTypes()
-        })
-        .catch((e: any) => setError(e.message ?? "Failed to issue coupon"))
-    } else {
-      const count = parseInt(issueForm.bulk_count) || 1
-      const customerIds = Array.from({ length: count }, () => issueForm.customer_id).filter(Boolean)
-      apiFetch("/api/business/coupons/bulk-issue", {
-        method: "POST",
-        body: JSON.stringify({
-          coupon_type_id: issueForm.coupon_type_id,
-          customer_ids: customerIds,
-        }),
-      })
-        .then(() => {
-          setShowIssueCouponModal(false)
-          fetchCouponTypes()
-        })
-        .catch((e: any) => setError(e.message ?? "Failed to bulk-issue coupons"))
-    }
-  }
-  
-  const handleVoidCoupon = (id: string) => {
-    const reason = voidReason?.id === id ? voidReason.reason : "Voided by admin"
-    apiFetch(`/api/business/coupons/${id}/void`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    })
-      .then(() => {
-        setIssuedCoupons(prev => prev.map(c =>
-          c.id === id ? { ...c, status: "voided" as CouponStatus } : c
-        ))
-        setVoidReason(null)
-      })
-      .catch((e: any) => setError(e.message ?? "Failed to void coupon"))
   }
 
-  const handleLookupCoupon = () => {
-    if (!lookupCode.trim()) return
-    setLookupLoading(true)
-    setError(null)
-    apiFetch<any>(`/api/business/coupons/lookup?code=${encodeURIComponent(lookupCode.trim())}`)
-      .then(data => {
-        const mapped: IssuedCoupon = {
-          id: data.id ?? data.code,
-          code: data.code,
-          coupon_type_id: data.coupon_type_id ?? "",
-          coupon_type_name: data.coupon_type_name ?? data.type ?? "",
-          customer_id: data.customer_id ?? null,
-          customer_name: data.customer_name ?? null,
-          discount_type: data.discount_type ?? "percentage",
-          value: data.value ?? 0,
-          status: (data.status as CouponStatus) ?? "active",
-          issued_at: data.issued_at ?? data.created_at ?? "",
-          expires_at: data.expires_at ?? "",
-          used_at: data.used_at ?? null,
-        }
-        setIssuedCoupons(prev => {
-          const exists = prev.find(c => c.code === mapped.code)
-          if (exists) return prev.map(c => c.code === mapped.code ? mapped : c)
-          return [mapped, ...prev]
-        })
-      })
-      .catch((e: any) => setError(e.message ?? "Coupon not found"))
-      .finally(() => setLookupLoading(false))
+  // ── Issue coupons ──
+  const [showIssue, setShowIssue] = useState(false)
+  const [issueTypeId, setIssueTypeId] = useState("")
+  const [issueMode, setIssueMode] = useState<"single" | "segment">("single")
+  const [custSearch, setCustSearch] = useState("")
+  const [custSearchDebounced, setCustSearchDebounced] = useState("")
+  const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; name: string } | null>(null)
+  const [segAudience, setSegAudience] = useState<"all" | "grade" | "label">("all")
+  const [segGradeId, setSegGradeId] = useState("")
+  const [segLabelId, setSegLabelId] = useState("")
+  const [issueError, setIssueError] = useState<string | null>(null)
+  const [issueResult, setIssueResult] = useState<string | null>(null)
+
+  const custQuery = useQuery({
+    queryKey: merchantKeys.customers.list(`coupon|${custSearchDebounced}`),
+    queryFn: () => customersApi.list({ search: custSearchDebounced || undefined, limit: 8 }),
+    enabled: showIssue && issueMode === "single" && custSearchDebounced.length > 0,
+  })
+  const gradesQuery = useQuery({ queryKey: merchantKeys.grades.list(), queryFn: () => gradesApi.list(), enabled: showIssue })
+  const labelsQuery = useQuery({ queryKey: merchantKeys.labels.list(), queryFn: () => labelsApi.list(), enabled: showIssue })
+
+  // debounce customer search
+  useEffect(() => { const t = setTimeout(() => setCustSearchDebounced(custSearch), 300); return () => clearTimeout(t) }, [custSearch])
+
+  const [lastIssued, setLastIssued] = useState<IssuedCoupon[]>([])
+  const issueSingleMutation = useMutation({
+    mutationFn: () => couponsApi.issue(issueTypeId, selectedCustomer?.id),
+    onSuccess: (c) => { setLastIssued(prev => [c, ...prev]); setIssueResult(`Issued coupon ${c.coupon_code}.`); setShowIssue(false) },
+    onError: (e) => setIssueError(humanizeError(e, "Failed to issue coupon.")),
+  })
+  const issueSegmentMutation = useMutation({
+    mutationFn: () => couponsApi.issueToSegment({
+      coupon_type_id: issueTypeId, target_audience: segAudience,
+      target_grade_ids: segAudience === "grade" && segGradeId ? [segGradeId] : undefined,
+      target_label_ids: segAudience === "label" && segLabelId ? [segLabelId] : undefined,
+    }),
+    onSuccess: (r: any) => { const cnt = r?.issued_count ?? r?.length ?? null; setIssueResult(cnt != null ? `Issued ${cnt} coupon(s) to segment.` : "Coupons issued to segment."); setShowIssue(false) },
+    onError: (e) => setIssueError(humanizeError(e, "Failed to issue to segment.")),
+  })
+  const openIssue = () => { setIssueTypeId(""); setIssueMode("single"); setCustSearch(""); setSelectedCustomer(null); setSegAudience("all"); setSegGradeId(""); setSegLabelId(""); setIssueError(null); setShowIssue(true) }
+  const submitIssue = () => {
+    setIssueError(null)
+    if (!issueTypeId) { setIssueError("Select a coupon type."); return }
+    if (issueMode === "single") issueSingleMutation.mutate()
+    else { if (segAudience === "grade" && !segGradeId) { setIssueError("Select a grade."); return } if (segAudience === "label" && !segLabelId) { setIssueError("Select a label."); return } issueSegmentMutation.mutate() }
   }
-  
-  const copyToClipboard = (code: string) => {
-    navigator.clipboard.writeText(code)
-  }
-  
-  const getStatusBadge = (status: CouponStatus) => {
-    switch (status) {
-      case "active":
-        return <Badge variant="success">Active</Badge>
-      case "used":
-        return <Badge variant="info">Used</Badge>
-      case "expired":
-        return <Badge variant="warning">Expired</Badge>
-      case "voided":
-        return <Badge variant="error">Voided</Badge>
-    }
-  }
-  
-  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+
+  // ── Lookup + void ──
+  const [lookupCode, setLookupCode] = useState("")
+  const [lookupRows, setLookupRows] = useState<IssuedCoupon[]>([])
+  const [voidReason, setVoidReason] = useState<{ id: string; reason: string } | null>(null)
+  const lookupMutation = useMutation({
+    mutationFn: (code: string) => couponsApi.lookup(code),
+    onSuccess: (c) => setLookupRows(prev => { const ex = prev.find(r => r.coupon_code === c.coupon_code); return ex ? prev.map(r => r.coupon_code === c.coupon_code ? c : r) : [c, ...prev] }),
+    onError: (e) => setError(humanizeError(e, "Coupon not found.")),
+  })
+  const voidMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => couponsApi.void(id, reason),
+    onSuccess: (_d, vars) => { setLookupRows(prev => prev.map(r => r.id === vars.id ? { ...r, status: "voided" } : r)); setLastIssued(prev => prev.map(r => r.id === vars.id ? { ...r, status: "voided" } : r)); setVoidReason(null) },
+    onError: (e) => setError(humanizeError(e, "Failed to void.")),
+  })
+
+  const issuedRows = useMemo(() => {
+    const map = new Map<string, IssuedCoupon>()
+    for (const c of [...lastIssued, ...lookupRows]) map.set(c.coupon_code, c)
+    return Array.from(map.values())
+  }, [lastIssued, lookupRows])
+
+  const listError = typesQuery.isError ? humanizeError(typesQuery.error, "Failed to load coupon types.") : null
+  const savingType = createTypeMutation.isPending || updateTypeMutation.isPending
+  const isEditLocked = !!editingType // discount_type/value locked on edit
+  const typeName = (id: string) => types.find(t => t.id === id)?.name ?? ""
 
   return (
     <div className="p-6 space-y-6">
-      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Coupons</h1>
-        <button
-          onClick={handleOpenCreateType}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Create Coupon Type
-        </button>
-      </div>
-      
-      {/* Coupon Types Section */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Ticket className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">Coupon Types</h2>
-          </div>
-          <button
-            onClick={handleOpenIssueCoupon}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Issue Coupons
-          </button>
+      {(error || listError) && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-center justify-between">
+          <span>{error || listError}</span>{error && <button onClick={() => setError(null)}><X className="w-4 h-4" /></button>}
         </div>
-        
+      )}
+      {issueResult && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg text-sm flex items-center justify-between">
+          <span>{issueResult}</span><button onClick={() => setIssueResult(null)}><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Coupons</h1>
+        <button onClick={openCreateType} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"><Plus className="w-4 h-4" />Create Coupon Type</button>
+      </div>
+
+      {/* Coupon Types */}
+      <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-[#1F1F23] flex items-center justify-between">
+          <div className="flex items-center gap-2"><Ticket className="w-5 h-5 text-indigo-500" /><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Coupon Types</h2></div>
+          <button onClick={openIssue} disabled={types.filter(t => t.is_active).length === 0} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-indigo-500 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors disabled:opacity-50"><Plus className="w-4 h-4" />Issue Coupons</button>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Discount Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Value</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Validity Days</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
-              </tr>
+            <thead className="bg-gray-50 dark:bg-[#1a1a20]">
+              <tr>{["Name", "Discount", "Value", "Validity", "Status", "Actions"].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {couponTypes.map((type) => (
-                <tr key={type.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-4">
-                    <div>
-                      <p className="font-medium text-foreground">{type.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{type.description}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-1.5">
-                      {type.discount_type === "percentage" ? (
-                        <Percent className="w-4 h-4 text-blue-500" />
-                      ) : (
-                        <DollarSign className="w-4 h-4 text-green-500" />
-                      )}
-                      <span className="text-sm text-foreground capitalize">{type.discount_type}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm font-medium text-foreground">
-                      {type.discount_type === "percentage" ? `${type.value}%` : `${type.value} MAD`}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-foreground">{type.validity_days} days</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <Toggle 
-                      checked={type.is_active} 
-                      onChange={() => handleToggleTypeStatus(type.id)} 
-                    />
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleEditType(type)}
-                        className="text-sm text-primary hover:text-primary/80 font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          apiFetch(`/api/business/coupon-types/${type.id}/clone`, { method: "POST" })
-                            .then(() => fetchCouponTypes())
-                            .catch((e: any) => setError(e.message ?? "Failed to clone coupon type"))
-                        }}
-                        className="text-sm text-muted-foreground hover:text-foreground font-medium flex items-center gap-1"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        Clone
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-gray-100 dark:divide-[#1F1F23]">
+              {typesQuery.isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading...</td></tr>}
+              {!typesQuery.isLoading && types.map(t => {
+                const Icon = DISC_ICON[t.discount_type] ?? Ticket
+                return (
+                  <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/40">
+                    <td className="px-4 py-4"><p className="font-medium text-gray-900 dark:text-white">{t.name}</p><p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.description || t.code}</p></td>
+                    <td className="px-4 py-4"><div className="flex items-center gap-1.5"><Icon className="w-4 h-4 text-indigo-500" /><span className="text-sm text-gray-700 dark:text-gray-300">{DISC_LABEL[t.discount_type]}</span></div></td>
+                    <td className="px-4 py-4"><span className="text-sm font-medium text-gray-900 dark:text-white">{discValue(t)}</span></td>
+                    <td className="px-4 py-4"><span className="text-sm text-gray-700 dark:text-gray-300">{t.validity_days_from_issue} days</span></td>
+                    <td className="px-4 py-4"><Toggle checked={t.is_active} onChange={() => toggleTypeMutation.mutate(t)} disabled={toggleTypeMutation.isPending} /></td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => openEditType(t)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium">Edit</button>
+                        <button onClick={() => cloneMutation.mutate(t.id)} disabled={cloneMutation.isPending} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium flex items-center gap-1"><Copy className="w-3.5 h-3.5" />Clone</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {!typesQuery.isLoading && types.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No coupon types yet. Create one to get started.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
-      
-      {/* Issued Coupons Section */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-4">
-            <Ticket className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">Issued Coupons</h2>
-            <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
-              {filteredCoupons.length} coupons
-            </span>
-          </div>
-          
-          {/* Lookup Bar */}
-          <div className="flex gap-2 mb-3">
+
+      {/* Issued coupons (lookup-based — backend has no bulk list endpoint) */}
+      <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-[#1F1F23]">
+          <div className="flex items-center gap-2 mb-4"><Ticket className="w-5 h-5 text-indigo-500" /><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Issued Coupons</h2><span className="ml-2 px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-[#1a1a20] text-gray-500 dark:text-gray-400 rounded-full">{issuedRows.length}</span></div>
+          <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Lookup coupon by exact code..."
-                value={lookupCode}
-                onChange={(e) => setLookupCode(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleLookupCoupon() }}
-                className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input type="text" placeholder="Look up a coupon by exact code…" value={lookupCode} onChange={(e) => setLookupCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && lookupCode.trim()) lookupMutation.mutate(lookupCode.trim()) }} className={`${inputCls} pl-9`} />
             </div>
-            <button
-              onClick={handleLookupCoupon}
-              disabled={lookupLoading || !lookupCode.trim()}
-              className="px-3 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {lookupLoading ? "..." : "Lookup"}
-            </button>
+            <button onClick={() => lookupCode.trim() && lookupMutation.mutate(lookupCode.trim())} disabled={lookupMutation.isPending || !lookupCode.trim()} className="px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50">{lookupMutation.isPending ? "…" : "Lookup"}</button>
           </div>
-          {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by code or customer name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
-            <div className="w-full sm:w-48">
-              <Dropdown
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v as CouponStatus | "all")}
-                options={[
-                  { value: "all", label: "All Statuses" },
-                  { value: "active", label: "Active" },
-                  { value: "used", label: "Used" },
-                  { value: "expired", label: "Expired" },
-                  { value: "voided", label: "Voided" },
-                ]}
-                placeholder="Filter by status"
-              />
-            </div>
-          </div>
+          <p className="text-xs text-gray-400 mt-2">Issued coupons appear here after you issue or look them up (no bulk listing endpoint exists).</p>
         </div>
-        
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Code</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Value</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Expires At</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
-              </tr>
+            <thead className="bg-gray-50 dark:bg-[#1a1a20]">
+              <tr>{["Code", "Type", "Value", "Status", "Expires", "Actions"].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {filteredCoupons.map((coupon) => (
-                <tr key={coupon.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm font-mono text-foreground bg-muted px-2 py-1 rounded">
-                        {coupon.code}
-                      </code>
-                      <button
-                        onClick={() => copyToClipboard(coupon.code)}
-                        className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-                        title="Copy code"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    {coupon.customer_name ? (
-                      <span className="text-sm text-foreground">{coupon.customer_name}</span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground italic">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-foreground">{coupon.coupon_type_name}</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm font-medium text-foreground">
-                      {coupon.discount_type === "percentage" ? `${coupon.value}%` : `${coupon.value} MAD`}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    {getStatusBadge(coupon.status)}
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm text-foreground">{coupon.expires_at}</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    {coupon.status === "active" && (
-                      voidReason?.id === coupon.id ? (
+            <tbody className="divide-y divide-gray-100 dark:divide-[#1F1F23]">
+              {issuedRows.map(c => {
+                const st = STATUS_BADGE[c.status] ?? { label: c.status, variant: "muted" as const }
+                return (
+                  <tr key={c.coupon_code} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/40">
+                    <td className="px-4 py-4"><div className="flex items-center gap-2"><code className="text-sm font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-[#1a1a20] px-2 py-1 rounded">{c.coupon_code}</code><button onClick={() => navigator.clipboard.writeText(c.coupon_code)} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Copy"><Copy className="w-3.5 h-3.5" /></button></div></td>
+                    <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">{c.discount_type ? DISC_LABEL[c.discount_type] : "—"}</td>
+                    <td className="px-4 py-4 text-sm font-medium text-gray-900 dark:text-white">{c.discount_type === "percent_off" ? `${n(c.discount_value)}%` : c.discount_type === "fixed_off" ? `${n(c.discount_value)} MAD` : c.discount_type ? DISC_LABEL[c.discount_type] : "—"}</td>
+                    <td className="px-4 py-4"><Badge variant={st.variant}>{st.label}</Badge></td>
+                    <td className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "—"}</td>
+                    <td className="px-4 py-4">
+                      {c.status === "available" && (voidReason?.id === c.id ? (
                         <div className="flex flex-col gap-1.5">
-                          <input
-                            type="text"
-                            value={voidReason.reason}
-                            onChange={(e) => setVoidReason({ id: coupon.id, reason: e.target.value })}
-                            placeholder="Void reason..."
-                            className="w-40 px-2 py-1 text-xs border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-red-400"
-                          />
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleVoidCoupon(coupon.id)}
-                              disabled={!voidReason.reason.trim()}
-                              className="text-xs text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
-                            >
-                              Confirm
-                            </button>
-                            <span className="text-muted-foreground">·</span>
-                            <button
-                              onClick={() => setVoidReason(null)}
-                              className="text-xs text-muted-foreground hover:text-foreground"
-                            >
-                              Cancel
-                            </button>
+                          <input type="text" value={voidReason.reason} onChange={(e) => setVoidReason({ id: c.id, reason: e.target.value })} placeholder="Void reason…" className="w-40 px-2 py-1 text-xs border border-gray-200 dark:border-[#1F1F23] rounded bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-red-400" />
+                          <div className="flex gap-2">
+                            <button onClick={() => voidMutation.mutate({ id: c.id, reason: voidReason.reason.trim() })} disabled={!voidReason.reason.trim() || voidMutation.isPending} className="text-xs text-red-600 hover:text-red-700 font-medium disabled:opacity-50">Confirm</button>
+                            <button onClick={() => setVoidReason(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
                           </div>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setVoidReason({ id: coupon.id, reason: "" })}
-                          className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
-                        >
-                          <Ban className="w-3.5 h-3.5" />
-                          Void
-                        </button>
-                      )
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filteredCoupons.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No coupons found matching your criteria
-                  </td>
-                </tr>
-              )}
+                        <button onClick={() => setVoidReason({ id: c.id, reason: "" })} className="flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 font-medium"><Ban className="w-3.5 h-3.5" />Void</button>
+                      ))}
+                    </td>
+                  </tr>
+                )
+              })}
+              {issuedRows.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No coupons to show yet.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
-      
+
       {/* Create/Edit Coupon Type Modal */}
-      <Modal
-        isOpen={showCreateTypeModal}
-        onClose={() => setShowCreateTypeModal(false)}
-        title={editingType ? "Edit Coupon Type" : "Create Coupon Type"}
-        size="md"
-      >
+      <Modal isOpen={showTypeModal} onClose={() => setShowTypeModal(false)} title={editingType ? "Edit Coupon Type" : "Create Coupon Type"} size="md">
         <div className="space-y-4">
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name *</label><input type="text" value={typeForm.name} onChange={(e) => setTypeForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Welcome Discount" className={inputCls} /></div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Name</label>
-            <input
-              type="text"
-              value={typeForm.name}
-              onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })}
-              placeholder="e.g., Welcome Discount"
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Discount Type</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTypeForm({ ...typeForm, discount_type: "percentage" })}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
-                  typeForm.discount_type === "percentage"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <Percent className="w-4 h-4" />
-                Percentage
-              </button>
-              <button
-                type="button"
-                onClick={() => setTypeForm({ ...typeForm, discount_type: "fixed" })}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
-                  typeForm.discount_type === "fixed"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <DollarSign className="w-4 h-4" />
-                Fixed Amount
-              </button>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Discount Type {isEditLocked && <span className="text-xs text-gray-400">(locked after issue)</span>}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {DISCOUNT_TYPES.map(dt => (
+                <button key={dt.value} type="button" disabled={isEditLocked} onClick={() => setTypeForm(f => ({ ...f, discount_type: dt.value }))}
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors disabled:opacity-60 ${typeForm.discount_type === dt.value ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400" : "border-gray-200 dark:border-[#1F1F23] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a20]"}`}>
+                  <dt.icon className="w-4 h-4" />{dt.label}
+                </button>
+              ))}
             </div>
           </div>
-          
+          {typeForm.discount_type === "free_item" ? (
+            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Free Item Product {isEditLocked && <span className="text-xs text-gray-400">(locked)</span>}</label>
+              <select value={typeForm.free_item_product_id} disabled={isEditLocked} onChange={(e) => setTypeForm(f => ({ ...f, free_item_product_id: e.target.value }))} className={`${inputCls} disabled:opacity-60`}>
+                <option value="">Select a product…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          ) : typeForm.discount_type !== "bogo" && (
+            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Value {typeForm.discount_type === "percent_off" ? "(%)" : "(MAD)"} {isEditLocked && <span className="text-xs text-gray-400">(locked)</span>}</label>
+              <input type="number" min={0} value={typeForm.discount_value} disabled={isEditLocked} onChange={(e) => setTypeForm(f => ({ ...f, discount_value: e.target.value }))} className={`${inputCls} disabled:opacity-60`} /></div>
+          )}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Value {typeForm.discount_type === "percentage" ? "(%)" : "(MAD)"}
-              </label>
-              <input
-                type="number"
-                value={typeForm.value}
-                onChange={(e) => setTypeForm({ ...typeForm, value: e.target.value })}
-                placeholder={typeForm.discount_type === "percentage" ? "e.g., 15" : "e.g., 50"}
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Validity Days</label>
-              <input
-                type="number"
-                value={typeForm.validity_days}
-                onChange={(e) => setTypeForm({ ...typeForm, validity_days: e.target.value })}
-                placeholder="e.g., 30"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
+            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Validity (days from issue)</label><input type="number" min={1} value={typeForm.validity_days_from_issue} onChange={(e) => setTypeForm(f => ({ ...f, validity_days_from_issue: e.target.value }))} className={inputCls} /></div>
+            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Min Order (MAD)</label><input type="number" min={0} value={typeForm.min_order_total_ttc} onChange={(e) => setTypeForm(f => ({ ...f, min_order_total_ttc: e.target.value }))} placeholder="Optional" className={inputCls} /></div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Max Uses Per Coupon</label>
-            <input
-              type="number"
-              value={typeForm.max_uses}
-              onChange={(e) => setTypeForm({ ...typeForm, max_uses: e.target.value })}
-              placeholder="e.g., 1"
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Description</label>
-            <textarea
-              value={typeForm.description}
-              onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })}
-              placeholder="Describe this coupon type..."
-              rows={3}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-            />
-          </div>
-          
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              onClick={() => setShowCreateTypeModal(false)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveType}
-              className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              {editingType ? "Save Changes" : "Create Type"}
-            </button>
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label><textarea value={typeForm.description} onChange={(e) => setTypeForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="Describe this coupon type…" className={`${inputCls} resize-none`} /></div>
+          {typeError && <p className="text-sm text-red-500">{typeError}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setShowTypeModal(false)} disabled={savingType} className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Cancel</button>
+            <button onClick={saveType} disabled={savingType} className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg">{savingType ? "Saving…" : editingType ? "Save Changes" : "Create Type"}</button>
           </div>
         </div>
       </Modal>
-      
-      {/* Issue Coupons Modal */}
-      <Modal
-        isOpen={showIssueCouponModal}
-        onClose={() => setShowIssueCouponModal(false)}
-        title="Issue Coupons"
-        size="md"
-      >
+
+      {/* Issue Modal */}
+      <Modal isOpen={showIssue} onClose={() => setShowIssue(false)} title="Issue Coupons" size="md">
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Select Coupon Type</label>
-            <Dropdown
-              value={issueForm.coupon_type_id}
-              onChange={(v) => setIssueForm({ ...issueForm, coupon_type_id: v })}
-              options={couponTypes
-                .filter(t => t.is_active)
-                .map(t => ({
-                  value: t.id,
-                  label: `${t.name} (${t.discount_type === "percentage" ? `${t.value}%` : `${t.value} MAD`})`,
-                }))}
-              placeholder="Select a coupon type..."
-            />
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Coupon Type</label>
+            <select value={issueTypeId} onChange={(e) => setIssueTypeId(e.target.value)} className={inputCls}>
+              <option value="">Select a coupon type…</option>
+              {types.filter(t => t.is_active).map(t => <option key={t.id} value={t.id}>{t.name} ({discValue(t)})</option>)}
+            </select>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Issue To</label>
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Issue To</label>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setIssueForm({ ...issueForm, issue_mode: "single", bulk_count: "" })}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
-                  issueForm.issue_mode === "single"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <User className="w-4 h-4" />
-                Specific Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => setIssueForm({ ...issueForm, issue_mode: "bulk", customer_id: "" })}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
-                  issueForm.issue_mode === "bulk"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                Bulk Generate
-              </button>
+              <button type="button" onClick={() => setIssueMode("single")} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm transition-colors ${issueMode === "single" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400" : "border-gray-200 dark:border-[#1F1F23] text-gray-600 dark:text-gray-300"}`}><User className="w-4 h-4" />Single Customer</button>
+              <button type="button" onClick={() => setIssueMode("segment")} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm transition-colors ${issueMode === "segment" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400" : "border-gray-200 dark:border-[#1F1F23] text-gray-600 dark:text-gray-300"}`}><Users className="w-4 h-4" />Segment</button>
             </div>
           </div>
-          
-          {issueForm.issue_mode === "single" && (
+
+          {issueMode === "single" ? (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Customer</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={customerSearch}
-                  onChange={(e) => {
-                    setCustomerSearch(e.target.value)
-                    setIssueForm({ ...issueForm, customer_id: e.target.value })
-                    setShowCustomerDropdown(true)
-                  }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  placeholder="Enter customer ID..."
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-                {showCustomerDropdown && customerSearch && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowCustomerDropdown(false)} />
-                    <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 max-h-48 overflow-auto">
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            onClick={() => {
-                              setIssueForm({ ...issueForm, customer_id: customer.id })
-                              setCustomerSearch(customer.name)
-                              setShowCustomerDropdown(false)
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                          >
-                            <p className="text-sm font-medium text-foreground">{customer.name}</p>
-                            <p className="text-xs text-muted-foreground">{customer.email}</p>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">No customers found</div>
-                      )}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Customer <span className="text-xs text-gray-400">(optional — leave blank for an unassigned coupon)</span></label>
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between px-3 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg">
+                  <span className="text-sm text-gray-900 dark:text-white">{selectedCustomer.name}</span>
+                  <button onClick={() => { setSelectedCustomer(null); setCustSearch("") }} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input type="text" value={custSearch} onChange={(e) => setCustSearch(e.target.value)} placeholder="Search customers by name/phone…" className={`${inputCls} pl-9`} />
+                  {custSearchDebounced && (custQuery.data?.records.length ?? 0) > 0 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-lg shadow-lg py-1 max-h-48 overflow-auto">
+                      {custQuery.data!.records.map(c => (
+                        <button key={c.id} type="button" onClick={() => { setSelectedCustomer({ id: c.id, name: `${c.first_name} ${c.last_name}` }); setCustSearch("") }} className="w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-[#1a1a20]">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{c.first_name} {c.last_name}</p><p className="text-xs text-gray-500 dark:text-gray-400">{c.phone || c.email}</p>
+                        </button>
+                      ))}
                     </div>
-                  </>
-                )}
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Audience</label>
+                <select value={segAudience} onChange={(e) => setSegAudience(e.target.value as typeof segAudience)} className={inputCls}>
+                  <option value="all">All customers</option><option value="grade">By grade</option><option value="label">By label</option>
+                </select>
               </div>
-              {issueForm.customer_id && (
-                <p className="mt-2 text-xs text-green-600">
-                  Customer ID selected: {issueForm.customer_id}
-                </p>
+              {segAudience === "grade" && (
+                <select value={segGradeId} onChange={(e) => setSegGradeId(e.target.value)} className={inputCls}>
+                  <option value="">Select a grade…</option>{(gradesQuery.data ?? []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              )}
+              {segAudience === "label" && (
+                <select value={segLabelId} onChange={(e) => setSegLabelId(e.target.value)} className={inputCls}>
+                  <option value="">Select a label…</option>{(labelsQuery.data ?? []).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
               )}
             </div>
           )}
-          
-          {issueForm.issue_mode === "bulk" && (
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Number of Coupons to Generate</label>
-              <input
-                type="number"
-                value={issueForm.bulk_count}
-                onChange={(e) => setIssueForm({ ...issueForm, bulk_count: e.target.value })}
-                placeholder="e.g., 10"
-                min="1"
-                max="100"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                These coupons will be unassigned and can be distributed manually.
-              </p>
-            </div>
-          )}
-          
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              onClick={() => setShowIssueCouponModal(false)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleIssueCoupons}
-              disabled={!issueForm.coupon_type_id || (issueForm.issue_mode === "single" && !issueForm.customer_id) || (issueForm.issue_mode === "bulk" && !issueForm.bulk_count)}
-              className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Issue Coupons
-            </button>
+
+          {issueError && <p className="text-sm text-red-500">{issueError}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setShowIssue(false)} className="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Cancel</button>
+            <button onClick={submitIssue} disabled={!issueTypeId || issueSingleMutation.isPending || issueSegmentMutation.isPending} className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg">{(issueSingleMutation.isPending || issueSegmentMutation.isPending) ? "Issuing…" : "Issue Coupons"}</button>
           </div>
         </div>
       </Modal>
     </div>
   )
 }
-
-

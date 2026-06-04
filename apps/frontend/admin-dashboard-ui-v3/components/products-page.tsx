@@ -144,9 +144,10 @@ type ProductForm = {
   tva_rate: string
   track_stock: boolean
   cost_price: string
+  reorder_point: string
 }
 const EMPTY_PRODUCT_FORM: ProductForm = {
-  name: "", category_id: "", price: "", sku: "", description: "", tva_rate: "20", track_stock: false, cost_price: "",
+  name: "", category_id: "", price: "", sku: "", description: "", tva_rate: "20", track_stock: false, cost_price: "", reorder_point: "0",
 }
 
 // ============== MAIN PAGE COMPONENT ==============
@@ -298,6 +299,7 @@ export default function ProductsPage() {
       tva_rate: p.tva_rate != null ? n(p.tva_rate).toString() : "20",
       track_stock: p.track_stock,
       cost_price: p.cost_price != null ? n(p.cost_price).toString() : "",
+      reorder_point: String(p.reorder_point ?? 0),
     })
     setProductImageUrl(p.image_url ?? "")
     setProductFormError(null)
@@ -313,6 +315,7 @@ export default function ProductsPage() {
     cost_price: productForm.cost_price ? n(productForm.cost_price) : undefined,
     tva_rate: productForm.tva_rate !== "" ? n(productForm.tva_rate) : undefined,
     track_stock: productForm.track_stock,
+    reorder_point: productForm.reorder_point !== "" ? Math.max(0, Math.floor(n(productForm.reorder_point))) : undefined,
     image_url: productImageUrl || undefined,
   })
 
@@ -626,6 +629,10 @@ export default function ProductsPage() {
             </div>
             <Toggle checked={productForm.track_stock} onChange={(checked) => setProductForm(p => ({ ...p, track_stock: checked }))} />
           </div>
+          {productForm.track_stock && (
+            <Input label="Reorder Point" type="number" min={0} placeholder="0" value={productForm.reorder_point}
+              onChange={(e) => setProductForm(p => ({ ...p, reorder_point: e.target.value }))} />
+          )}
           {productFormError && <p className="text-sm text-red-500">{productFormError}</p>}
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => { setShowAddProduct(false); setShowEditProduct(false); setProductFormError(null) }} disabled={savingProduct}>Cancel</Button>

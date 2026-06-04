@@ -46,6 +46,11 @@ export class CreateProductDto {
   track_stock?: boolean;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  reorder_point?: number;
+
+  @IsOptional()
   @IsUUID()
   brand_id?: string;
 }
@@ -96,6 +101,11 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   track_stock?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reorder_point?: number;
 
   @IsOptional()
   @IsUUID()

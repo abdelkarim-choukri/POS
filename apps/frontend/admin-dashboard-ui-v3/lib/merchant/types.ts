@@ -184,9 +184,134 @@ export interface Product {
   brand_id: string | null
   unit_of_measure: string | null
   track_stock: boolean
+  reorder_point: number
   category?: { id: string; name: string } | null
   brand?: { id: string; name: string } | null
   variants?: ProductVariant[]
+}
+
+// ── Promotions (apps/backend/src/modules/promotion) ──
+// list returns { data, total, page, limit }. NUMERIC columns serialize as strings.
+export type PromotionType =
+  | "percent_off_order" | "percent_off_category" | "percent_off_product"
+  | "fixed_off_order" | "fixed_off_product" | "bogo" | "bundle" | "points_multiplier"
+export type PromotionStatus = "draft" | "active" | "paused" | "archived"
+
+export interface Promotion {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  promotion_type: PromotionType
+  value: string
+  target_category_id: string | null
+  target_product_id: string | null
+  min_order_total_ttc: string | null
+  start_date: string
+  end_date: string
+  max_total_uses: number | null
+  max_uses_per_customer: number | null
+  current_uses: number
+  status: PromotionStatus
+  is_currently_running?: boolean
+}
+export interface PromotionListResponse {
+  data: Promotion[]
+  total: number
+  page: number
+  limit: number
+}
+export interface CreatePromotionInput {
+  name: string
+  promotion_type: PromotionType
+  value: number
+  start_date: string
+  end_date: string
+  description?: string
+  min_order_total_ttc?: number
+  target_category_id?: string
+  target_product_id?: string
+  max_total_uses?: number
+  max_uses_per_customer?: number
+}
+export type UpdatePromotionInput = Partial<CreatePromotionInput>
+
+// ── Chain (rollout) ──
+export interface ChainChild {
+  business_id: string
+  name: string
+  revenue?: string
+  transaction_count?: number
+  customer_count?: number
+}
+export interface SubStoreValidation {
+  child_business_id: string
+  is_linked_child: boolean
+  tva_warnings: { id: string; name: string; synced_from_parent_id: string }[]
+  can_rollout: boolean
+}
+export interface RolloutResult {
+  child_business_id: string
+  promotion_id: string
+  tva_warnings: unknown[]
+}
+
+// ── Coupons (apps/backend/src/modules/promotion/coupon) ──
+// coupon-types list returns a plain ARRAY. Discount fields are LOCKED once any
+// coupon is issued (UpdateCouponTypeDto omits them). No "max_uses" column.
+export type CouponDiscountType = "percent_off" | "fixed_off" | "free_item" | "bogo"
+export type CouponShareCase = "N" | "S" | "M"
+
+export interface CouponType {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  discount_type: CouponDiscountType
+  discount_value: string
+  free_item_product_id: string | null
+  min_order_total_ttc: string | null
+  applicable_category_ids: string[] | null
+  applicable_product_ids: string[] | null
+  validity_days_from_issue: number
+  share_case: string
+  is_active: boolean
+  created_at: string
+  issued_count?: number
+}
+export interface IssuedCoupon {
+  id: string
+  coupon_code: string
+  status: string // available | redeemed | voided | expired
+  discount_type?: CouponDiscountType
+  discount_value?: string
+  expires_at: string
+  customer_id: string | null
+}
+export interface CreateCouponTypeInput {
+  name: string
+  discount_type: CouponDiscountType
+  discount_value: number
+  description?: string
+  validity_days_from_issue?: number
+  min_order_total_ttc?: number
+  free_item_product_id?: string
+  share_case?: CouponShareCase
+}
+export interface UpdateCouponTypeInput {
+  name?: string
+  description?: string
+  min_order_total_ttc?: number
+  validity_days_from_issue?: number
+  share_case?: CouponShareCase
+  is_active?: boolean
+}
+export interface IssueToSegmentInput {
+  coupon_type_id: string
+  target_audience: "all" | "grade" | "label"
+  target_grade_ids?: string[]
+  target_label_ids?: string[]
+  note?: string
 }
 
 // ── Employees (apps/backend/src/modules/business, users table) ──
@@ -385,7 +510,25 @@ export interface CreateProductInput {
   tva_rate?: number
   track_stock?: boolean
   brand_id?: string
+  reorder_point?: number
 }
 export interface UpdateProductInput extends Partial<CreateProductInput> {
   is_active?: boolean
+}
+
+// ── Inventory: warehouses + stock position report ──
+export interface Warehouse {
+  id: string
+  name: string
+  is_active: boolean
+}
+export interface StockPositionRow {
+  product_name: string
+  category_name: string
+  total_quantity: number
+  total_value: number
+  oldest_expiry: string | null
+  batch_count: number
+  reorder_point: number
+  low_stock: boolean
 }

@@ -1,16 +1,16 @@
 # Graph Report - pos-project  (2026-06-04)
 
 ## Corpus Check
-- 576 files · ~454,041 words
+- 576 files · ~454,083 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 5401 nodes · 8386 edges · 371 communities (263 shown, 108 thin omitted)
+- 5444 nodes · 8485 edges · 361 communities (263 shown, 98 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 14 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0437f11e`
+- Built from commit: `337ae064`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -264,7 +264,6 @@
 - [[_COMMUNITY_Community 267|Community 267]]
 - [[_COMMUNITY_Community 268|Community 268]]
 - [[_COMMUNITY_Community 269|Community 269]]
-- [[_COMMUNITY_Community 270|Community 270]]
 - [[_COMMUNITY_Community 271|Community 271]]
 - [[_COMMUNITY_Community 272|Community 272]]
 - [[_COMMUNITY_Community 273|Community 273]]
@@ -277,7 +276,6 @@
 - [[_COMMUNITY_Community 281|Community 281]]
 - [[_COMMUNITY_Community 283|Community 283]]
 - [[_COMMUNITY_Community 284|Community 284]]
-- [[_COMMUNITY_Community 285|Community 285]]
 - [[_COMMUNITY_Community 286|Community 286]]
 - [[_COMMUNITY_Community 287|Community 287]]
 - [[_COMMUNITY_Community 288|Community 288]]
@@ -291,10 +289,7 @@
 - [[_COMMUNITY_Community 296|Community 296]]
 - [[_COMMUNITY_Community 297|Community 297]]
 - [[_COMMUNITY_Community 298|Community 298]]
-- [[_COMMUNITY_Community 299|Community 299]]
-- [[_COMMUNITY_Community 300|Community 300]]
 - [[_COMMUNITY_Community 301|Community 301]]
-- [[_COMMUNITY_Community 302|Community 302]]
 - [[_COMMUNITY_Community 303|Community 303]]
 - [[_COMMUNITY_Community 304|Community 304]]
 - [[_COMMUNITY_Community 305|Community 305]]
@@ -302,12 +297,8 @@
 - [[_COMMUNITY_Community 307|Community 307]]
 - [[_COMMUNITY_Community 309|Community 309]]
 - [[_COMMUNITY_Community 310|Community 310]]
-- [[_COMMUNITY_Community 312|Community 312]]
 - [[_COMMUNITY_Community 313|Community 313]]
 - [[_COMMUNITY_Community 315|Community 315]]
-- [[_COMMUNITY_Community 316|Community 316]]
-- [[_COMMUNITY_Community 317|Community 317]]
-- [[_COMMUNITY_Community 318|Community 318]]
 - [[_COMMUNITY_Community 319|Community 319]]
 - [[_COMMUNITY_Community 320|Community 320]]
 - [[_COMMUNITY_Community 321|Community 321]]
@@ -326,9 +317,7 @@
 - [[_COMMUNITY_Community 334|Community 334]]
 - [[_COMMUNITY_Community 335|Community 335]]
 - [[_COMMUNITY_Community 336|Community 336]]
-- [[_COMMUNITY_Community 337|Community 337]]
 - [[_COMMUNITY_Community 338|Community 338]]
-- [[_COMMUNITY_Community 339|Community 339]]
 - [[_COMMUNITY_Community 340|Community 340]]
 - [[_COMMUNITY_Community 341|Community 341]]
 - [[_COMMUNITY_Community 342|Community 342]]
@@ -348,7 +337,6 @@
 - [[_COMMUNITY_Community 365|Community 365]]
 - [[_COMMUNITY_Community 366|Community 366]]
 - [[_COMMUNITY_Community 367|Community 367]]
-- [[_COMMUNITY_Community 371|Community 371]]
 - [[_COMMUNITY_Community 373|Community 373]]
 
 ## God Nodes (most connected - your core abstractions)
@@ -375,31 +363,35 @@
 - `AnnouncementsPage()` --calls--> `getTypeIcon()`  [INFERRED]
   apps/frontend/admin-dashboard-ui-v3/components/announcements-page.tsx → apps/frontend/admin-dashboard-ui-v3/components/recommendations-page.tsx
 
-## Communities (371 total, 108 thin omitted)
+## Communities (361 total, 98 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.08
-Nodes (36): attr, body, dataSourceMock, label, managerQueryMock, qb, txEmMock, customer (+28 more)
+Cohesion: 0.11
+Nodes (28): customer, dataSourceMock, dto, em, execMock, existsCalls, fallback, grade (+20 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.09
-Nodes (23): AuthModule, BusinessModule, ChainModule, child, mockQr, parent, po, promo (+15 more)
+Cohesion: 0.14
+Nodes (14): child, mockQr, parent, po, promo, user, AuditLog, ChainSyncConfig (+6 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.14
-Nodes (11): DiningArea, RestaurantTable, TableSession, TableType, OssService, preparingSession, preparingTxn, prepSources (+3 more)
+Cohesion: 0.09
+Nodes (27): Brand, Business, BusinessType, BusinessTypeFeature, DiningArea, Location, NutritionInfo, Subscription (+19 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.04
 Nodes (53): dependencies, autoprefixer, class-variance-authority, clsx, cmdk, date-fns, embla-carousel-react, framer-motion (+45 more)
+
+### Community 4 - "Community 4"
+Cohesion: 0.09
+Nodes (10): CheckPointValueQueryDto, CreatePexRuleBodyDto, CreatePexRuleDetailDto, CreatePexRuleDto, ListPexRulesQueryDto, PexReportQueryDto, RedeemPointsDto, UpdatePexRuleDto (+2 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.04
 Nodes (50): dependencies, autoprefixer, class-variance-authority, clsx, cmdk, date-fns, embla-carousel-react, @hookform/resolvers (+42 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.06
-Nodes (34): NutritionInfo, PurchaseOrder, PurchaseOrderItem, StockTemplate, StockTemplateItem, UnitOfMeasure, VendorCheckDetail, Vendor (+26 more)
+Cohesion: 0.13
+Nodes (13): CartItem, buildEvaluator(), cartItems, customer, labourDay, makeQb(), now, promo (+5 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.04
@@ -411,11 +403,11 @@ Nodes (47): AdjustBatchRequest, Brand, CreateBatchRequest, CreateBrandRequest, C
 
 ### Community 10 - "Community 10"
 Cohesion: 0.08
-Nodes (17): CreateTemplateDto, ResolveTemplateQueryDto, SetTemplateItemsDto, TEMPLATE_TYPES, TemplateItemInputDto, TemplateQueryDto, UpdateTemplateDto, RecommendationTemplate (+9 more)
+Nodes (16): CreateTemplateDto, ResolveTemplateQueryDto, SetTemplateItemsDto, TEMPLATE_TYPES, TemplateItemInputDto, TemplateQueryDto, UpdateTemplateDto, RecommendationTemplate (+8 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.08
-Nodes (39): Customer, CustomerGrade, CustomerLabelAssignment, CustomerLabel, PointsExchangeRedemption, Promotion, PromotionRedemption, BulkJobData (+31 more)
+Cohesion: 0.11
+Nodes (32): attr, body, dataSourceMock, label, managerQueryMock, qb, txEmMock, Category (+24 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.05
@@ -426,8 +418,8 @@ Cohesion: 0.07
 Nodes (38): CampaignJobData, NotificationCampaignProcessor, all, buildProcessor(), completedCall, consenting, failedCall, finalUpdate (+30 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.17
-Nodes (25): fakeVariant, txnRepo, Category, ClockEntry, Coupon, CouponRedemption, DiscountWriteOff, Location (+17 more)
+Cohesion: 0.08
+Nodes (52): fakeVariant, txnRepo, ClockEntry, Coupon, CouponRedemption, DiscountWriteOff, Modifier, ModifierGroup (+44 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.06
@@ -439,7 +431,7 @@ Nodes (35): Toast, ToastAction, ToastActionElement, ToastClose, ToastDescription
 
 ### Community 19 - "Community 19"
 Cohesion: 0.04
-Nodes (25): AccessibleBusiness, cardVariants, DASHBOARD_PERIODS, fadeInUp, LoginResult, MenuState, mockCategories, mockEmployees (+17 more)
+Nodes (28): AccessibleBusiness, cardVariants, DASHBOARD_PERIODS, fadeInUp, LoginResult, MenuState, mockCategories, mockEmployees (+20 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.05
@@ -447,7 +439,7 @@ Nodes (39): code:typescript (// apps/backend/src/migrations/1714013000000-AddCha
 
 ### Community 21 - "Community 21"
 Cohesion: 0.09
-Nodes (20): BusinessCourierLink, Courier, active, baseFeatures, biz, child, courier, couriers (+12 more)
+Nodes (27): BusinessCourierLink, BusinessCustomAuthority, Courier, MoroccoRegion, SystemParameter, TradeCategory, VersionLogEntry, VersionLogMenu (+19 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.05
@@ -455,35 +447,39 @@ Nodes (37): code:javascript (const socket = io('http://localhost:3000/events', {
 
 ### Community 23 - "Community 23"
 Cohesion: 0.05
-Nodes (23): apiFetch(), clearToken(), setToken(), Brand, ACTIONS, DiscrepancyAlert, ExpirationAlert, LOC_COLORS (+15 more)
+Nodes (26): apiFetch(), clearToken(), setToken(), Brand, DiningArea, mockAreas, PlatformAnnouncement, PRIORITY_COLORS (+18 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.08
-Nodes (8): AccountingGenerator, casablancaToday(), resolveTargetDay(), ExistingWrappersGenerator, OperationsGenerator, PaymentsGenerator, SalesGenerator, bankersRound()
+Cohesion: 0.10
+Nodes (7): AccountingGenerator, casablancaToday(), resolveTargetDay(), ExistingWrappersGenerator, PaymentsGenerator, SalesGenerator, bankersRound()
+
+### Community 26 - "Community 26"
+Cohesion: 0.06
+Nodes (20): BusinessService, CreateCategoryDto, UpdateCategoryDto, CreateEmployeeDto, UpdateEmployeeDto, CreateLocationDto, UpdateLocationDto, CreateModifierDto (+12 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.07
 Nodes (8): Sidebar(), SidebarContext, SidebarContextProps, SidebarMenuButton(), sidebarMenuButtonVariants, SidebarRail(), SidebarTrigger(), useSidebar()
 
 ### Community 28 - "Community 28"
-Cohesion: 0.10
-Nodes (20): 11.3.1 Platform Announcements (Super Admin), 11.3.2 Business Announcements (Owner → Staff), 11.3.3 Notification Channel Setup, 11.3.4 SMS Balance, 11.3.5 Templates, 11.3.7 Customer Opt-Out, 11.3 Functional Requirements, `[COM-001]` List / [COM-002] Create / [COM-003] Update / [COM-004] Delete (+12 more)
+Cohesion: 0.06
+Nodes (35): 11.1 Overview, 11.2.1 `platform_announcements` (Super Admin → businesses), 11.2.2 `business_announcements` (Business owner → staff), 11.2.3 `notification_channels` (per-business, per-channel config), 11.2.4 `notification_templates`, 11.2.5 `notification_sends`, 11.2 New Entities, 11.3.1 Platform Announcements (Super Admin) (+27 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.06
 Nodes (33): 10. Terminal App Key Flows, 11. Multi-Tenant Notes, 12. Further Readin`, 1. Starting the Backend, 2. Demo Credentials (after running the seed), 3. Authentication Flow, 4. API Prefix Map, 5. Importing Shared Types (+25 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.14
-Nodes (14): 7.3.1 Dining Areas, 7.3.2 Table Types, 7.3.3 Tables, 7.3.5 KDS Integration, 7.3 Functional Requirements, code:json ({), `[RST-001]` List dining areas, `[RST-002]` Create dining area (+6 more)
+Cohesion: 0.09
+Nodes (22): 7.1 Overview, 7.2.1 `dining_areas` (zones), 7.2.2 `table_types`, 7.2.3 `tables`, 7.2.4 `table_sessions` (open table = unpaid order session), 7.2.5 `table_session_items` (cart contents while open), 7.2 New Entities, 7.3.1 Dining Areas (+14 more)
 
 ### Community 31 - "Community 31"
 Cohesion: 0.07
 Nodes (29): 0. Executive Summary, 1.1 Data fetching, 1.2 Authentication tokens, 1.3 State management, 1.4 Where the Super Admin code physically lives (the flaw), 1. Current State Analysis, 2. Database Schema & Backend Alignment, 3.1 How a platform-operator session is established today (+21 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.12
-Nodes (22): AdjustBatchDto, CreateBatchDto, CreatePurchaseOrderDto, CreatePurchaseOrderItemDto, CreateStockTemplateDto, CreateStockTemplateItemDto, CreateVendorPaymentDto, DisposeBatchDto (+14 more)
+Cohesion: 0.09
+Nodes (27): UploadController, CurrentUser, Public(), AdjustBatchDto, CreateBatchDto, CreatePurchaseOrderDto, CreatePurchaseOrderItemDto, CreateStockTemplateDto (+19 more)
 
 ### Community 33 - "Community 33"
 Cohesion: 0.27
@@ -505,17 +501,13 @@ Nodes (28): code:bash (# Go to your repo), code:bash (docker compose up -d), cod
 Cohesion: 0.07
 Nodes (29): 9.1 Overview, 9.2 Modifications to Existing Entities, 9.3.1 Chain Setup (Super Admin), 9.3.2 Multi-Business Login, 9.3.3 Cloud Goods Sync (Catalogue from Parent → Children), 9.3.4 Chain-Wide Promotions, 9.3.5 Chain Reporting (Parent View), 9.3.6 Parent-Routed Purchase Orders (+21 more)
 
-### Community 39 - "Community 39"
-Cohesion: 0.12
-Nodes (15): UploadController, CurrentUser, Public(), Roles(), GetKdsItemsDto, UpdateKdsItemStatusDto, UpdateOrderStatusDto, CreateAdjustmentDto (+7 more)
-
 ### Community 41 - "Community 41"
-Cohesion: 0.09
-Nodes (11): auth, c, edit, name, record(), results, row, RUN_ID (+3 more)
+Cohesion: 0.05
+Nodes (18): ApiError, ApiError, ChainSyncProcessor, auth, c, edit, name, record() (+10 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.07
-Nodes (28): 4.1 Overview, 4.2.1 `promotions`, 4.2.2 `promotion_redemptions`, 4.2 New Entities, 4.3 Modifications to Existing Entities, 4.4.1 Promotion CRUD, 4.4.2 Promotion Evaluation at Terminal, 4.4.3 Sub-Store Promotion Validation (Chain) (+20 more)
+Cohesion: 0.12
+Nodes (16): 4.4.1 Promotion CRUD, 4.4.3 Sub-Store Promotion Validation (Chain), 4.4.4 Promotion Notifications, 4.4.5 Promotion Reports, 4.4 Functional Requirements, code:json ({), `[PROM-001]` List promotions, `[PROM-002]` Get promotion detail (+8 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.08
@@ -541,10 +533,6 @@ Nodes (15): AccessibleBusiness, ChainDashboard, ChainRole, ChainTransaction, Cha
 Cohesion: 0.08
 Nodes (25): ActiveEmployee, AddItemsResponse, AddSessionItemPayload, AppliedPromotion, CatalogData, Category, Coupon, CouponValidation (+17 more)
 
-### Community 50 - "Community 50"
-Cohesion: 0.18
-Nodes (17): CreateCategoryDto, UpdateCategoryDto, CreateEmployeeDto, UpdateEmployeeDto, CreateLocationDto, UpdateLocationDto, CreateModifierDto, CreateModifierGroupDto (+9 more)
-
 ### Community 52 - "Community 52"
 Cohesion: 0.05
 Nodes (41): 12.1 Overview, 12.2.1 `trade_categories`, 12.2.2 `couriers`, 12.2.3 `business_courier_links`, 12.2.4 `business_custom_authority` (per-business permission overrides), 12.2.5 `version_log_menus` (changelog categories), 12.2.6 `version_log_entries`, 12.2.7 `system_parameters` (platform-wide settings) (+33 more)
@@ -554,20 +542,20 @@ Cohesion: 0.08
 Nodes (24): BusinessSettings, Category, CreateCategoryRequest, CreateEmployeeRequest, CreateLocationRequest, CreateModifierGroupRequest, CreateModifierRequest, CreateProductRequest (+16 more)
 
 ### Community 56 - "Community 56"
-Cohesion: 0.10
-Nodes (26): baseDto, buildMocks(), buildTableMocks(), dashboardEmit, dto, futureCoupon, goldGrade, invoiceCall (+18 more)
+Cohesion: 0.17
+Nodes (12): 7.3.4 Table Service Flow (Terminal), code:json ({), code:json ({), `[RST-030]` Floor plan view, `[RST-031]` Open table, `[RST-032]` Add items to open table, `[RST-033]` Modify table item (before service), `[RST-034]` Remove table item (+4 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.12
-Nodes (12): Brand, Product, ProductVariant, employeeUser, employeeWithOpen, employeeWithPartialClose, employeeWithTransfer, employeeWithVoid (+4 more)
+Cohesion: 0.08
+Nodes (31): AddItemsDto, AddSessionItemDto, CancelSessionDto, FloorPlanQueryDto, ModifyItemDto, OpenTableDto, SplitBillDto, SplitItemAssignmentDto (+23 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.08
 Nodes (23): AddSessionItemsRequest, CancelSessionRequest, CheckoutPayload, CreateDiningAreaRequest, CreateTableRequest, CreateTableTypeRequest, DiningArea, FloorPlanEntry (+15 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.04
-Nodes (44): Business, ExpirationAlert, StockAdjustment, StockAdjustmentItem, StockBatch, StockDiscrepancyAlert, StockMovement, StockTransfer (+36 more)
+Cohesion: 0.07
+Nodes (39): ExpirationAlert, PurchaseOrder, PurchaseOrderItem, StockBatch, StockDiscrepancyAlert, StockMovement, StockTemplate, StockTemplateItem (+31 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.09
@@ -599,11 +587,11 @@ Nodes (4): StockAdjustmentController, TableSessionService, perms, userHasPermiss
 
 ### Community 73 - "Community 73"
 Cohesion: 0.20
-Nodes (9): CHAIN_LABELS, CURRENCY, DATE_FORMAT, getStatusColor(), PAGINATION, RECOMMENDATIONS_LABELS, RTL_CONFIG, STATUS_COLORS (+1 more)
+Nodes (9): CHAIN_LABELS, CURRENCY, getStatusColor(), PAGINATION, PERMISSION_LABELS, RECOMMENDATIONS_LABELS, RTL_CONFIG, STATUS_COLORS (+1 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.07
-Nodes (21): COLOR_OPTIONS, ColorBadge(), Customer, CustomerAttribute, CustomerAttributeValue, CustomerGrade, CustomerLabel, CustomersPage() (+13 more)
+Cohesion: 0.06
+Nodes (24): COLOR_OPTIONS, ColorBadge(), Customer, CustomerAttribute, CustomerAttributeValue, CustomerGrade, CustomerLabel, CustomersPage() (+16 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.10
@@ -614,7 +602,7 @@ Cohesion: 0.14
 Nodes (14): decomposeTva(), DiscountPipelineService, DiscountStep, LineResult, PipelineLineInput, PipelineResult, lines, result (+6 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (9): formatDateTime(), getHealthStatus(), getRelativeTime(), HealthBadge(), Location, Terminal, TerminalsPage(), UserPermissions (+1 more)
 
 ### Community 79 - "Community 79"
@@ -662,7 +650,7 @@ Cohesion: 0.14
 Nodes (7): CreatePromotionDto, DateRangeDto, ListPromotionsQueryDto, PromotionReportQueryDto, TimePeriodDto, UpdatePromotionDto, PromotionController
 
 ### Community 93 - "Community 93"
-Cohesion: 0.32
+Cohesion: 0.29
 Nodes (13): CreateCourierDto, CreateTradeCategoryDto, CreateVersionLogEntryDto, LinkCourierDto, ListSystemParametersQueryDto, ListVersionLogEntriesQueryDto, SetCustomAuthorityDto, UpdateCourierDto (+5 more)
 
 ### Community 94 - "Community 94"
@@ -698,8 +686,8 @@ Cohesion: 0.12
 Nodes (15): Audit Methodology, Dashboard (`admin-dashboard-ui-v3/components/`), Frontend–Backend Wiring Audit — 2026-05-26, PHASE 2 — Prioritized Fix Plan, Priority 1 — Critical (breaks pages at runtime), Priority 2 — High (API calls that return 405 Method Not Allowed), Priority 3 — Medium (endpoints exist, no UI entry point), Priority 4 — Low (intentional or infrastructure) (+7 more)
 
 ### Community 110 - "Community 110"
-Cohesion: 0.19
-Nodes (16): CreateBusinessTypeDto, FeatureToggleDto, UpdateFeaturesDto, CreatePlatformAnnouncementDto, ListPlatformAnnouncementsQueryDto, UpdatePlatformAnnouncementDto, CreateBusinessDto, UpdateBusinessDto (+8 more)
+Cohesion: 0.27
+Nodes (13): CreateBusinessTypeDto, FeatureToggleDto, UpdateFeaturesDto, CreatePlatformAnnouncementDto, ListPlatformAnnouncementsQueryDto, UpdatePlatformAnnouncementDto, CreateBusinessDto, UpdateBusinessDto (+5 more)
 
 ### Community 111 - "Community 111"
 Cohesion: 0.12
@@ -714,16 +702,20 @@ Cohesion: 0.37
 Nodes (12): CreateBrandDto, CreateUnitOfMeasureDto, CreateVendorCheckDetailDto, CreateVendorDto, CreateWarehouseDto, ListNutritionQueryDto, ListVendorsQueryDto, SetNutritionInfoDto (+4 more)
 
 ### Community 114 - "Community 114"
-Cohesion: 0.18
-Nodes (12): ChainAuthController, ChainDashboardQueryDto, ChainTransactionsQueryDto, FulfillChildPoDto, GrantBusinessAccessDto, LinkParentDto, PullProductDto, RolloutPromotionDto (+4 more)
+Cohesion: 0.11
+Nodes (14): ChainAuthController, ChainSuperController, Roles(), ChainDashboardQueryDto, ChainTransactionsQueryDto, FulfillChildPoDto, GrantBusinessAccessDto, LinkParentDto (+6 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.22
 Nodes (3): generateCode(), isCurrentlyRunning(), PromotionService
 
 ### Community 116 - "Community 116"
-Cohesion: 0.16
-Nodes (12): ChildBusiness, DAYS_OF_WEEK, formatDate(), getStatusConfig(), getTypeConfig(), mockChildBusinesses, mockCurrentBusiness, Promotion (+4 more)
+Cohesion: 0.07
+Nodes (35): ChildBusiness, DAYS_OF_WEEK, emptyForm(), formatDate(), getStatusConfig(), getTypeConfig(), isFixed(), isPercent() (+27 more)
+
+### Community 117 - "Community 117"
+Cohesion: 0.13
+Nodes (9): StockAdjustment, StockAdjustmentItem, adj, dto, item, mockQr, qb, savedAdj (+1 more)
 
 ### Community 118 - "Community 118"
 Cohesion: 0.13
@@ -750,8 +742,8 @@ Cohesion: 0.13
 Nodes (15): 2.1 New `business_type_features.feature_key` Values, 2.2 Multi-Tenancy Enforcement, 2.3 TVA Interaction with Discounts, Points, and Coupons (CRITICAL), 2.4 Audit Log Coverage, 2.5 Offline Support for Customer Lookup and Loyalty, 2.6 Background Job Infrastructure, 2.7 Employee Permission Keys, 2.8 Receipt Additions (+7 more)
 
 ### Community 125 - "Community 125"
-Cohesion: 0.08
-Nodes (34): attributesApi, customersApi, reportsApi, transactionsApi, ClockEntry, CreateCategoryInput, CreateCustomerInput, CreateEmployeeInput (+26 more)
+Cohesion: 0.10
+Nodes (30): ChainChild, ClockEntry, CouponShareCase, CreateCategoryInput, CreateEmployeeInput, CreateVariantInput, Customer, CustomerAttributeValue (+22 more)
 
 ### Community 126 - "Community 126"
 Cohesion: 0.19
@@ -762,8 +754,12 @@ Cohesion: 0.13
 Nodes (14): Button(), buttonVariants, CarouselApi, CarouselContent(), CarouselContext, CarouselContextProps, CarouselItem(), CarouselNext() (+6 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.20
-Nodes (4): ApiError, ApiError, SUPER, JwtStrategy
+Cohesion: 0.14
+Nodes (6): batch, getMany, mockQr, productMap, row, StockConsumptionService
+
+### Community 132 - "Community 132"
+Cohesion: 0.08
+Nodes (10): CreateDiningAreaDto, CreateTableDto, CreateTableTypeDto, ListDiningAreasQueryDto, ListTablesQueryDto, UpdateDiningAreaDto, UpdateTableDto, UpdateTableTypeDto (+2 more)
 
 ### Community 133 - "Community 133"
 Cohesion: 0.14
@@ -782,12 +778,12 @@ Cohesion: 0.14
 Nodes (13): AccessibleBusiness, ChainDashboardQueryParams, ChainSyncConfig, ChainTransactionsQueryParams, ChainTreeNode, GrantBusinessAccessRequest, LinkChildRequest, PullProductRequest (+5 more)
 
 ### Community 137 - "Community 137"
-Cohesion: 0.15
+Cohesion: 0.16
 Nodes (15): ann, annAll, annMgr, buildService(), channel, encryptedChannel, encValue, makeBusiness() (+7 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.24
-Nodes (7): BusinessCustomAuthority, MoroccoRegion, SystemParameter, TradeCategory, VersionLogEntry, VersionLogMenu, PlatformAdminModule
+Cohesion: 0.31
+Nodes (8): buildService(), ct, dto, makeCouponRepo(), makeCouponType(), makeCouponTypeRepo(), original, redeemed
 
 ### Community 140 - "Community 140"
 Cohesion: 0.15
@@ -814,8 +810,8 @@ Cohesion: 0.15
 Nodes (5): mockModifierGroups, mockProducts, Modifier, ModifierGroup, Product
 
 ### Community 146 - "Community 146"
-Cohesion: 0.10
-Nodes (14): Category, EMPTY_PRODUCT_FORM, ModifierGroup, n(), Product, ProductForm, ProductsPage(), TVA_OPTIONS (+6 more)
+Cohesion: 0.07
+Nodes (23): Category, mockCategories, Category, EMPTY_PRODUCT_FORM, ModifierGroup, n(), Product, ProductForm (+15 more)
 
 ### Community 147 - "Community 147"
 Cohesion: 0.15
@@ -830,8 +826,8 @@ Cohesion: 0.15
 Nodes (13): 8.2.10 `stock_templates` (saved reorder templates), 8.2.11 `stock_template_items`, 8.2.12 `stock_discrepancy_alerts`, 8.2.1 `warehouses`, 8.2.2 `vendors`, 8.2.3 `vendor_check_details` (audit history), 8.2.4 `brands`, 8.2.5 `nutrition_info` (+5 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.06
-Nodes (17): TableSessionItem, EventGateway, KdsController, KdsGateway, KdsItemsController, directItem, item, mockEventGateway (+9 more)
+Cohesion: 0.05
+Nodes (23): GetKdsItemsDto, UpdateKdsItemStatusDto, UpdateOrderStatusDto, EventGateway, KdsController, KdsGateway, KdsItemsController, directItem (+15 more)
 
 ### Community 151 - "Community 151"
 Cohesion: 0.23
@@ -899,15 +895,11 @@ Nodes (11): A.1.1 Monorepo Structure, A.1.2 Backend Modules (Registered in `app.
 
 ### Community 173 - "Community 173"
 Cohesion: 0.08
-Nodes (22): BulkIssueCouponDto, COUPON_TYPE_LOCKED_FIELDS, CouponReportQueryDto, CreateCouponTypeDto, DiscountWriteOffReportQueryDto, IssueCouponDto, IssueToSegmentDto, UpdateCouponTypeDto (+14 more)
-
-### Community 174 - "Community 174"
-Cohesion: 0.30
-Nodes (10): AddItemsDto, AddSessionItemDto, CancelSessionDto, FloorPlanQueryDto, ModifyItemDto, OpenTableDto, SplitBillDto, SplitItemAssignmentDto (+2 more)
+Nodes (23): BulkIssueCouponDto, COUPON_TYPE_LOCKED_FIELDS, CouponReportQueryDto, CreateCouponTypeDto, DiscountWriteOffReportQueryDto, IssueCouponDto, IssueToSegmentDto, UpdateCouponTypeDto (+15 more)
 
 ### Community 176 - "Community 176"
-Cohesion: 0.18
-Nodes (5): CouponStatus, CouponType, Customer, DiscountType, IssuedCoupon
+Cohesion: 0.08
+Nodes (22): CouponsPage(), CouponStatus, CouponType, Customer, DISC_ICON, DISC_LABEL, DISCOUNT_TYPES, DiscountType (+14 more)
 
 ### Community 177 - "Community 177"
 Cohesion: 0.18
@@ -921,6 +913,10 @@ Nodes (4): PurchaseOrder, PurchaseOrderItem, Vendor, Warehouse
 Cohesion: 0.18
 Nodes (10): devDependencies, typescript, main, name, private, scripts, build, clean (+2 more)
 
+### Community 180 - "Community 180"
+Cohesion: 0.33
+Nodes (6): 4.1 Overview, 4.2.1 `promotions`, 4.2.2 `promotion_redemptions`, 4.2 New Entities, 4.3 Modifications to Existing Entities, 4. Module PROM — Promotions & Campaigns
+
 ### Community 181 - "Community 181"
 Cohesion: 0.18
 Nodes (11): 8.4.1 Warehouses, 8.4.2 Vendors, 8.4.3 Brands, 8.4.6 Sale-Triggered Stock Decrement (Server-Side, Automatic), 8.4 Functional Requirements, `[INV-001]` List / [INV-002] Get / [INV-003] Create / [INV-004] Update / [INV-005] Delete, `[INV-010]` List vendors, `[INV-011]` Get / [INV-012] Create / [INV-013] Update / [INV-014] Delete (+3 more)
@@ -930,8 +926,8 @@ Cohesion: 0.36
 Nodes (6): CartItemDto, EvaluateCartDto, CreateTransactionDto, QuickAddCustomerDto, TransactionItemDto, VoidTransactionDto
 
 ### Community 183 - "Community 183"
-Cohesion: 0.15
-Nodes (20): CheckPointValueQueryDto, CreatePexRuleBodyDto, CreatePexRuleDetailDto, CreatePexRuleDto, ListPexRulesQueryDto, PexReportQueryDto, RedeemPointsDto, UpdatePexRuleDto (+12 more)
+Cohesion: 0.20
+Nodes (13): PointsExchangeRedemption, PointsExchangeRuleDetail, PointsExchangeRule, buildService(), dto, expensiveRule, limitedRule, makeQb() (+5 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.20
@@ -942,8 +938,8 @@ Cohesion: 0.20
 Nodes (10): 5.4 Operations (4 reports), code:block20 (columns: employee_name, transactions_count, total_ttc, avg_o), code:block21 (columns: date, items_new, items_preparing, items_ready, item), code:block22 (columns: table_number, area_name, sessions_count, avg_durati), code:block23 (columns: date, transaction_number, employee_name, total_ttc,), code:block24 (columns: date, table_number, opened_by_name, items_count), `employee-performance` — High (ALL business types), `kitchen-performance` — High (Restaurant ONLY) (+2 more)
 
 ### Community 191 - "Community 191"
-Cohesion: 0.18
-Nodes (9): Category, mockCategories, categoriesApi, productsApi, ERROR_MESSAGES, humanizeError(), merchantKeys, Category (+1 more)
+Cohesion: 0.11
+Nodes (14): BusinessModule, ChainModule, CommonModule, CommunicationsModule, getDatabaseConfig(), CustomerModule, InventoryModule, PromotionModule (+6 more)
 
 ### Community 192 - "Community 192"
 Cohesion: 0.20
@@ -962,8 +958,8 @@ Cohesion: 0.20
 Nodes (10): devDependencies, @next/swc-linux-x64-gnu, postcss, tailwindcss, @tailwindcss/postcss, tw-animate-css, @types/node, @types/react (+2 more)
 
 ### Community 196 - "Community 196"
-Cohesion: 0.17
-Nodes (12): 7.3.4 Table Service Flow (Terminal), code:json ({), code:json ({), `[RST-030]` Floor plan view, `[RST-031]` Open table, `[RST-032]` Add items to open table, `[RST-033]` Modify table item (before service), `[RST-034]` Remove table item (+4 more)
+Cohesion: 0.33
+Nodes (6): 4.4.2 Promotion Evaluation at Terminal, code:json ({), code:json ({), `[PROM-020]` Evaluate applicable promotions for current cart, `[PROM-021]` Stacking rules, `[PROM-022]` Apply promotion to cart
 
 ### Community 197 - "Community 197"
 Cohesion: 0.20
@@ -994,8 +990,8 @@ Cohesion: 0.22
 Nodes (9): 5.6 Promotions & Discounts (4 reports — ALL ALREADY EXIST), code:block29 (columns: promotion_name, type, redemption_count, total_disco), code:block30 (columns: coupon_type_name, issued, redeemed, expired, voided), code:block31 (columns: terminal_id, count, total_written_off_amount), code:block32 (columns: rule_name, redemption_count, points_spent, items_is), `coupon-report` — Core (wraps existing), `discount-write-offs` — Medium (wraps existing), `points-exchange-report` — Medium (wraps existing) (+1 more)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.49
-Nodes (8): CreateDiningAreaDto, CreateTableDto, CreateTableTypeDto, ListDiningAreasQueryDto, ListTablesQueryDto, UpdateDiningAreaDto, UpdateTableDto, UpdateTableTypeDto
+Cohesion: 0.40
+Nodes (3): mockMovements, StockMovement, TYPE_CONFIG
 
 ### Community 210 - "Community 210"
 Cohesion: 0.22
@@ -1029,6 +1025,10 @@ Nodes (7): globalSetup, moduleFileExtensions, rootDir, testEnvironment, testRege
 Cohesion: 0.25
 Nodes (8): A.3.1 Inventory & Stock Entities (Phase 11–12), A.3.2 Chain & Franchise Entities (Phase 13), A.3.3 Recommendation Entities (Phase 14), A.3.4 Platform Admin Entities (Phase 15), A.3 Core Data Models (Spec'd, Not Yet Built), A.5 Existing Utility Services, A.6 Existing Spec'd Endpoints (Not Yet Built), PART A — EXISTING SYSTEM
 
+### Community 228 - "Community 228"
+Cohesion: 0.14
+Nodes (8): CreateAdjustmentDto, CreateTransferDto, ListAdjustmentsQueryDto, ListTransfersQueryDto, RejectAdjustmentDto, StockAdjustmentItemDto, StockTransferItemDto, StockTransferController
+
 ### Community 229 - "Community 229"
 Cohesion: 0.25
 Nodes (3): Announcement, ForMeAnnouncement, mockAnnouncements
@@ -1048,6 +1048,10 @@ Nodes (8): 3.4.1 Customer CRUD, code:json ({), `[CUST-001]` List customers (pagi
 ### Community 234 - "Community 234"
 Cohesion: 0.25
 Nodes (8): 3.2.1 `customers`, 3.2.2 `customer_grades` (loyalty tiers), 3.2.3 `customer_labels`, 3.2.4 `customer_label_assignments` (M:N join), 3.2.5 `customer_attributes` (definitions), 3.2.6 `customer_attribute_values` (per-customer), 3.2.7 `customer_points_history`, 3.2 New Entities
+
+### Community 235 - "Community 235"
+Cohesion: 0.40
+Nodes (3): AdminAnnouncement, ALL_TYPES, PRIORITY_COLORS
 
 ### Community 236 - "Community 236"
 Cohesion: 0.33
@@ -1105,14 +1109,6 @@ Nodes (7): 3.1 Overview, 3.3 Modifications to Existing Entities, 3.4.2 Customer 
 Cohesion: 0.29
 Nodes (7): 13.1 New Tables (in suggested creation order), 13.2 Columns Added to Existing Tables, 13.3 Required Indexes (beyond PK/FK), 13.4 New Migrations Required, 13. Database Schema Additions — Master List, code:sql (ALTER TABLE users ADD COLUMN permissions JSONB NOT NULL DEFA), Columns dropped from previous v1.0 plan (not in production yet)
 
-### Community 255 - "Community 255"
-Cohesion: 0.19
-Nodes (5): AuthController, ChangePasswordDto, LoginDto, PinLoginDto, SuperAdminLoginDto
-
-### Community 256 - "Community 256"
-Cohesion: 0.31
-Nodes (8): buildService(), ct, dto, makeCouponRepo(), makeCouponType(), makeCouponTypeRepo(), original, redeemed
-
 ### Community 259 - "Community 259"
 Cohesion: 0.40
 Nodes (4): elapsedLabel(), OrderCard(), OssData, OssOrder
@@ -1135,15 +1131,11 @@ Nodes (6): B.4.1 New Entity: `vendor_payments`, B.4.2 Computed Fields on Purchas
 
 ### Community 264 - "Community 264"
 Cohesion: 0.25
-Nodes (8): 7.1 Overview, 7.2.1 `dining_areas` (zones), 7.2.2 `table_types`, 7.2.3 `tables`, 7.2.4 `table_sessions` (open table = unpaid order session), 7.2.5 `table_session_items` (cart contents while open), 7.2 New Entities, 7. Module RST — Restaurant Operations
+Nodes (8): 6.3.1 Rule CRUD, code:json ({), `[PEX-001]` List points exchange rules, `[PEX-002]` Get rule detail, `[PEX-003]` Check for duplicate point value, `[PEX-004]` Create rule with details, `[PEX-005]` Update rule, `[PEX-006]` Deactivate rule
 
 ### Community 265 - "Community 265"
-Cohesion: 0.10
-Nodes (20): 6.1 Overview, 6.2.1 `points_exchange_rules`, 6.2.2 `points_exchange_rule_details`, 6.2.3 `points_exchange_redemptions`, 6.2 New Entities, 6.3.1 Rule CRUD, 6.3.2 Rule Redemption, 6.3.3 Reports (+12 more)
-
-### Community 266 - "Community 266"
-Cohesion: 0.33
-Nodes (4): POItem, Product, Vendor, Warehouse
+Cohesion: 0.17
+Nodes (12): 6.1 Overview, 6.2.1 `points_exchange_rules`, 6.2.2 `points_exchange_rule_details`, 6.2.3 `points_exchange_redemptions`, 6.2 New Entities, 6.3.2 Rule Redemption, 6.3.3 Reports, 6.3 Functional Requirements (+4 more)
 
 ### Community 267 - "Community 267"
 Cohesion: 0.33
@@ -1155,7 +1147,7 @@ Nodes (6): code:bash (docker compose exec backend npm test --workspace=apps/back
 
 ### Community 271 - "Community 271"
 Cohesion: 0.40
-Nodes (3): mockMovements, StockMovement, TYPE_CONFIG
+Nodes (3): LOC_COLORS, SHAPE_EMOJI, TableType
 
 ### Community 272 - "Community 272"
 Cohesion: 0.53
@@ -1173,9 +1165,9 @@ Nodes (6): 3.4.7 Terminal-Side Customer Operations, `[CUST-100]` Look up custome
 Cohesion: 0.33
 Nodes (6): 8.4.5 Stock Batches, `[INV-040]` List batches, `[INV-041]` Receive new batch (manual entry), `[INV-042]` Adjust batch quantity (correction), `[INV-043]` Mark batch as wasted/disposed, `[INV-044]` Transfer batch between warehouses
 
-### Community 278 - "Community 278"
-Cohesion: 0.25
-Nodes (8): 11.1 Overview, 11.2.1 `platform_announcements` (Super Admin → businesses), 11.2.2 `business_announcements` (Business owner → staff), 11.2.3 `notification_channels` (per-business, per-channel config), 11.2.4 `notification_templates`, 11.2.5 `notification_sends`, 11.2 New Entities, 11. Module COM — Communications
+### Community 276 - "Community 276"
+Cohesion: 0.40
+Nodes (3): TYPE_STYLES, VersionLogEntry, VersionLogMenu
 
 ### Community 280 - "Community 280"
 Cohesion: 0.29
@@ -1190,8 +1182,8 @@ Cohesion: 0.29
 Nodes (5): BusinessAuthority, BusinessListItem, CATEGORIES, FeatureFlag, FEATURES
 
 ### Community 286 - "Community 286"
-Cohesion: 0.10
-Nodes (15): userFind, AuthService, BusinessType, BusinessTypeFeature, PlatformAnnouncement, Subscription, SuperAdmin, User (+7 more)
+Cohesion: 0.08
+Nodes (11): AuthController, AuthModule, userFind, AuthService, ChangePasswordDto, LoginDto, PinLoginDto, SuperAdminLoginDto (+3 more)
 
 ### Community 287 - "Community 287"
 Cohesion: 0.40
@@ -1206,12 +1198,8 @@ Cohesion: 0.40
 Nodes (3): AdminAnnouncement, ALL_TYPES, PRIORITY_COLORS
 
 ### Community 290 - "Community 290"
-Cohesion: 0.71
-Nodes (4): CreateBusinessAnnouncementDto, TestChannelDto, UpdateBusinessAnnouncementDto, UpsertNotificationChannelDto
-
-### Community 292 - "Community 292"
-Cohesion: 0.29
-Nodes (7): 11.3.6 Sending Notifications, code:json ({), code:json ({), `[COM-050]` Send to single recipient (ad-hoc), `[COM-051]` Send to segment (bulk campaign), `[COM-052]` Get send history, `[COM-053]` Provider webhook receiver (status updates)
+Cohesion: 0.50
+Nodes (5): CreateBusinessAnnouncementDto, TestChannelDto, UpdateBusinessAnnouncementDto, UpsertNotificationChannelDto, BusinessAnnouncement
 
 ### Community 293 - "Community 293"
 Cohesion: 0.40
@@ -1237,10 +1225,6 @@ Nodes (5): 3.4.3 Customer Grades, `[CUST-020]` List grades, `[CUST-021]` Create 
 Cohesion: 0.40
 Nodes (5): 3.4.6 Points Management, code:json ({), `[CUST-050]` Get points history, `[CUST-051]` Manual points adjustment, `[CUST-052]` Batch import grades
 
-### Community 300 - "Community 300"
-Cohesion: 0.40
-Nodes (3): mockStock, STATUS_CONFIG, StockPosition
-
 ### Community 301 - "Community 301"
 Cohesion: 0.50
 Nodes (3): name, private, version
@@ -1256,10 +1240,6 @@ Nodes (4): 8. IMPLEMENTATION PLAN, Part A — Infrastructure + Sales Reports (re
 ### Community 315 - "Community 315"
 Cohesion: 0.67
 Nodes (3): 8.1 Overview, 8.3 Modifications to Existing Entities, 8. Module INV — Inventory & Stock Management
-
-### Community 316 - "Community 316"
-Cohesion: 0.40
-Nodes (3): AdminAnnouncement, ALL_TYPES, PRIORITY_COLORS
 
 ### Community 334 - "Community 334"
 Cohesion: 0.50
@@ -1286,24 +1266,24 @@ Cohesion: 0.67
 Nodes (3): 8.4.7 Stock Templates, `[INV-060]` List / [INV-061] Get / [INV-062] Create / [INV-063] Update / [INV-064] Delete, `[INV-065]` Generate purchase order from template
 
 ## Knowledge Gaps
-- **2030 isolated node(s):** `name`, `version`, `private`, `description`, `workspaces` (+2025 more)
+- **2041 isolated node(s):** `name`, `version`, `private`, `description`, `workspaces` (+2036 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **108 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **98 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `SUPER` connect `Community 130` to `Community 41`, `Community 268`, `Community 270`, `Community 15`, `Community 371`?**
-  _High betweenness centrality (0.182) - this node is a cross-community bridge._
-- **Why does `ApiError` connect `Community 130` to `Community 23`?**
-  _High betweenness centrality (0.169) - this node is a cross-community bridge._
-- **Why does `JwtAuthGuard` connect `Community 270` to `Community 1`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
+- **Why does `SUPER` connect `Community 41` to `Community 292`, `Community 286`, `Community 15`?**
+  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+- **Why does `ApiError` connect `Community 41` to `Community 23`?**
+  _High betweenness centrality (0.167) - this node is a cross-community bridge._
+- **Why does `JwtAuthGuard` connect `Community 41` to `Community 191`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _2030 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2041 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.08418367346938775 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.1066066066066066 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.08558558558558559 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.1402116402116402 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.14285714285714285 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08754208754208755 - nodes in this community are weakly interconnected._
