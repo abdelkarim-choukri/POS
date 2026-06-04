@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsUUID, IsBoolean, IsInt, MaxLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsUUID, IsBoolean, IsInt, MaxLength, Min, Max } from 'class-validator';
 
 export class CreateProductDto {
   @IsUUID()
@@ -33,6 +33,21 @@ export class CreateProductDto {
   @IsOptional()
   @IsInt()
   sort_order?: number;
+
+  // Real Product columns previously missing validators (rejected by forbidNonWhitelisted).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  tva_rate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  track_stock?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  brand_id?: string;
 }
 
 export class UpdateProductDto {
@@ -70,6 +85,25 @@ export class UpdateProductDto {
   @IsOptional()
   @IsInt()
   sort_order?: number;
+
+  // Real Product columns previously missing validators (rejected by forbidNonWhitelisted).
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  tva_rate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  track_stock?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  brand_id?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
 }
 
 export class CreateVariantDto {

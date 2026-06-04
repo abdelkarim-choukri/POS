@@ -196,8 +196,9 @@ export class BusinessService {
       role: dto.role,
       phone: dto.phone,
       permissions: {
-        ...(dto.can_void ? { can_void: true } : {}),
-        ...(dto.can_refund ? { can_refund: true } : {}),
+        ...(dto.permissions || {}),
+        ...(dto.can_void !== undefined ? { can_void: dto.can_void } : {}),
+        ...(dto.can_refund !== undefined ? { can_refund: dto.can_refund } : {}),
       },
       dashboard_access: dto.dashboard_access || false,
     });
@@ -209,14 +210,14 @@ export class BusinessService {
   async updateEmployee(businessId: string, id: string, dto: UpdateEmployeeDto) {
     const user = await this.userRepo.findOne({ where: { id, business_id: businessId } });
     if (!user) throw new NotFoundException('Employee not found');
-    const { can_void, can_refund, pin, ...rest } = dto;
+    const { can_void, can_refund, pin, permissions, ...rest } = dto;
     Object.assign(user, rest);
     if (pin !== undefined) {
       (user as any).pin_hash = pin ? await bcrypt.hash(pin, 10) : null;
       (user as any).needs_pin_reset = false;
     }
-    if (can_void !== undefined || can_refund !== undefined) {
-      const perms = { ...(user.permissions || {}) };
+    if (permissions !== undefined || can_void !== undefined || can_refund !== undefined) {
+      const perms = { ...(user.permissions || {}), ...(permissions || {}) };
       if (can_void !== undefined) perms['can_void'] = can_void;
       if (can_refund !== undefined) perms['can_refund'] = can_refund;
       user.permissions = perms;

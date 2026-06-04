@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsBoolean, IsEnum, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsBoolean, IsEnum, IsObject, MaxLength, MinLength } from 'class-validator';
 import { UserRole } from '../../../common/enums';
 
 export class CreateEmployeeDto {
@@ -42,6 +42,11 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   dashboard_access?: boolean;
+
+  // Full canonical permission map merged into the permissions JSONB ([XCC-060]).
+  @IsOptional()
+  @IsObject()
+  permissions?: Record<string, boolean>;
 }
 
 export class UpdateEmployeeDto {
@@ -80,4 +85,9 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   dashboard_access?: boolean;
+
+  // Full canonical permission map merged into the permissions JSONB ([XCC-060]).
+  @IsOptional()
+  @IsObject()
+  permissions?: Record<string, boolean>;
 }

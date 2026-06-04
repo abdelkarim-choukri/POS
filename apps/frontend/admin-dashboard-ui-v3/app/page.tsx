@@ -1024,7 +1024,7 @@ function DashboardPage({ onNavigate }: { onNavigate: (page: string, id?: string)
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => { const n = Number(v); return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}` }} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "#0F0F12",

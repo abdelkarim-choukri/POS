@@ -109,3 +109,283 @@ export interface PaginatedResult<T> {
   limit: number
   totalPages: number
 }
+
+// ── Categories (apps/backend/src/common/entities/category.entity.ts) ──
+// Columns: id, business_id, name, sort_order, is_active (+ default tva_rate).
+// NO `description` column — do not send/expect it.
+export interface Category {
+  id: string
+  name: string
+  sort_order: number
+  is_active: boolean
+  // enrichment the list endpoint may add:
+  product_count?: number
+}
+
+export interface CreateCategoryInput {
+  name: string
+  sort_order?: number
+}
+export interface UpdateCategoryInput {
+  name?: string
+  sort_order?: number
+  is_active?: boolean
+}
+
+// ── Variants (apps/backend/src/common/entities/product-variant.entity.ts) ──
+// Columns: id, product_id, name, price_override, sku, is_sold_out, is_active.
+// NO `is_default` / `is_available` columns.
+export interface ProductVariant {
+  id: string
+  product_id: string
+  name: string
+  price_override: string | null
+  sku: string | null
+  is_sold_out: boolean
+  is_active: boolean
+}
+
+export interface CreateVariantInput {
+  name: string
+  price_override?: number
+  sku?: string
+}
+export interface UpdateVariantInput {
+  name?: string
+  price_override?: number
+  sku?: string
+  is_active?: boolean
+}
+
+// ── Products (apps/backend/src/common/entities/product.entity.ts) ──
+// NUMERIC columns serialize as STRINGS — coerce before math. The list endpoint
+// (GET /business/products) eager-loads category + variants relations and
+// returns a plain ARRAY (not paginated); it reads only `category_id` from the
+// query string (page/limit/search are ignored server-side).
+export interface Product {
+  id: string
+  business_id: string
+  category_id: string
+  name: string
+  description: string | null
+  price: string
+  cost_price: string | null
+  sku: string | null
+  image_url: string | null
+  is_sold_out: boolean
+  is_active: boolean
+  sort_order: number
+  tva_rate: string | null
+  tva_exempt: boolean
+  whole_price_1: string | null
+  whole_price_2: string | null
+  whole_price_3: string | null
+  whole_price_4: string | null
+  brand_id: string | null
+  unit_of_measure: string | null
+  track_stock: boolean
+  category?: { id: string; name: string } | null
+  brand?: { id: string; name: string } | null
+  variants?: ProductVariant[]
+}
+
+// ── Employees (apps/backend/src/modules/business, users table) ──
+// GET /business/employees returns a plain ARRAY. Permissions live in the
+// `permissions` JSONB; the canonical keys the backend actually enforces via
+// userHasPermission are listed in EMPLOYEE_PERMISSION_GROUPS below.
+export type EmployeeRole = "owner" | "manager" | "employee"
+
+export interface Employee {
+  id: string
+  first_name: string
+  last_name: string
+  email: string | null
+  role: EmployeeRole
+  phone: string | null
+  is_active: boolean
+  permissions: Record<string, boolean> | null
+  dashboard_access: boolean
+  created_at: string
+}
+
+export interface CreateEmployeeInput {
+  first_name: string
+  last_name: string
+  email?: string
+  password: string // required, min 6
+  pin?: string // 4-6 digits
+  role: EmployeeRole
+  permissions?: Record<string, boolean>
+  dashboard_access?: boolean
+}
+export interface UpdateEmployeeInput {
+  first_name?: string
+  last_name?: string
+  email?: string
+  pin?: string
+  role?: EmployeeRole
+  permissions?: Record<string, boolean>
+  dashboard_access?: boolean
+}
+
+export interface ClockEntry {
+  id: string
+  user_id: string
+  clock_in: string
+  clock_out: string | null
+  total_hours: string | null
+}
+
+// Canonical permission keys the backend enforces (userHasPermission call sites).
+export const EMPLOYEE_PERMISSION_GROUPS: { title: string; permissions: { key: string; label: string }[] }[] = [
+  { title: "Sales", permissions: [
+    { key: "can_void", label: "Void transactions / items" },
+    { key: "can_refund", label: "Issue refunds" },
+  ] },
+  { title: "Loyalty", permissions: [
+    { key: "can_adjust_points", label: "Adjust customer points" },
+    { key: "can_redeem_points", label: "Redeem customer points" },
+  ] },
+  { title: "Tables", permissions: [
+    { key: "can_open_table_session", label: "Open table sessions" },
+    { key: "can_transfer_table_items", label: "Transfer table items" },
+    { key: "can_close_table_session", label: "Close table sessions" },
+    { key: "can_close_table_session_partial", label: "Partially close table sessions" },
+  ] },
+  { title: "Inventory", permissions: [
+    { key: "can_propose_stock_adjustment", label: "Propose stock adjustments" },
+    { key: "can_approve_stock_adjustment", label: "Approve stock adjustments" },
+  ] },
+]
+
+// ── Customers (apps/backend/src/modules/customer) ──
+// list() and points-history return { records, total, page, limit } (NOT { data }).
+// NUMERIC columns (grade multipliers/percent) serialize as strings.
+export interface CustomerGrade {
+  id: string
+  name: string
+  min_points: number | string
+  points_multiplier: number | string
+  discount_percent: number | string
+  color_hex: string | null
+  sort_order: number
+  is_active: boolean
+}
+export interface CustomerLabel {
+  id: string
+  name: string
+  color_hex: string | null
+}
+export interface CustomerAttribute {
+  id: string
+  key: string
+  label: string
+  data_type: "string" | "number" | "date" | "boolean" | "enum"
+  enum_options: string[] | null
+  is_required: boolean
+}
+export interface CustomerLabelAssignment {
+  label: CustomerLabel
+}
+export interface Customer {
+  id: string
+  customer_code: string | null
+  phone: string | null
+  email: string | null
+  first_name: string
+  last_name: string
+  points_balance: number
+  is_active: boolean
+  notes: string | null
+  grade_id: string | null
+  grade?: CustomerGrade | null
+  created_at: string
+  label_assignments?: CustomerLabelAssignment[]
+}
+export interface CustomerAttributeValue {
+  attribute_id: string
+  value: string
+  attribute?: CustomerAttribute
+}
+export interface CustomerDetail extends Customer {
+  attribute_values?: CustomerAttributeValue[]
+  stats?: { visit_count: number; total_spend: number; last_visit: string | null }
+}
+export interface CustomerListResponse {
+  records: Customer[]
+  total: number
+  page: number
+  limit: number
+}
+export interface PointsHistoryEntry {
+  id: string
+  delta: number
+  balance_after: number
+  source: string
+  reason: string | null
+  created_at: string
+}
+export interface PointsHistoryResponse {
+  records: PointsHistoryEntry[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface CreateCustomerInput {
+  phone: string // required + unique per business
+  first_name: string
+  last_name: string
+  email?: string
+  notes?: string
+  grade_id?: string
+  label_ids?: string[]
+}
+export interface UpdateCustomerInput {
+  phone?: string
+  first_name?: string
+  last_name?: string
+  email?: string
+  notes?: string
+  grade_id?: string
+}
+export interface GradeInput {
+  name: string
+  min_points?: number
+  points_multiplier?: number
+  discount_percent?: number
+  color_hex?: string
+}
+export interface LabelInput {
+  name: string
+  color_hex?: string
+}
+export interface CreateAttributeInput {
+  key: string
+  label: string
+  data_type: CustomerAttribute["data_type"]
+  enum_options?: string[]
+  is_required?: boolean
+}
+export interface UpdateAttributeInput {
+  label?: string
+  data_type?: CustomerAttribute["data_type"]
+  enum_options?: string[]
+  is_required?: boolean
+}
+
+export interface CreateProductInput {
+  name: string
+  price: number
+  category_id: string
+  description?: string
+  sku?: string
+  cost_price?: number
+  image_url?: string
+  tva_rate?: number
+  track_stock?: boolean
+  brand_id?: string
+}
+export interface UpdateProductInput extends Partial<CreateProductInput> {
+  is_active?: boolean
+}
