@@ -1,105 +1,42 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect } from "react"
-import { apiFetch } from "@/lib/api"
+import { useMemo, useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
-  Search,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  ChevronDown,
-  ChevronRight,
-  MapPin,
-  Monitor,
-  Wifi,
-  WifiOff,
-  Building2,
-  Clock,
-  AlertCircle,
-  Check,
-  RefreshCw,
+  Search, Plus, Pencil, Trash2, X, ChevronDown, ChevronRight, MapPin,
+  Monitor, Wifi, WifiOff, Building2, AlertCircle,
 } from "lucide-react"
+import { locationsApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import type { BusinessLocation, BusinessTerminal, CreateLocationInput } from "@/lib/merchant/types"
 
-// ============== TYPES ==============
-interface Terminal {
-  id: string
-  terminal_code: string
-  name: string
-  location_id: string | null
-  last_seen_at: string | null
-  firmware_version: string
-  is_assigned: boolean
-}
+/**
+ * Locations & Terminals — TanStack Query migration.
+ *
+ * Ground truth (business.controller LOCATIONS + Location/Terminal entities):
+ *   - GET business/locations → plain Location[] (NOT {data}) with eager `terminals`.
+ *     No terminal_count / active_terminal_count / status columns → derived here.
+ *   - Terminal columns: terminal_code, device_name (NOT `name`), app_version (NOT
+ *     `firmware_version`), is_online, last_seen_at. location_id is NOT NULL — there
+ *     are no "unassigned" terminals, so that concept (and the mock data behind it)
+ *     was removed.
+ *   - CreateLocationDto/UpdateLocationDto: name, address?, city?, phone?. POST + PUT
+ *     only — there is NO DELETE and NO assign-terminal endpoint, so the delete button
+ *     stays disabled and the (mock) Assign-Terminal modal was removed.
+ */
 
-interface Location {
-  id: string
-  name: string
-  address: string
-  city: string
-  terminal_count: number
-  active_terminal_count: number
-  status: "active" | "inactive"
-  terminals: Terminal[]
-}
+const EMPTY_FORM: CreateInput = { name: "", address: "", city: "", phone: "" }
+type CreateInput = Required<Pick<CreateLocationInput, "name">> & { address: string; city: string; phone: string }
 
-// ============== MOCK DATA ==============
-const mockLocations: Location[] = [
-  {
-    id: "loc-1",
-    name: "Downtown Branch",
-    address: "123 Mohammed V Boulevard",
-    city: "Casablanca",
-    terminal_count: 3,
-    active_terminal_count: 3,
-    status: "active",
-    terminals: [
-      { id: "term-1", terminal_code: "T-001-DT", name: "Main Counter", location_id: "loc-1", last_seen_at: "2024-03-15 10:30:00", firmware_version: "2.4.1", is_assigned: true },
-      { id: "term-2", terminal_code: "T-002-DT", name: "Side Counter", location_id: "loc-1", last_seen_at: "2024-03-15 10:28:00", firmware_version: "2.4.1", is_assigned: true },
-      { id: "term-3", terminal_code: "T-003-DT", name: "Drive-Through", location_id: "loc-1", last_seen_at: "2024-03-15 10:25:00", firmware_version: "2.4.0", is_assigned: true },
-    ],
-  },
-  {
-    id: "loc-2",
-    name: "Marina Mall",
-    address: "Marina Shopping Center, Level 2",
-    city: "Casablanca",
-    terminal_count: 2,
-    active_terminal_count: 2,
-    status: "active",
-    terminals: [
-      { id: "term-4", terminal_code: "T-001-MM", name: "Kiosk 1", location_id: "loc-2", last_seen_at: "2024-03-15 10:32:00", firmware_version: "2.4.1", is_assigned: true },
-      { id: "term-5", terminal_code: "T-002-MM", name: "Kiosk 2", location_id: "loc-2", last_seen_at: "2024-03-15 09:45:00", firmware_version: "2.4.1", is_assigned: true },
-    ],
-  },
-  {
-    id: "loc-3",
-    name: "Airport Kiosk",
-    address: "Terminal 1, Departure Hall",
-    city: "Casablanca",
-    terminal_count: 1,
-    active_terminal_count: 0,
-    status: "active",
-    terminals: [
-      { id: "term-6", terminal_code: "T-001-AP", name: "Airport POS", location_id: "loc-3", last_seen_at: "2024-03-14 18:00:00", firmware_version: "2.3.9", is_assigned: true },
-    ],
-  },
-]
-
-const mockUnassignedTerminals: Terminal[] = [
-  { id: "term-7", terminal_code: "T-SPARE-01", name: "Spare Unit 1", location_id: null, last_seen_at: null, firmware_version: "2.4.1", is_assigned: false },
-  { id: "term-8", terminal_code: "T-SPARE-02", name: "Spare Unit 2", location_id: null, last_seen_at: "2024-03-10 14:00:00", firmware_version: "2.4.0", is_assigned: false },
-]
-
-// ============== REUSABLE COMPONENTS ==============
-function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "indigo" }) {
+// ============== HELPERS ==============
+function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" }) {
   const colors = {
     green: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     red: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     yellow: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     gray: "bg-gray-100 text-gray-600 dark:bg-[#0F0F12] dark:text-gray-400",
-    indigo: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
   }
   return <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${colors[color]}`}>{children}</span>
 }
@@ -117,7 +54,7 @@ function Button({ children, variant = "primary", size = "md", className = "", ..
     danger: "bg-red-500 hover:bg-red-600 text-white",
   }
   const sizes = { sm: "px-3 py-1.5 text-xs", md: "px-4 py-2 text-sm" }
-  return <button className={`rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2 ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>
+  return <button className={`rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>
 }
 
 function Input({ label, ...props }: { label?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -129,12 +66,11 @@ function Input({ label, ...props }: { label?: string } & React.InputHTMLAttribut
   )
 }
 
-function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; size?: "sm" | "md" | "lg" | "xl" }) {
+function Modal({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   if (!isOpen) return null
-  const sizeClasses = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-lg", xl: "max-w-2xl" }
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className={`bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden flex flex-col`}>
+      <div className="bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-[#1F1F23]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#1a1a20] rounded-lg"><X className="w-5 h-5 text-gray-500 dark:text-gray-400" /></button>
@@ -145,356 +81,226 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
   )
 }
 
-// ============== HEALTH STATUS HELPER ==============
-function getHealthStatus(lastSeenAt: string | null): { status: "online" | "stale" | "offline"; color: "green" | "yellow" | "red" } {
+function getHealth(lastSeenAt: string | null): { status: "online" | "stale" | "offline"; color: "green" | "yellow" | "red" } {
   if (!lastSeenAt) return { status: "offline", color: "red" }
-  
-  const lastSeen = new Date(lastSeenAt)
-  const now = new Date()
-  const diffMinutes = (now.getTime() - lastSeen.getTime()) / (1000 * 60)
-  
-  if (diffMinutes < 5) return { status: "online", color: "green" }
-  if (diffMinutes < 30) return { status: "stale", color: "yellow" }
+  const diffMin = (Date.now() - new Date(lastSeenAt).getTime()) / 60000
+  if (diffMin < 5) return { status: "online", color: "green" }
+  if (diffMin < 30) return { status: "stale", color: "yellow" }
   return { status: "offline", color: "red" }
 }
 
 function HealthBadge({ lastSeenAt }: { lastSeenAt: string | null }) {
-  const { status, color } = getHealthStatus(lastSeenAt)
+  const { status, color } = getHealth(lastSeenAt)
   const icon = status === "online" ? <Wifi className="w-3 h-3" /> : status === "stale" ? <AlertCircle className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />
-  return (
-    <Badge color={color}>
-      <span className="flex items-center gap-1">
-        {icon}
-        {status === "online" ? "Online" : status === "stale" ? "Stale" : "Offline"}
-      </span>
-    </Badge>
-  )
+  return <Badge color={color}><span className="flex items-center gap-1">{icon}{status === "online" ? "Online" : status === "stale" ? "Stale" : "Offline"}</span></Badge>
 }
 
-// ============== MAIN PAGE COMPONENT ==============
+const termName = (t: BusinessTerminal) => t.device_name || t.terminal_code
+const fmtSeen = (s: string | null) => (s ? new Date(s).toLocaleString() : "Never")
+
+// ============== MAIN ==============
 export default function LocationsPage() {
-  const [locations, setLocations] = useState<Location[]>(mockLocations)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
   const [activeTab, setActiveTab] = useState<"locations" | "all-terminals">("locations")
-  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set(["loc-1"]))
-  const [searchQuery, setSearchQuery] = useState("")
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState("")
+  const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState<BusinessLocation | null>(null)
+  const [form, setForm] = useState<CreateInput>(EMPTY_FORM)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  // Modals
-  const [showAddLocation, setShowAddLocation] = useState(false)
-  const [showEditLocation, setShowEditLocation] = useState(false)
-  const [showAssignTerminal, setShowAssignTerminal] = useState<string | null>(null)
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
-  const [terminalsLoading, setTerminalsLoading] = useState<Set<string>>(new Set())
+  const locationsQuery = useQuery({ queryKey: merchantKeys.locations.list(), queryFn: locationsApi.list })
+  const locations = locationsQuery.data ?? []
 
-  // Form state
-  const [locationForm, setLocationForm] = useState({ name: "", address: "", city: "" })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: merchantKeys.locations.all })
 
-  const fetchLocations = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await apiFetch<{ data: any[] }>("/api/business/locations")
-      const mapped: Location[] = res.data.map((l: any) => ({
-        id: l.id,
-        name: l.name,
-        address: l.address ?? "",
-        city: l.city ?? "",
-        terminal_count: l.terminal_count ?? 0,
-        active_terminal_count: l.active_terminal_count ?? 0,
-        status: l.is_active ? "active" : "inactive",
-        terminals: [],
-      }))
-      setLocations(mapped)
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load locations")
-    } finally {
-      setLoading(false)
-    }
-  }
+  const buildInput = (): CreateLocationInput => ({
+    name: form.name.trim(),
+    ...(form.address.trim() ? { address: form.address.trim() } : {}),
+    ...(form.city.trim() ? { city: form.city.trim() } : {}),
+    ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
+  })
 
-  useEffect(() => { fetchLocations() }, [])
+  const createMutation = useMutation({
+    mutationFn: () => locationsApi.create(buildInput()),
+    onSuccess: () => { invalidate(); setShowAdd(false) },
+    onError: (e) => setFormError(humanizeError(e, "Failed to create location.")),
+  })
+  const updateMutation = useMutation({
+    mutationFn: (id: string) => locationsApi.update(id, buildInput()),
+    onSuccess: () => { invalidate(); setEditing(null) },
+    onError: (e) => setFormError(humanizeError(e, "Failed to update location.")),
+  })
 
-  const handleSaveAddLocation = async () => {
-    if (!locationForm.name.trim()) return
-    try {
-      await apiFetch("/api/business/locations", {
-        method: "POST",
-        body: JSON.stringify(locationForm),
-      })
-      setShowAddLocation(false)
-      await fetchLocations()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to create location")
-    }
-  }
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return locations
+    return locations.filter((l) => l.name.toLowerCase().includes(q) || (l.address ?? "").toLowerCase().includes(q) || (l.city ?? "").toLowerCase().includes(q))
+  }, [locations, search])
 
-  const handleSaveEditLocation = async () => {
-    if (!selectedLocation || !locationForm.name.trim()) return
-    try {
-      await apiFetch(`/api/business/locations/${selectedLocation.id}`, {
-        method: "PUT",
-        body: JSON.stringify(locationForm),
-      })
-      setShowEditLocation(false)
-      await fetchLocations()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to update location")
-    }
-  }
-
-  // All terminals (assigned + unassigned)
-  const allTerminals = [
-    ...locations.flatMap(loc => loc.terminals.map(t => ({ ...t, location_name: loc.name }))),
-    ...mockUnassignedTerminals.map(t => ({ ...t, location_name: "Unassigned" })),
-  ]
-
-  // Filtered locations
-  const filteredLocations = locations.filter(loc =>
-    loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    loc.address.toLowerCase().includes(searchQuery.toLowerCase())
+  const allTerminals = useMemo(
+    () => locations.flatMap((l) => (l.terminals ?? []).map((t) => ({ ...t, location_name: l.name }))),
+    [locations],
   )
 
-  const fetchTerminalsForLocation = async (locationId: string) => {
-    setTerminalsLoading(prev => new Set(prev).add(locationId))
-    try {
-      const res = await apiFetch<Terminal[]>(`/api/business/locations/${locationId}/terminals`)
-      setLocations(prev =>
-        prev.map(loc =>
-          loc.id === locationId ? { ...loc, terminals: res } : loc
-        )
-      )
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load terminals")
-    } finally {
-      setTerminalsLoading(prev => {
-        const next = new Set(prev)
-        next.delete(locationId)
-        return next
-      })
-    }
+  const toggle = (id: string) => setExpanded((prev) => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const openAdd = () => { setForm(EMPTY_FORM); setFormError(null); setShowAdd(true) }
+  const openEdit = (l: BusinessLocation) => {
+    setEditing(l)
+    setForm({ name: l.name, address: l.address ?? "", city: l.city ?? "", phone: l.phone ?? "" })
+    setFormError(null)
   }
 
-  const toggleLocation = (locationId: string) => {
-    setExpandedLocations(prev => {
-      const next = new Set(prev)
-      if (next.has(locationId)) {
-        next.delete(locationId)
-      } else {
-        next.add(locationId)
-        // Fetch terminals when expanding — GET /api/business/locations/:id/terminals
-        fetchTerminalsForLocation(locationId)
-      }
-      return next
-    })
-  }
+  const listError = locationsQuery.isError ? humanizeError(locationsQuery.error, "Failed to load locations.") : null
+  const saving = createMutation.isPending || updateMutation.isPending
 
-  const handleAddLocation = () => {
-    setLocationForm({ name: "", address: "", city: "" })
-    setShowAddLocation(true)
-  }
-
-  const handleEditLocation = (location: Location) => {
-    setSelectedLocation(location)
-    setLocationForm({ name: location.name, address: location.address, city: location.city })
-    setShowEditLocation(true)
-  }
-
-  const handleAssignTerminal = (locationId: string) => {
-    setShowAssignTerminal(locationId)
-  }
-
-  if (loading) return <div className="py-10 text-center text-gray-400">Loading...</div>
+  const renderForm = (onSave: () => void, cta: string) => (
+    <div className="space-y-4">
+      <Input label="Location Name *" placeholder="e.g. Downtown Branch" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+      <Input label="Address" placeholder="123 Main Street" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+      <Input label="City" placeholder="Casablanca" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+      <Input label="Phone" placeholder="+212 5..." value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+      {formError && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded px-3 py-2">{formError}</p>}
+      <div className="flex gap-3 pt-2">
+        <Button variant="secondary" className="flex-1" onClick={() => { setShowAdd(false); setEditing(null) }}>Cancel</Button>
+        <Button variant="primary" className="flex-1" disabled={!form.name.trim() || saving} onClick={onSave}>{saving ? "Saving..." : cta}</Button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="h-full">
-      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
-      {/* Header */}
+      {listError && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{listError}</div>}
+
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Locations & Terminals</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Locations &amp; Terminals</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage your business locations and POS terminals</p>
         </div>
-        <Button variant="primary" onClick={handleAddLocation}>
-          <Plus className="w-4 h-4" />
-          Add Location
-        </Button>
+        <Button variant="primary" onClick={openAdd}><Plus className="w-4 h-4" />Add Location</Button>
       </div>
 
-      {/* Tabs */}
       <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#0F0F12] p-1 rounded-xl w-fit mb-6">
-        <button
-          onClick={() => setActiveTab("locations")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "locations"
-              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          }`}
-        >
-          <Building2 className="w-4 h-4 inline-block mr-2" />
-          Locations
+        <button onClick={() => setActiveTab("locations")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "locations" ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
+          <Building2 className="w-4 h-4 inline-block mr-2" />Locations
         </button>
-        <button
-          onClick={() => setActiveTab("all-terminals")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "all-terminals"
-              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          }`}
-        >
-          <Monitor className="w-4 h-4 inline-block mr-2" />
-          All Terminals
+        <button onClick={() => setActiveTab("all-terminals")} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "all-terminals" ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
+          <Monitor className="w-4 h-4 inline-block mr-2" />All Terminals
         </button>
       </div>
 
       {activeTab === "locations" ? (
         <>
-          {/* Search */}
           <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4 mb-6">
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search locations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-              />
+              <input type="text" placeholder="Search locations..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white" />
             </div>
           </div>
 
-          {/* Locations List */}
-          <div className="grid gap-4">
-            {filteredLocations.map(location => (
-              <div
-                key={location.id}
-                className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden"
-              >
-                {/* Location Header */}
-                <div
-                  className="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50"
-                  onClick={() => toggleLocation(location.id)}
-                >
-                  <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                    {expandedLocations.has(location.id) ? (
-                      <ChevronDown className="w-5 h-5" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5" />
-                    )}
-                  </button>
-                  <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
-                    <MapPin className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{location.name}</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{location.address}, {location.city}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{location.terminal_count}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Terminals</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{location.active_terminal_count}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Online</p>
-                    </div>
-                    <Badge color={location.status === "active" ? "green" : "gray"}>
-                      {location.status === "active" ? "Active" : "Inactive"}
-                    </Badge>
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleEditLocation(location)}
-                        className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg"
-                      >
-                        <Pencil className="w-4 h-4" />
+          {locationsQuery.isLoading ? (
+            <div className="py-10 text-center text-gray-400">Loading...</div>
+          ) : (
+            <div className="grid gap-4">
+              {filtered.map((location) => {
+                const terminals = location.terminals ?? []
+                const onlineCount = terminals.filter((t) => t.is_online).length
+                return (
+                  <div key={location.id} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
+                    <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50" onClick={() => toggle(location.id)}>
+                      <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        {expanded.has(location.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                       </button>
-                      {/* No backend DELETE for locations — button disabled */}
-                      <button
-                        disabled
-                        title="Deleting locations is not supported"
-                        className="p-2 text-gray-200 dark:text-gray-700 cursor-not-allowed rounded-lg"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
+                        <MapPin className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{location.name}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{[location.address, location.city].filter(Boolean).join(", ") || "No address"}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">{terminals.length}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Terminals</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-green-600 dark:text-green-400">{onlineCount}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Online</p>
+                        </div>
+                        <Badge color={location.is_active ? "green" : "gray"}>{location.is_active ? "Active" : "Inactive"}</Badge>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => openEdit(location)} className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          {/* No backend DELETE for locations — button disabled */}
+                          <button disabled title="Deleting locations is not supported" className="p-2 text-gray-200 dark:text-gray-700 cursor-not-allowed rounded-lg">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Terminals List (Expanded) */}
-                {expandedLocations.has(location.id) && (
-                  <div className="border-t border-gray-100 dark:border-[#1F1F23] bg-gray-50 dark:bg-[#0F0F12]/30 p-4">
-                    {terminalsLoading.has(location.id) ? (
-                      <div className="py-6 text-center text-sm text-gray-400">Loading terminals...</div>
-                    ) : (
-                      location.terminals.length > 0 ? (
-                        <div className="space-y-2">
-                          {location.terminals.map(terminal => (
-                            <div
-                              key={terminal.id}
-                              className="flex items-center justify-between p-3 bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-100 dark:border-[#1F1F23]"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-gray-100 dark:bg-[#1F1F23] rounded-lg flex items-center justify-center">
-                                  <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium text-gray-900 dark:text-white">{terminal.name}</p>
-                                    <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{terminal.terminal_code}</span>
+                    {expanded.has(location.id) && (
+                      <div className="border-t border-gray-100 dark:border-[#1F1F23] bg-gray-50 dark:bg-[#0F0F12]/30 p-4">
+                        {terminals.length > 0 ? (
+                          <div className="space-y-2">
+                            {terminals.map((terminal) => (
+                              <div key={terminal.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#0F0F12] rounded-lg border border-gray-100 dark:border-[#1F1F23]">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 bg-gray-100 dark:bg-[#1F1F23] rounded-lg flex items-center justify-center">
+                                    <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                                   </div>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    v{terminal.firmware_version} | Last seen: {terminal.last_seen_at ? new Date(terminal.last_seen_at).toLocaleString() : "Never"}
-                                  </p>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-gray-900 dark:text-white">{termName(terminal)}</p>
+                                      <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{terminal.terminal_code}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                      {terminal.app_version ? `v${terminal.app_version} | ` : ""}Last seen: {fmtSeen(terminal.last_seen_at)}
+                                    </p>
+                                  </div>
                                 </div>
+                                <HealthBadge lastSeenAt={terminal.last_seen_at} />
                               </div>
-                              <HealthBadge lastSeenAt={terminal.last_seen_at} />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-6">
-                          <Monitor className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                          <p className="text-sm text-gray-500 dark:text-gray-400">No terminals assigned</p>
-                        </div>
-                      )
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6">
+                            <Monitor className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                            <p className="text-sm text-gray-500 dark:text-gray-400">No terminals assigned</p>
+                          </div>
+                        )}
+                      </div>
                     )}
-                    <div className="mt-4">
-                      <Button variant="secondary" size="sm" onClick={() => handleAssignTerminal(location.id)}>
-                        <Plus className="w-4 h-4" />
-                        Assign Terminal
-                      </Button>
-                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+                )
+              })}
 
-            {filteredLocations.length === 0 && (
-              <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
-                <Building2 className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No locations found</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  {searchQuery ? "Try adjusting your search" : "Add your first location to get started"}
-                </p>
-                <Button variant="primary" onClick={handleAddLocation}>
-                  <Plus className="w-4 h-4" />
-                  Add Location
-                </Button>
-              </div>
-            )}
-          </div>
+              {filtered.length === 0 && (
+                <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
+                  <Building2 className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No locations found</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{search ? "Try adjusting your search" : "Add your first location to get started"}</p>
+                  <Button variant="primary" onClick={openAdd}><Plus className="w-4 h-4" />Add Location</Button>
+                </div>
+              )}
+            </div>
+          )}
         </>
       ) : (
-        /* All Terminals Tab */
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
               <tr>
-                <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Terminal</th>
-                <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Location</th>
-                <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Last Heartbeat</th>
-                <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Firmware</th>
-                <th className="text-center p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Health</th>
+                {["Terminal", "Location", "Last Heartbeat", "App Version", "Health"].map((h) => (
+                  <th key={h} className={`p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider ${h === "Health" ? "text-center" : "text-left"}`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -506,101 +312,31 @@ export default function LocationsPage() {
                         <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{terminal.name}</p>
+                        <p className="font-medium text-gray-900 dark:text-white">{termName(terminal)}</p>
                         <p className="font-mono text-xs text-gray-400 dark:text-gray-500">{terminal.terminal_code}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="p-4">
-                    <Badge color={terminal.location_id ? "blue" : "gray"}>
-                      {terminal.location_name}
-                    </Badge>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
-                      {terminal.last_seen_at ? new Date(terminal.last_seen_at).toLocaleString() : "Never"}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">v{terminal.firmware_version}</span>
-                  </td>
-                  <td className="p-4 text-center">
-                    <HealthBadge lastSeenAt={terminal.last_seen_at} />
-                  </td>
+                  <td className="p-4"><Badge color="blue">{terminal.location_name}</Badge></td>
+                  <td className="p-4"><span className="text-sm text-gray-600 dark:text-gray-300">{fmtSeen(terminal.last_seen_at)}</span></td>
+                  <td className="p-4"><span className="font-mono text-xs text-gray-500 dark:text-gray-400">{terminal.app_version ? `v${terminal.app_version}` : "—"}</span></td>
+                  <td className="p-4 text-center"><HealthBadge lastSeenAt={terminal.last_seen_at} /></td>
                 </tr>
               ))}
+              {allTerminals.length === 0 && (
+                <tr><td colSpan={5} className="p-10 text-center text-gray-400 text-sm">No terminals registered</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Add Location Modal */}
-      <Modal isOpen={showAddLocation} onClose={() => setShowAddLocation(false)} title="Add Location" size="md">
-        <div className="space-y-4">
-          <Input label="Location Name" placeholder="e.g. Downtown Branch" value={locationForm.name} onChange={(e) => setLocationForm(f => ({ ...f, name: e.target.value }))} />
-          <Input label="Address" placeholder="123 Main Street" value={locationForm.address} onChange={(e) => setLocationForm(f => ({ ...f, address: e.target.value }))} />
-          <Input label="City" placeholder="Casablanca" value={locationForm.city} onChange={(e) => setLocationForm(f => ({ ...f, city: e.target.value }))} />
-          <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAddLocation(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={handleSaveAddLocation}>Add Location</Button>
-          </div>
-        </div>
+      <Modal isOpen={showAdd} onClose={() => setShowAdd(false)} title="Add Location">
+        {renderForm(() => createMutation.mutate(), "Add Location")}
       </Modal>
-
-      {/* Edit Location Modal */}
-      <Modal isOpen={showEditLocation} onClose={() => setShowEditLocation(false)} title="Edit Location" size="md">
-        <div className="space-y-4">
-          <Input label="Location Name" placeholder="e.g. Downtown Branch" value={locationForm.name} onChange={(e) => setLocationForm(f => ({ ...f, name: e.target.value }))} />
-          <Input label="Address" placeholder="123 Main Street" value={locationForm.address} onChange={(e) => setLocationForm(f => ({ ...f, address: e.target.value }))} />
-          <Input label="City" placeholder="Casablanca" value={locationForm.city} onChange={(e) => setLocationForm(f => ({ ...f, city: e.target.value }))} />
-          <div className="flex gap-3 pt-4">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowEditLocation(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={handleSaveEditLocation}>Save Changes</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Assign Terminal Modal */}
-      <Modal isOpen={!!showAssignTerminal} onClose={() => setShowAssignTerminal(null)} title="Assign Terminal" size="md">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Select an unassigned terminal to add to this location.</p>
-          {mockUnassignedTerminals.length > 0 ? (
-            <div className="space-y-2">
-              {mockUnassignedTerminals.map(terminal => (
-                <label
-                  key={terminal.id}
-                  className="flex items-center gap-3 p-3 border border-gray-200 dark:border-[#1F1F23] rounded-lg hover:bg-gray-50 dark:hover:bg-[#1a1a20] cursor-pointer"
-                >
-                  <input type="radio" name="terminal" className="w-4 h-4 text-indigo-500 focus:ring-gray-900 dark:focus:ring-gray-300" />
-                  <div className="w-8 h-8 bg-gray-100 dark:bg-[#1F1F23] rounded-lg flex items-center justify-center">
-                    <Monitor className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-white">{terminal.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{terminal.terminal_code} | v{terminal.firmware_version}</p>
-                  </div>
-                  <HealthBadge lastSeenAt={terminal.last_seen_at} />
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 border border-dashed border-gray-200 dark:border-[#1F1F23] rounded-lg">
-              <Monitor className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">No unassigned terminals available</p>
-            </div>
-          )}
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowAssignTerminal(null)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={() => setShowAssignTerminal(null)} disabled={mockUnassignedTerminals.length === 0}>
-              <Check className="w-4 h-4" />
-              Assign Terminal
-            </Button>
-          </div>
-        </div>
+      <Modal isOpen={!!editing} onClose={() => setEditing(null)} title="Edit Location">
+        {editing && renderForm(() => updateMutation.mutate(editing.id), "Save Changes")}
       </Modal>
     </div>
   )
 }
-
-
-

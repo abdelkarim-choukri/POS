@@ -1,160 +1,55 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect } from "react"
-import { apiFetch } from "@/lib/api"
-import {
-  Plus,
-  Search,
-  X,
-  Megaphone,
-  Calendar,
-  Clock,
-  Eye,
-  Pencil,
-  Trash2,
-  Send,
-  Users,
-  Building2,
-  Globe,
-  CheckCircle,
-  AlertCircle,
-  Bell,
-} from "lucide-react"
+import { useMemo, useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Plus, Search, X, Megaphone, Pencil, Trash2, Globe, Users, AlertCircle } from "lucide-react"
+import { announcementsApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import type { BusinessAnnouncement, AnnouncementRole, CreateAnnouncementInput } from "@/lib/merchant/types"
 
-// ==================== TYPES ====================
-interface Announcement {
-  id: string
-  title: string
-  content: string
-  type: "info" | "warning" | "success" | "urgent"
-  target_audience: "all" | "employees" | "managers" | "specific_locations"
-  target_locations?: string[]
-  status: "draft" | "scheduled" | "published" | "expired"
-  publish_date: string
-  expiry_date?: string
-  created_by: string
-  created_at: string
-  views_count: number
-}
+/**
+ * Business Announcements — TanStack Query migration.
+ *
+ * Ground truth (communications.controller COM-010/011 + entity/DTO):
+ *   - GET /announcements and /announcements/for-me both return a PLAIN array (the
+ *     old `res.data.map` threw → it fell back to MOCK announcements).
+ *   - Columns: title, body, target_role∈{all,manager,employee}, display_until,
+ *     is_active. The old UI invented `type`, `status`, `views_count`,
+ *     `target_audience`/`target_roles[]` and sent them → forbidNonWhitelisted 400.
+ *   - Create/Update DTO = { title, body, target_role?, display_until?, is_active? }.
+ *     The old update sent `role` (not target_role) → 400. Writes are owner/manager.
+ */
 
-// ==================== MOCK DATA ====================
-const mockAnnouncements: Announcement[] = [
-  {
-    id: "1",
-    title: "New Menu Items Available",
-    content: "We are excited to announce new summer menu items. Please review the training materials before your next shift.",
-    type: "info",
-    target_audience: "all",
-    status: "published",
-    publish_date: "2024-01-15",
-    expiry_date: "2024-02-15",
-    created_by: "Admin",
-    created_at: "2024-01-14",
-    views_count: 45,
-  },
-  {
-    id: "2",
-    title: "System Maintenance Scheduled",
-    content: "POS system will be under maintenance on Sunday from 2 AM to 6 AM. Please complete all transactions before this time.",
-    type: "warning",
-    target_audience: "all",
-    status: "scheduled",
-    publish_date: "2024-01-20",
-    created_by: "IT Admin",
-    created_at: "2024-01-16",
-    views_count: 0,
-  },
-  {
-    id: "3",
-    title: "Employee of the Month",
-    content: "Congratulations to Sara Idrissi for being selected as Employee of the Month! Thank you for your dedication.",
-    type: "success",
-    target_audience: "employees",
-    status: "published",
-    publish_date: "2024-01-10",
-    created_by: "HR Manager",
-    created_at: "2024-01-09",
-    views_count: 38,
-  },
-  {
-    id: "4",
-    title: "Urgent: Health Inspection Tomorrow",
-    content: "Health inspection scheduled for tomorrow at Downtown location. All staff must ensure stations are clean and organized.",
-    type: "urgent",
-    target_audience: "specific_locations",
-    target_locations: ["Downtown"],
-    status: "published",
-    publish_date: "2024-01-17",
-    created_by: "Operations Manager",
-    created_at: "2024-01-17",
-    views_count: 12,
-  },
+const ROLE_OPTIONS: { value: AnnouncementRole; label: string }[] = [
+  { value: "all", label: "Everyone" },
+  { value: "manager", label: "Managers" },
+  { value: "employee", label: "Employees" },
 ]
+const roleLabel = (r: string) => ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r
+const RoleIcon = ({ role }: { role: string }) => (role === "all" ? <Globe className="w-4 h-4" /> : <Users className="w-4 h-4" />)
+const fmtDate = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString() : null)
 
-// ==================== REUSABLE COMPONENTS ====================
-function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" | "purple" | "amber" | "indigo" }) {
+function Badge({ children, color }: { children: React.ReactNode; color: "green" | "gray" | "blue" }) {
   const colors = {
     green: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    red: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    yellow: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    gray: "bg-gray-100 text-gray-500 dark:bg-[#1F1F23] dark:text-gray-400",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    gray: "bg-gray-100 text-gray-600 dark:bg-[#0F0F12] dark:text-gray-400",
-    purple: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-    amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-    indigo: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
   }
-  return <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${colors[color]}`}>{children}</span>
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1 ${colors[color]}`}>{children}</span>
 }
 
-function Button({ children, variant = "primary", className = "", onClick, disabled }: { 
-  children: React.ReactNode; 
-  variant?: "primary" | "secondary" | "danger" | "ghost"; 
-  className?: string; 
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  const base = "px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-  const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600",
-    secondary: "bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2a2a32]",
-    danger: "bg-red-500 text-white hover:bg-red-600",
-    ghost: "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1a1a20]",
-  }
-  return <button className={`${base} ${variants[variant]} ${className}`} onClick={onClick} disabled={disabled}>{children}</button>
-}
+const EMPTY = { title: "", body: "", target_role: "all" as AnnouncementRole, display_until: "", is_active: true }
 
-function Input({ label, type = "text", placeholder, value, onChange, className = "" }: {
-  label?: string;
-  type?: string;
-  placeholder?: string;
-  value?: string;
-  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      {label && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
-      <input
-        type={type}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 focus:border-transparent bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-      />
-    </div>
-  )
-}
-
-function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; size?: "sm" | "md" | "lg" }) {
+function Modal({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   if (!isOpen) return null
-  const sizes = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white dark:bg-[#0F0F12] rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-[#1F1F23]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#1a1a20] rounded-lg"><X className="w-5 h-5 text-gray-500 dark:text-gray-400" /></button>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#1a1a20] rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -162,607 +57,148 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: { isOpen: bool
   )
 }
 
-// ==================== TYPES (for-me tab) ====================
-interface ForMeAnnouncement {
-  id: string
-  title: string
-  body: string
-  type?: string
-  display_until?: string
-  created_at: string
-}
+const inputCls = "w-full px-3 py-2 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+const labelCls = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
 
-// ==================== MAIN COMPONENT ====================
 export default function AnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState(mockAnnouncements)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<"all" | "for-me">("all")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showViewModal, setShowViewModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null)
-  const [editFormData, setEditFormData] = useState({
-    title: "",
-    content: "",
-    target_audience: "all" as Announcement["target_audience"],
-    expiry_date: "",
-    is_active: true,
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
+  const [modal, setModal] = useState<{ mode: "create" } | { mode: "edit"; a: BusinessAnnouncement } | null>(null)
+  const [form, setForm] = useState(EMPTY)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  const listQuery = useQuery({ queryKey: merchantKeys.announcements.list(), queryFn: announcementsApi.list })
+  const forMeQuery = useQuery({ queryKey: merchantKeys.announcements.forMe(), queryFn: announcementsApi.forMe, enabled: activeTab === "for-me" })
+  const announcements = listQuery.data ?? []
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: merchantKeys.announcements.all })
+
+  const buildInput = (): CreateAnnouncementInput => ({
+    title: form.title.trim(),
+    body: form.body.trim(),
+    target_role: form.target_role,
+    ...(form.display_until ? { display_until: new Date(form.display_until).toISOString() } : {}),
+    is_active: form.is_active,
   })
-  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
-  const [formData, setFormData] = useState({
-    title: "",
-    content: "",
-    type: "info" as Announcement["type"],
-    target_audience: "all" as Announcement["target_audience"],
-    publish_date: "",
-    expiry_date: "",
-  })
+  const createM = useMutation({ mutationFn: () => announcementsApi.create(buildInput()), onSuccess: () => { invalidate(); setModal(null) }, onError: (e) => setFormError(humanizeError(e, "Failed to create announcement.")) })
+  const updateM = useMutation({ mutationFn: (id: string) => announcementsApi.update(id, buildInput()), onSuccess: () => { invalidate(); setModal(null) }, onError: (e) => setFormError(humanizeError(e, "Failed to update announcement.")) })
+  const toggleM = useMutation({ mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => announcementsApi.update(id, { is_active }), onSuccess: invalidate })
+  const deleteM = useMutation({ mutationFn: (id: string) => announcementsApi.remove(id), onSuccess: () => { invalidate(); setConfirmDelete(null) } })
 
-  // ── For Me tab state ──────────────────────────────────────────────────────
-  const [forMeAnnouncements, setForMeAnnouncements] = useState<ForMeAnnouncement[]>([])
-  const [forMeLoading, setForMeLoading] = useState(false)
-  const [forMeError, setForMeError] = useState<string | null>(null)
-  const [forMeFetched, setForMeFetched] = useState(false)
-
-  const fetchForMe = async () => {
-    if (forMeFetched) return
-    setForMeLoading(true)
-    setForMeError(null)
-    try {
-      const res = await apiFetch<{ data: any[] } | any[]>("/api/business/announcements/for-me")
-      const items: any[] = Array.isArray(res) ? res : (res as any).data ?? []
-      setForMeAnnouncements(
-        items.map((a: any) => ({
-          id: a.id,
-          title: a.title,
-          body: a.body ?? a.content ?? "",
-          type: a.type,
-          display_until: a.display_until,
-          created_at: a.created_at ?? "",
-        }))
-      )
-      setForMeFetched(true)
-    } catch (e: any) {
-      setForMeError(e.message ?? "Failed to load announcements for you")
-    } finally {
-      setForMeLoading(false)
-    }
-  }
-
-  const handleTabChange = (tab: "all" | "for-me") => {
-    setActiveTab(tab)
-    if (tab === "for-me") fetchForMe()
-  }
-
-  const fetchAnnouncements = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await apiFetch<{ data: any[] }>("/api/business/announcements")
-      const mapped: Announcement[] = res.data.map((a: any) => ({
-        id: a.id,
-        title: a.title,
-        content: a.body ?? a.content ?? "",
-        type: a.type ?? "info",
-        target_audience: a.target_roles?.length ? "employees" : "all",
-        status: a.is_active ? "published" : "draft",
-        publish_date: a.created_at ?? "",
-        expiry_date: a.display_until,
-        created_by: a.created_by ?? "",
-        created_at: a.created_at ?? "",
-        views_count: 0,
-      }))
-      setAnnouncements(mapped)
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load announcements")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { fetchAnnouncements() }, [])
-
-  const filteredAnnouncements = announcements.filter(a => {
-    const matchesSearch = a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          a.content.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || a.status === statusFilter
+  const filtered = useMemo(() => announcements.filter((a) => {
+    const q = search.trim().toLowerCase()
+    const matchesSearch = !q || a.title.toLowerCase().includes(q) || a.body.toLowerCase().includes(q)
+    const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? a.is_active : !a.is_active)
     return matchesSearch && matchesStatus
-  })
+  }), [announcements, search, statusFilter])
 
-  const getTypeIcon = (type: Announcement["type"]) => {
-    switch (type) {
-      case "info": return <Megaphone className="w-4 h-4 text-blue-500" />
-      case "warning": return <AlertCircle className="w-4 h-4 text-amber-500" />
-      case "success": return <CheckCircle className="w-4 h-4 text-green-500" />
-      case "urgent": return <AlertCircle className="w-4 h-4 text-red-500" />
-    }
-  }
+  const openCreate = () => { setForm(EMPTY); setFormError(null); setModal({ mode: "create" }) }
+  const openEdit = (a: BusinessAnnouncement) => { setForm({ title: a.title, body: a.body, target_role: a.target_role, display_until: a.display_until ? a.display_until.slice(0, 10) : "", is_active: a.is_active }); setFormError(null); setModal({ mode: "edit", a }) }
+  const submit = () => { if (!form.title.trim() || !form.body.trim()) { setFormError("Title and body are required."); return } ; setFormError(null); modal?.mode === "edit" ? updateM.mutate(modal.a.id) : createM.mutate() }
 
-  const getTypeBadgeColor = (type: Announcement["type"]): "blue" | "yellow" | "green" | "red" => {
-    switch (type) {
-      case "info": return "blue"
-      case "warning": return "yellow"
-      case "success": return "green"
-      case "urgent": return "red"
-    }
-  }
-
-  const getStatusBadgeColor = (status: Announcement["status"]): "green" | "yellow" | "blue" | "gray" => {
-    switch (status) {
-      case "published": return "green"
-      case "scheduled": return "blue"
-      case "draft": return "gray"
-      case "expired": return "yellow"
-    }
-  }
-
-  const getAudienceIcon = (audience: Announcement["target_audience"]) => {
-    switch (audience) {
-      case "all": return <Globe className="w-4 h-4" />
-      case "employees": return <Users className="w-4 h-4" />
-      case "managers": return <Users className="w-4 h-4" />
-      case "specific_locations": return <Building2 className="w-4 h-4" />
-    }
-  }
-
-  const handleCreate = async () => {
-    try {
-      await apiFetch("/api/business/announcements", {
-        method: "POST",
-        body: JSON.stringify({
-          title: formData.title,
-          body: formData.content,
-          type: formData.type,
-          target_roles: formData.target_audience === "all" ? [] : [formData.target_audience],
-          display_until: formData.expiry_date || undefined,
-        }),
-      })
-      setShowCreateModal(false)
-      setFormData({ title: "", content: "", type: "info", target_audience: "all", publish_date: "", expiry_date: "" })
-      await fetchAnnouncements()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to create announcement")
-    }
-  }
-
-  const handlePublish = (id: string) => {
-    setAnnouncements(announcements.map(a =>
-      a.id === id ? { ...a, status: "published" as const, publish_date: new Date().toISOString().split("T")[0] } : a
-    ))
-  }
-
-  const openEditModal = (announcement: Announcement) => {
-    setEditingAnnouncement(announcement)
-    setEditFormData({
-      title: announcement.title,
-      content: announcement.content,
-      target_audience: announcement.target_audience,
-      expiry_date: announcement.expiry_date ?? "",
-      is_active: announcement.status === "published",
-    })
-    setShowEditModal(true)
-  }
-
-  const handleEdit = async () => {
-    if (!editingAnnouncement) return
-    try {
-      await apiFetch(`/api/business/announcements/${editingAnnouncement.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          title: editFormData.title,
-          body: editFormData.content,
-          role: editFormData.target_audience === "all" ? undefined : editFormData.target_audience,
-          display_until: editFormData.expiry_date || undefined,
-          is_active: editFormData.is_active,
-        }),
-      })
-      setShowEditModal(false)
-      setEditingAnnouncement(null)
-      await fetchAnnouncements()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to update announcement")
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    try {
-      await apiFetch(`/api/business/announcements/${id}`, { method: "DELETE" })
-      await fetchAnnouncements()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to delete announcement")
-    }
-  }
-
-  if (loading && activeTab === "all") return <div className="py-10 text-center text-gray-400">Loading...</div>
+  const saving = createM.isPending || updateM.isPending
+  const listError = listQuery.isError ? humanizeError(listQuery.error, "Failed to load announcements.") : null
 
   return (
-    <div>
-      {error && <div className="p-4 mb-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{error}</div>}
-      {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Announcements</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Communicate with your team across all locations</p>
+    <div className="space-y-5">
+      {listError && <div className="flex items-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400"><AlertCircle className="w-4 h-4" />{listError}</div>}
+
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex gap-1 bg-gray-100 dark:bg-[#1F1F23] p-1 rounded-xl w-fit">
+          {([["all", "All Announcements"], ["for-me", "For Me"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setActiveTab(k)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === k ? "bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>{label}</button>
+          ))}
         </div>
-        <Button variant="primary" onClick={() => setShowCreateModal(true)}>
-          <Plus className="w-4 h-4" />
-          Create Announcement
-        </Button>
+        {activeTab === "all" && <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"><Plus className="w-4 h-4" />New Announcement</button>}
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#0F0F12] p-1 rounded-xl w-fit mb-6">
-        <button
-          onClick={() => handleTabChange("all")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-            activeTab === "all"
-              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          }`}
-        >
-          <Megaphone className="w-4 h-4" />
-          All Announcements
-        </button>
-        <button
-          onClick={() => handleTabChange("for-me")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-            activeTab === "for-me"
-              ? "bg-white dark:bg-[#1F1F23] text-gray-900 dark:text-white shadow-sm"
-              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          }`}
-        >
-          <Bell className="w-4 h-4" />
-          For Me
-        </button>
-      </div>
-
-      {/* ── For Me Tab ── */}
-      {activeTab === "for-me" && (
-        <div>
-          {forMeLoading && <div className="py-10 text-center text-gray-400">Loading…</div>}
-          {forMeError && <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">{forMeError}</div>}
-          {!forMeLoading && !forMeError && forMeAnnouncements.length === 0 && (
-            <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
-              <div className="w-16 h-16 bg-gray-100 dark:bg-[#0F0F12] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Bell className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No announcements for you</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">There are no active announcements targeting your role right now.</p>
+      {activeTab === "all" ? (
+        <>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input className="pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white w-64 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Search announcements..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-          )}
-          {!forMeLoading && forMeAnnouncements.length > 0 && (
-            <div className="space-y-4">
-              {forMeAnnouncements.map((a) => (
-                <div key={a.id} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 flex-shrink-0">
-                      <Bell className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{a.title}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{a.body}</p>
-                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {a.created_at ? new Date(a.created_at).toLocaleDateString() : ""}
-                        </span>
-                        {a.display_until && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Expires {new Date(a.display_until).toLocaleDateString()}
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="px-3 py-2 text-sm border border-gray-200 dark:border-[#1F1F23] rounded-lg bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+              <option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          {listQuery.isLoading ? (
+            <div className="py-10 text-center text-gray-400">Loading...</div>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((a) => {
+                const until = fmtDate(a.display_until)
+                return (
+                  <div key={a.id} className="bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-xl p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center shrink-0"><Megaphone className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{a.title}</h3>
+                            <Badge color={a.is_active ? "green" : "gray"}>{a.is_active ? "Active" : "Inactive"}</Badge>
+                            <Badge color="blue"><RoleIcon role={a.target_role} />{roleLabel(a.target_role)}</Badge>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{a.body}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">{until ? `Shown until ${until}` : "No expiry"} · Created {fmtDate(a.created_at)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => toggleM.mutate({ id: a.id, is_active: !a.is_active })} disabled={toggleM.isPending} title={a.is_active ? "Deactivate" : "Activate"} className="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-[#1F1F23] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#1a1a20]">{a.is_active ? "Deactivate" : "Activate"}</button>
+                        <button onClick={() => openEdit(a)} className="p-2 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg"><Pencil className="w-4 h-4 text-gray-500 dark:text-gray-400" /></button>
+                        {confirmDelete === a.id ? (
+                          <span className="flex gap-1 items-center">
+                            <button onClick={() => deleteM.mutate(a.id)} disabled={deleteM.isPending} className="px-2 py-1 bg-red-500 text-white text-xs rounded disabled:opacity-50">{deleteM.isPending ? "..." : "Yes"}</button>
+                            <button onClick={() => setConfirmDelete(null)} className="px-2 py-1 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 text-xs rounded">No</button>
                           </span>
+                        ) : (
+                          <button onClick={() => setConfirmDelete(a.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4 text-red-500" /></button>
                         )}
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
+              {filtered.length === 0 && <div className="py-12 text-center text-gray-400">No announcements found</div>}
             </div>
           )}
+        </>
+      ) : (
+        <div className="space-y-3">
+          {forMeQuery.isLoading ? <div className="py-10 text-center text-gray-400">Loading...</div>
+            : forMeQuery.isError ? <div className="py-10 text-center text-red-500 text-sm">{humanizeError(forMeQuery.error, "Failed to load.")}</div>
+            : (forMeQuery.data ?? []).length === 0 ? <div className="py-12 text-center text-gray-400">No announcements for you right now</div>
+            : (forMeQuery.data ?? []).map((a) => (
+              <div key={a.id} className="bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-xl p-5">
+                <div className="flex items-center gap-2"><Megaphone className="w-4 h-4 text-indigo-500" /><h3 className="font-semibold text-gray-900 dark:text-white">{a.title}</h3></div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{a.body}</p>
+                {fmtDate(a.display_until) && <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Shown until {fmtDate(a.display_until)}</p>}
+              </div>
+            ))}
         </div>
       )}
 
-      {/* ── All Announcements Tab ── */}
-      {activeTab === "all" && (<>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{announcements.length}</p>
-        </div>
-        <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Published</p>
-          <p className="text-2xl font-bold text-green-600 dark:text-green-400">{announcements.filter(a => a.status === "published").length}</p>
-        </div>
-        <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Scheduled</p>
-          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{announcements.filter(a => a.status === "scheduled").length}</p>
-        </div>
-        <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Drafts</p>
-          <p className="text-2xl font-bold text-gray-600 dark:text-gray-400">{announcements.filter(a => a.status === "draft").length}</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-4 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search announcements..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-          >
-            <option value="all">All Status</option>
-            <option value="published">Published</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="draft">Draft</option>
-            <option value="expired">Expired</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Announcements List */}
-      <div className="space-y-4">
-        {filteredAnnouncements.map((announcement) => (
-          <div key={announcement.id} className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4 flex-1">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  announcement.type === "info" ? "bg-blue-100 dark:bg-blue-900/30" :
-                  announcement.type === "warning" ? "bg-amber-100 dark:bg-amber-900/30" :
-                  announcement.type === "success" ? "bg-green-100 dark:bg-green-900/30" :
-                  "bg-red-100 dark:bg-red-900/30"
-                }`}>
-                  {getTypeIcon(announcement.type)}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{announcement.title}</h3>
-                    <Badge color={getTypeBadgeColor(announcement.type)}>{announcement.type}</Badge>
-                    <Badge color={getStatusBadgeColor(announcement.status)}>{announcement.status}</Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">{announcement.content}</p>
-                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
-                    <span className="flex items-center gap-1">
-                      {getAudienceIcon(announcement.target_audience)}
-                      {announcement.target_audience === "specific_locations" 
-                        ? announcement.target_locations?.join(", ") 
-                        : announcement.target_audience.replace("_", " ")}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {announcement.publish_date}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-3 h-3" />
-                      {announcement.views_count} views
-                    </span>
-                    <span>By {announcement.created_by}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {announcement.status === "draft" && (
-                  <Button variant="primary" className="!py-1.5 !px-3" onClick={() => handlePublish(announcement.id)}>
-                    <Send className="w-3 h-3" />
-                    Publish
-                  </Button>
-                )}
-                <button
-                  onClick={() => { setSelectedAnnouncement(announcement); setShowViewModal(true) }}
-                  className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => openEditModal(announcement)}
-                  className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(announcement.id)}
-                  className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {filteredAnnouncements.length === 0 && (
-          <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-12 text-center">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-[#0F0F12] rounded-full flex items-center justify-center mx-auto mb-4">
-              <Megaphone className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No announcements found</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Create your first announcement to communicate with your team.</p>
-          </div>
-        )}
-      </div>
-
-      {/* end "all" tab */}
-      </>)}
-
-      {/* Create Modal */}
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create Announcement" size="lg">
+      <Modal isOpen={!!modal} onClose={() => setModal(null)} title={modal?.mode === "edit" ? "Edit Announcement" : "New Announcement"}>
         <div className="space-y-4">
-          <Input
-            label="Title"
-            placeholder="Enter announcement title"
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-            <textarea
-              value={formData.content}
-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-              placeholder="Write your announcement..."
-              rows={4}
-              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
-            />
+          <div><label className={labelCls}>Title *</label><input className={inputCls} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Holiday hours" /></div>
+          <div><label className={labelCls}>Message *</label><textarea rows={4} className={`${inputCls} resize-none`} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Announcement text..." /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Audience</label><select className={inputCls} value={form.target_role} onChange={(e) => setForm({ ...form, target_role: e.target.value as AnnouncementRole })}>{ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+            <div><label className={labelCls}>Show until</label><input type="date" className={inputCls} value={form.display_until} onChange={(e) => setForm({ ...form, display_until: e.target.value })} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as Announcement["type"] })}
-                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-              >
-                <option value="info">Information</option>
-                <option value="warning">Warning</option>
-                <option value="success">Success</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Audience</label>
-              <select
-                value={formData.target_audience}
-                onChange={(e) => setFormData({ ...formData, target_audience: e.target.value as Announcement["target_audience"] })}
-                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-              >
-                <option value="all">All Staff</option>
-                <option value="employees">Employees Only</option>
-                <option value="managers">Managers Only</option>
-                <option value="specific_locations">Specific Locations</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Publish Date"
-              type="date"
-              value={formData.publish_date}
-              onChange={(e) => setFormData({ ...formData, publish_date: e.target.value })}
-            />
-            <Input
-              label="Expiry Date (Optional)"
-              type="date"
-              value={formData.expiry_date}
-              onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-            />
-          </div>
-          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-[#1F1F23]">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button variant="secondary" className="flex-1" onClick={handleCreate}>Save as Draft</Button>
-            <Button variant="primary" className="flex-1" onClick={() => { handleCreate(); handlePublish(Date.now().toString()) }}>
-              <Send className="w-4 h-4" />
-              Publish Now
-            </Button>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">Active (visible to the selected audience)</span></label>
+          {formError && <p className="text-sm text-red-600 dark:text-red-400">{formError}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setModal(null)} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1F1F23] rounded-lg">Cancel</button>
+            <button onClick={submit} disabled={saving || !form.title.trim() || !form.body.trim()} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">{saving ? "Saving..." : modal?.mode === "edit" ? "Save Changes" : "Create"}</button>
           </div>
         </div>
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setEditingAnnouncement(null) }} title="Edit Announcement" size="lg">
-        <div className="space-y-4">
-          <Input
-            label="Title"
-            placeholder="Enter announcement title"
-            value={editFormData.title}
-            onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
-            <textarea
-              value={editFormData.content}
-              onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
-              placeholder="Write your announcement..."
-              rows={4}
-              className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Audience</label>
-              <select
-                value={editFormData.target_audience}
-                onChange={(e) => setEditFormData({ ...editFormData, target_audience: e.target.value as Announcement["target_audience"] })}
-                className="w-full border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-              >
-                <option value="all">All Staff</option>
-                <option value="employees">Employees Only</option>
-                <option value="managers">Managers Only</option>
-                <option value="specific_locations">Specific Locations</option>
-              </select>
-            </div>
-            <Input
-              label="Expiry Date (Optional)"
-              type="date"
-              value={editFormData.expiry_date}
-              onChange={(e) => setEditFormData({ ...editFormData, expiry_date: e.target.value })}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="edit-is-active"
-              checked={editFormData.is_active}
-              onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
-              className="rounded border-gray-300 dark:border-[#1F1F23]"
-            />
-            <label htmlFor="edit-is-active" className="text-sm font-medium text-gray-700 dark:text-gray-300">Active</label>
-          </div>
-          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-[#1F1F23]">
-            <Button variant="secondary" className="flex-1" onClick={() => { setShowEditModal(false); setEditingAnnouncement(null) }}>Cancel</Button>
-            <Button variant="primary" className="flex-1" onClick={handleEdit}>Save Changes</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* View Modal */}
-      <Modal isOpen={showViewModal} onClose={() => setShowViewModal(false)} title="Announcement Details" size="lg">
-        {selectedAnnouncement && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              {getTypeIcon(selectedAnnouncement.type)}
-              <Badge color={getTypeBadgeColor(selectedAnnouncement.type)}>{selectedAnnouncement.type}</Badge>
-              <Badge color={getStatusBadgeColor(selectedAnnouncement.status)}>{selectedAnnouncement.status}</Badge>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{selectedAnnouncement.title}</h3>
-            <p className="text-gray-600 dark:text-gray-400">{selectedAnnouncement.content}</p>
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-[#1F1F23]">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-500">Target Audience</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">{selectedAnnouncement.target_audience.replace("_", " ")}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-500">Published</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedAnnouncement.publish_date}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-500">Created By</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedAnnouncement.created_by}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-500">Views</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedAnnouncement.views_count}</p>
-              </div>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   )
 }
-
-
-

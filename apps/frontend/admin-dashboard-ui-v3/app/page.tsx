@@ -1526,9 +1526,9 @@ function MainLayout({ activePage, selectedId, onNavigate, onSignOut }: { activeP
       case "kds": return <KDSPage />
       case "pex": return <PointsExchangePage />
       case "warehouses": return <WarehousesPage />
-      case "vendors": return <VendorsPage />
+      case "vendors": return <VendorsPage onNavigate={onNavigate} />
       case "vendor-payments": return <VendorPaymentsPage />
-      case "purchase-orders": return <PurchaseOrdersPage />
+      case "purchase-orders": return <PurchaseOrdersPage onNavigate={onNavigate} />
       case "stock-adjustments": return <StockAdjustmentsPage />
       case "stock-transfers": return <StockTransfersPage />
       case "announcements": return <AnnouncementsPage />

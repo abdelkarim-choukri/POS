@@ -61,7 +61,7 @@ export class VendorPaymentController {
   @HttpCode(HttpStatus.OK)
   void(
     @CurrentUser('business_id') businessId: string,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @Body() dto: VoidVendorPaymentDto,
   ) {

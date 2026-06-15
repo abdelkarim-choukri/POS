@@ -1,61 +1,31 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import {
-  LayoutGrid,
-  ChevronDown,
-  GripVertical,
-  CheckCircle,
-  Users,
-  MapPin,
-  Armchair,
-} from "lucide-react"
-import { apiFetch } from "@/lib/api"
+import { useMemo, useRef, useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { LayoutGrid, ChevronDown, GripVertical, CheckCircle, Users, MapPin, Armchair } from "lucide-react"
+import { tablesApi, diningAreasApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import type { BusinessTable } from "@/lib/merchant/types"
 
-// Data Shapes
-interface Table {
-  id: string
-  table_number: string
-  capacity: number
-  area_id: string
-  area_name: string
-  table_type_id: string
-  table_type_name: string
-  is_active: boolean
-  position_x?: number
-  position_y?: number
-  session_status?: "available" | "occupied" | "awaiting_payment"
-}
+/**
+ * Floor Plan Setup — TanStack Query migration.
+ *
+ * Ground truth (restaurant.controller tables + Table entity/DTO):
+ *   - GET business/tables → { records: [...] }; each row NESTS `area` and
+ *     `table_type` objects (the old UI read flat area_id/area_name/table_type_name →
+ *     all undefined → it silently fell back to MOCK tables/areas).
+ *   - position_x/position_y are INT (nullable). PATCH UpdateTableDto validates them
+ *     with @IsInt, so the old fractional percentages (e.g. 35.5) → 400. Positions
+ *     are rounded to integers before every PATCH.
+ *   - The area filter now lists REAL dining areas (was a mock area list). "Remove
+ *     from floor plan" now PERSISTS null positions (the old version only did it
+ *     locally, so tables reappeared on reload).
+ */
 
-interface DiningArea {
-  id: string
-  name: string
-}
+type Pos = { position_x: number | null; position_y: number | null }
+const clampInt = (v: number) => Math.min(98, Math.max(2, Math.round(v)))
 
-// Mock Data
-const DINING_AREAS: DiningArea[] = [
-  { id: "all", name: "All Areas" },
-  { id: "area-1", name: "Indoor Seating" },
-  { id: "area-2", name: "Terrace" },
-  { id: "area-3", name: "Bar" },
-]
-
-const TABLES: Table[] = [
-  { id: "t-1", table_number: "T-01", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 15, position_y: 20 },
-  { id: "t-2", table_number: "T-02", capacity: 6, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-2", table_type_name: "Booth", is_active: true, position_x: 35, position_y: 20 },
-  { id: "t-3", table_number: "T-03", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 55, position_y: 20 },
-  { id: "t-4", table_number: "T-04", capacity: 4, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 15, position_y: 55 },
-  { id: "t-5", table_number: "T-05", capacity: 6, area_id: "area-1", area_name: "Indoor Seating", table_type_id: "type-2", table_type_name: "Booth", is_active: true, position_x: 35, position_y: 55 },
-  { id: "t-6", table_number: "T-06", capacity: 2, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 70, position_y: 30 },
-  { id: "t-7", table_number: "T-07", capacity: 4, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 85, position_y: 30 },
-  { id: "t-8", table_number: "T-08", capacity: 4, area_id: "area-2", area_name: "Terrace", table_type_id: "type-1", table_type_name: "Standard", is_active: true, position_x: 55, position_y: 75 },
-  { id: "t-9", table_number: "B-01", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true },
-  { id: "t-10", table_number: "B-02", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true },
-  { id: "t-11", table_number: "B-03", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true, position_x: 70, position_y: 70 },
-  { id: "t-12", table_number: "B-04", capacity: 2, area_id: "area-3", area_name: "Bar", table_type_id: "type-3", table_type_name: "Bar Stool", is_active: true, position_x: 85, position_y: 70 },
-]
-
-// Badge Component
 function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "green" | "blue" | "gray" }) {
   const variants = {
     default: "bg-gray-100 text-gray-700",
@@ -66,319 +36,160 @@ function Badge({ children, variant = "default" }: { children: React.ReactNode; v
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${variants[variant]}`}>{children}</span>
 }
 
-// Table Bubble Component
-function TableBubble({
-  table,
-  isSelected,
-  onClick,
-  onDragStart,
-}: {
-  table: Table
-  isSelected: boolean
-  onClick: () => void
-  onDragStart: (e: React.DragEvent<HTMLButtonElement>, tableId: string) => void
-}) {
-  // Determine color based on session status (for mockup, all are setup mode - gray)
-  const getBubbleStyles = () => {
-    if (table.session_status === "available") {
-      return "bg-green-50 border-green-300 text-green-800"
-    }
-    if (table.session_status === "occupied") {
-      return "bg-blue-50 border-blue-400 text-blue-800"
-    }
-    // Setup mode (no session data)
-    return "bg-gray-100 border-gray-300 text-gray-600"
-  }
-
-  return (
-    <button
-      draggable
-      onClick={onClick}
-      onDragStart={(e) => onDragStart(e, table.id)}
-      className={`absolute w-[72px] h-[72px] rounded-2xl border-2 flex flex-col items-center justify-center cursor-move transition-all ${getBubbleStyles()} ${
-        isSelected ? "ring-2 ring-green-500 ring-offset-1" : ""
-      }`}
-      style={{
-        left: `${table.position_x}%`,
-        top: `${table.position_y}%`,
-        transform: "translate(-50%, -50%)",
-      }}
-    >
-      <span className="font-mono font-bold text-sm">{table.table_number}</span>
-      <span className="text-xs">{table.capacity} seats</span>
-    </button>
-  )
-}
-
-// Unplaced Table Chip Component
-function UnplacedTableChip({
-  table,
-  onDragStart,
-}: {
-  table: Table
-  onDragStart: (e: React.DragEvent<HTMLDivElement>, tableId: string) => void
-}) {
-  return (
-    <div
-      draggable
-      onDragStart={(e) => onDragStart(e, table.id)}
-      className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-move hover:border-gray-300 transition-colors"
-    >
-      <GripVertical className="w-4 h-4 text-gray-400" />
-      <span className="font-mono text-sm text-gray-700">{table.table_number}</span>
-    </div>
-  )
-}
-
-// Main Page Component
 export default function FloorPlanSetupPage() {
+  const queryClient = useQueryClient()
   const [selectedArea, setSelectedArea] = useState("all")
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
-  const [tables, setTables] = useState<Table[]>(TABLES)
-  const [loadingTables, setLoadingTables] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  // Track which table IDs have unsaved position changes
-  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
-  // Per-table save status: "saving" | "saved" | "error"
+  // Unsaved position edits keyed by table id (manual X/Y edits before "Save").
+  const [overrides, setOverrides] = useState<Record<string, Pos>>({})
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({})
-  // Bulk save layout state
-  const [savingLayout, setSavingLayout] = useState(false)
-  const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
-  // Drag tracking
+  const [layoutError, setLayoutError] = useState<string | null>(null)
+
   const dragTableId = useRef<string | null>(null)
   const dragOffsetRef = useRef<{ ox: number; oy: number }>({ ox: 0, oy: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
 
-  // Load tables from backend on mount
-  useEffect(() => {
-    setLoadingTables(true)
-    setLoadError(null)
-    apiFetch<{ data: Table[] } | Table[]>("/api/business/tables")
-      .then((res) => {
-        const rows = Array.isArray(res) ? res : (res as { data: Table[] }).data
-        if (Array.isArray(rows) && rows.length > 0) {
-          setTables(rows)
-        }
-        // else keep mock data as fallback
-      })
-      .catch(() => {
-        // Backend not reachable — silently keep mock data; show a subtle indicator
-        setLoadError("Could not load tables from server — showing local data.")
-      })
-      .finally(() => setLoadingTables(false))
-  }, [])
+  const tablesQuery = useQuery({ queryKey: merchantKeys.tables.list(), queryFn: () => tablesApi.list({ with_session_status: true }) })
+  const areasQuery = useQuery({ queryKey: merchantKeys.diningAreas.list("active"), queryFn: () => diningAreasApi.list({ is_active: true }) })
+  const tables = tablesQuery.data ?? []
+  const areas = areasQuery.data ?? []
 
-  // Persist a single table's position to the backend
-  const persistPosition = useCallback(async (tableId: string, x: number, y: number) => {
-    setSaveStatus((prev) => ({ ...prev, [tableId]: "saving" }))
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: merchantKeys.tables.all })
+
+  // Effective position = unsaved override if present, else the server value.
+  const effPos = (t: BusinessTable): Pos => overrides[t.id] ?? { position_x: t.position_x, position_y: t.position_y }
+  const isPlaced = (t: BusinessTable) => { const p = effPos(t); return p.position_x !== null && p.position_y !== null }
+
+  const positionMutation = useMutation({
+    mutationFn: ({ id, pos }: { id: string; pos: Pos }) => tablesApi.update(id, pos),
+    onMutate: ({ id }) => setSaveStatus((s) => ({ ...s, [id]: "saving" })),
+    onSuccess: (_d, { id }) => {
+      setOverrides((o) => { const n = { ...o }; delete n[id]; return n })
+      setSaveStatus((s) => ({ ...s, [id]: "saved" }))
+      setTimeout(() => setSaveStatus((s) => { const n = { ...s }; if (n[id] === "saved") delete n[id]; return n }), 2000)
+      invalidate()
+    },
+    onError: (_e, { id }) => setSaveStatus((s) => ({ ...s, [id]: "error" })),
+  })
+
+  const dirtyIds = Object.keys(overrides)
+  const saveLayout = async () => {
+    setLayoutError(null)
     try {
-      await apiFetch(`/api/business/tables/${tableId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ position_x: x, position_y: y }),
-      })
-      setSaveStatus((prev) => ({ ...prev, [tableId]: "saved" }))
-      setDirtyIds((prev) => { const next = new Set(prev); next.delete(tableId); return next })
-      // Clear "saved" badge after 2 s
-      setTimeout(() => setSaveStatus((prev) => {
-        const next = { ...prev }
-        if (next[tableId] === "saved") delete next[tableId]
-        return next
-      }), 2000)
-    } catch {
-      setSaveStatus((prev) => ({ ...prev, [tableId]: "error" }))
+      await Promise.all(dirtyIds.map((id) => tablesApi.update(id, overrides[id])))
+      setOverrides({})
+      invalidate()
+    } catch (e) {
+      setLayoutError(humanizeError(e, "Some positions could not be saved."))
     }
-  }, [])
-
-  // Filter tables by area
-  const filteredTables = selectedArea === "all" ? tables : tables.filter((t) => t.area_id === selectedArea)
-
-  // Separate placed and unplaced tables
-  const placedTables = filteredTables.filter((t) => t.position_x !== undefined && t.position_y !== undefined)
-  const unplacedTables = filteredTables.filter((t) => t.position_x === undefined || t.position_y === undefined)
-
-  const selectedTable = tables.find((t) => t.id === selectedTableId)
-
-  // Update position in local state and mark dirty (no auto-persist — user must press Save Position or Save Layout)
-  const updateTablePosition = (tableId: string, x: number, y: number) => {
-    setTables((prev) => prev.map((t) => (t.id === tableId ? { ...t, position_x: x, position_y: y } : t)))
-    setDirtyIds((prev) => new Set(prev).add(tableId))
   }
 
-  const removeFromFloorPlan = (tableId: string) => {
-    setTables((prev) => prev.map((t) => (t.id === tableId ? { ...t, position_x: undefined, position_y: undefined } : t)))
-    setDirtyIds((prev) => { const next = new Set(prev); next.delete(tableId); return next })
+  const filtered = useMemo(
+    () => (selectedArea === "all" ? tables : tables.filter((t) => t.area?.id === selectedArea)),
+    [tables, selectedArea],
+  )
+  const placed = filtered.filter(isPlaced)
+  const unplaced = filtered.filter((t) => !isPlaced(t))
+  const selectedTable = tables.find((t) => t.id === selectedTableId) ?? null
+
+  const setLocalPos = (id: string, x: number | null, y: number | null) =>
+    setOverrides((o) => ({ ...o, [id]: { position_x: x, position_y: y } }))
+
+  const persist = (id: string, pos: Pos) => positionMutation.mutate({ id, pos })
+
+  const removeFromFloorPlan = (id: string) => {
     setSelectedTableId(null)
-    // Persist removal (null positions represented by omitting fields — send 0,0 is wrong;
-    // instead PATCH without position fields would leave it unchanged, so we skip the API call
-    // here; the backend simply won't have a position stored, matching the undefined state.)
+    persist(id, { position_x: null, position_y: null })
   }
 
-  // Drag-start: record which table and the cursor offset inside the bubble
-  const handleDragStart = (
-    e: React.DragEvent<HTMLButtonElement | HTMLDivElement>,
-    tableId: string,
-  ) => {
+  const handleDragStart = (e: React.DragEvent<HTMLElement>, tableId: string) => {
     dragTableId.current = tableId
-    // Store cursor offset relative to the drag element's top-left corner
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    dragOffsetRef.current = {
-      ox: e.clientX - rect.left,
-      oy: e.clientY - rect.top,
-    }
+    dragOffsetRef.current = { ox: e.clientX - rect.left, oy: e.clientY - rect.top }
     e.dataTransfer.effectAllowed = "move"
   }
 
-  // Drop on canvas: calculate new % position and update state
   const handleCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     const tableId = dragTableId.current
     if (!tableId || !canvasRef.current) return
-    const canvasRect = canvasRef.current.getBoundingClientRect()
-    // Cursor position relative to canvas, adjusted by intra-bubble offset so the bubble centre lands under cursor
-    const bubbleHalfW = 36 // 72px / 2
-    const bubbleHalfH = 36
-    const rawX = e.clientX - canvasRect.left - dragOffsetRef.current.ox + bubbleHalfW
-    const rawY = e.clientY - canvasRect.top - dragOffsetRef.current.oy + bubbleHalfH
-    // Convert to percentage, clamped 2–98 so bubbles don't clip the canvas edge
-    const pctX = Math.min(98, Math.max(2, (rawX / canvasRect.width) * 100))
-    const pctY = Math.min(98, Math.max(2, (rawY / canvasRect.height) * 100))
-    const x = Math.round(pctX * 10) / 10
-    const y = Math.round(pctY * 10) / 10
-    updateTablePosition(tableId, x, y)
+    const rect = canvasRef.current.getBoundingClientRect()
+    const rawX = e.clientX - rect.left - dragOffsetRef.current.ox + 36
+    const rawY = e.clientY - rect.top - dragOffsetRef.current.oy + 36
+    const x = clampInt((rawX / rect.width) * 100)
+    const y = clampInt((rawY / rect.height) * 100)
+    setLocalPos(tableId, x, y)
     setSelectedTableId(tableId)
-    // Auto-persist immediately after drop
-    persistPosition(tableId, x, y)
+    persist(tableId, { position_x: x, position_y: y }) // auto-save (rounded INT)
     dragTableId.current = null
   }
 
-  // Save Layout: batch-persist all dirty table positions
-  const handleSaveLayout = async () => {
-    if (dirtyIds.size === 0) return
-    setSavingLayout(true)
-    setLayoutSaveError(null)
-    const dirty = tables.filter((t) => dirtyIds.has(t.id) && t.position_x !== undefined && t.position_y !== undefined)
-    try {
-      await Promise.all(
-        dirty.map((t) =>
-          apiFetch(`/api/business/tables/${t.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ position_x: t.position_x, position_y: t.position_y }),
-          }),
-        ),
-      )
-      setDirtyIds(new Set())
-    } catch {
-      setLayoutSaveError("Some positions could not be saved. Please try again.")
-    } finally {
-      setSavingLayout(false)
-    }
-  }
+  const bubbleStyles = (t: BusinessTable) =>
+    t.session_status === "occupied" || t.session_status === "awaiting_payment"
+      ? "bg-blue-50 border-blue-400 text-blue-800"
+      : t.session_status === "available"
+        ? "bg-green-50 border-green-300 text-green-800"
+        : "bg-gray-100 border-gray-300 text-gray-600"
+
+  const listError = tablesQuery.isError ? humanizeError(tablesQuery.error, "Failed to load tables.") : null
 
   return (
     <div className="p-8">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-            <LayoutGrid className="w-5 h-5 text-blue-600" />
-          </div>
+          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center"><LayoutGrid className="w-5 h-5 text-blue-600" /></div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Floor Plan Setup</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Floor Plan Setup</h1>
             <p className="text-sm text-gray-500">Drag tables to position them on the floor plan</p>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
-          {/* Save Layout button — only shown when there are unsaved positions */}
-          {dirtyIds.size > 0 && (
-            <button
-              onClick={handleSaveLayout}
-              disabled={savingLayout}
-              className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-xl hover:bg-green-600 disabled:opacity-60 transition-colors"
-            >
-              {savingLayout ? "Saving…" : `Save Layout (${dirtyIds.size})`}
+          {dirtyIds.length > 0 && (
+            <button onClick={saveLayout} className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-xl hover:bg-green-600 transition-colors">
+              Save Layout ({dirtyIds.length})
             </button>
           )}
-          {layoutSaveError && (
-            <span className="text-xs text-red-500">{layoutSaveError}</span>
-          )}
-
+          {layoutError && <span className="text-xs text-red-500">{layoutError}</span>}
           <div className="relative">
-            <select
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-              className="appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-            >
-              {DINING_AREAS.map((area) => (
-                <option key={area.id} value={area.id}>
-                  {area.name}
-                </option>
-              ))}
+            <select value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}
+              className="appearance-none pl-4 pr-10 py-2.5 bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-xl text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 outline-none">
+              <option value="all">All Areas</option>
+              {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
       </div>
 
-      {/* Load error banner */}
-      {loadError && (
-        <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-          {loadError}
-        </div>
-      )}
+      {listError && <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{listError}</div>}
 
-      {/* Main Content */}
       <div className="flex gap-6">
-        {/* Canvas Area */}
         <div className="flex-1">
-          <div
-            ref={canvasRef}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleCanvasDrop}
+          <div ref={canvasRef} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop}
             className="relative bg-white border border-gray-200 rounded-2xl overflow-hidden"
-            style={{
-              height: "520px",
-              backgroundImage: `
-                linear-gradient(to right, #f1f5f9 1px, transparent 1px),
-                linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)
-              `,
-              backgroundSize: "40px 40px",
-            }}
-          >
-            {/* Loading overlay */}
-            {loadingTables && (
-              <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
-                <span className="text-sm text-gray-400">Loading tables…</span>
+            style={{ height: "520px", backgroundImage: `linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px)`, backgroundSize: "40px 40px" }}>
+            {tablesQuery.isLoading && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10"><span className="text-sm text-gray-400">Loading tables…</span></div>
+            )}
+            {selectedArea !== "all" && (
+              <div className="absolute top-4 left-4">
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">{areas.find((a) => a.id === selectedArea)?.name ?? ""}</span>
               </div>
             )}
 
-            {/* Area Labels */}
-            <div className="absolute top-4 left-4 flex gap-2">
-              {selectedArea === "all" && (
-                <>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">Indoor</span>
-                  <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded">Terrace</span>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">Bar</span>
-                </>
-              )}
-              {selectedArea === "area-1" && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">Indoor Seating</span>}
-              {selectedArea === "area-2" && <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded">Terrace</span>}
-              {selectedArea === "area-3" && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">Bar</span>}
-            </div>
+            {placed.map((table) => {
+              const p = effPos(table)
+              return (
+                <button key={table.id} draggable onClick={() => setSelectedTableId(table.id)} onDragStart={(e) => handleDragStart(e, table.id)}
+                  className={`absolute w-[72px] h-[72px] rounded-2xl border-2 flex flex-col items-center justify-center cursor-move transition-all ${bubbleStyles(table)} ${selectedTableId === table.id ? "ring-2 ring-green-500 ring-offset-1" : ""}`}
+                  style={{ left: `${p.position_x}%`, top: `${p.position_y}%`, transform: "translate(-50%, -50%)" }}>
+                  <span className="font-mono font-bold text-sm">{table.table_number}</span>
+                  <span className="text-xs">{table.capacity} seats</span>
+                </button>
+              )
+            })}
 
-            {/* Table Bubbles */}
-            {placedTables.map((table) => (
-              <TableBubble
-                key={table.id}
-                table={table}
-                isSelected={selectedTableId === table.id}
-                onClick={() => setSelectedTableId(table.id)}
-                onDragStart={handleDragStart}
-              />
-            ))}
-
-            {/* Empty State */}
-            {!loadingTables && placedTables.length === 0 && (
+            {!tablesQuery.isLoading && placed.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <LayoutGrid className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -389,98 +200,46 @@ export default function FloorPlanSetupPage() {
             )}
           </div>
 
-          {/* Help Text */}
-          <p className="text-sm text-gray-500 mt-3">
-            Drag tables to position them. In the actual terminal app, servers see this layout when selecting tables.
-          </p>
+          <p className="text-sm text-gray-500 mt-3">Drag tables to position them. In the terminal app, servers see this layout when selecting tables.</p>
 
-          {/* Selected Table Panel */}
           {selectedTable && (
-            <div className="mt-4 bg-white border border-gray-200 rounded-xl p-5">
+            <div className="mt-4 bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">
-                  {selectedTable.table_number} — {selectedTable.area_name}
-                </h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white">{selectedTable.table_number}{selectedTable.area ? ` — ${selectedTable.area.name}` : ""}</h3>
                 <div className="flex items-center gap-2">
-                  {saveStatus[selectedTable.id] === "saving" && (
-                    <span className="text-xs text-gray-400">Saving…</span>
-                  )}
-                  {saveStatus[selectedTable.id] === "saved" && (
-                    <span className="text-xs text-green-600">Saved</span>
-                  )}
-                  {saveStatus[selectedTable.id] === "error" && (
-                    <span className="text-xs text-red-500">Save failed</span>
-                  )}
-                  <Badge variant="green">Active</Badge>
+                  {saveStatus[selectedTable.id] === "saving" && <span className="text-xs text-gray-400">Saving…</span>}
+                  {saveStatus[selectedTable.id] === "saved" && <span className="text-xs text-green-600">Saved</span>}
+                  {saveStatus[selectedTable.id] === "error" && <span className="text-xs text-red-500">Save failed</span>}
+                  <Badge variant={selectedTable.is_active ? "green" : "gray"}>{selectedTable.is_active ? "Active" : "Inactive"}</Badge>
                 </div>
               </div>
-
-              <div className="flex items-center gap-6 text-sm text-gray-600 mb-4">
-                <div className="flex items-center gap-2">
-                  <Armchair className="w-4 h-4 text-gray-400" />
-                  <span>Type: {selectedTable.table_type_name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-400" />
-                  <span>Capacity: {selectedTable.capacity} seats</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <span>Status: Active</span>
-                </div>
+              <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <div className="flex items-center gap-2"><Armchair className="w-4 h-4 text-gray-400" /><span>Type: {selectedTable.table_type?.name ?? "—"}</span></div>
+                <div className="flex items-center gap-2"><Users className="w-4 h-4 text-gray-400" /><span>Capacity: {selectedTable.capacity} seats</span></div>
+                <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400" /><span>Area: {selectedTable.area?.name ?? "—"}</span></div>
               </div>
-
               <div className="flex items-end gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Position</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Position</label>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">X:</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={selectedTable.position_x ?? 0}
-                        onChange={(e) =>
-                          updateTablePosition(selectedTable.id, Number(e.target.value), selectedTable.position_y ?? 0)
-                        }
-                        className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                      />
+                      <input type="number" min={0} max={100} value={effPos(selectedTable).position_x ?? 0}
+                        onChange={(e) => setLocalPos(selectedTable.id, clampInt(Number(e.target.value)), effPos(selectedTable).position_y ?? 0)}
+                        className="w-16 px-2 py-1.5 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 outline-none" />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">Y:</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={selectedTable.position_y ?? 0}
-                        onChange={(e) =>
-                          updateTablePosition(selectedTable.id, selectedTable.position_x ?? 0, Number(e.target.value))
-                        }
-                        className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                      />
+                      <input type="number" min={0} max={100} value={effPos(selectedTable).position_y ?? 0}
+                        onChange={(e) => setLocalPos(selectedTable.id, effPos(selectedTable).position_x ?? 0, clampInt(Number(e.target.value)))}
+                        className="w-16 px-2 py-1.5 border border-gray-200 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#1a1a20] text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 outline-none" />
                     </div>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-3 ml-auto">
-                  <button
-                    onClick={() => removeFromFloorPlan(selectedTable.id)}
-                    className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    Remove from Floor Plan
-                  </button>
-                  <button
-                    disabled={saveStatus[selectedTable.id] === "saving"}
-                    onClick={() =>
-                      persistPosition(
-                        selectedTable.id,
-                        selectedTable.position_x ?? 0,
-                        selectedTable.position_y ?? 0,
-                      )
-                    }
-                    className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-60 transition-colors"
-                  >
+                  <button onClick={() => removeFromFloorPlan(selectedTable.id)} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Remove from Floor Plan</button>
+                  <button disabled={saveStatus[selectedTable.id] === "saving"} onClick={() => persist(selectedTable.id, effPos(selectedTable))}
+                    className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 disabled:opacity-60 transition-colors">
                     {saveStatus[selectedTable.id] === "saving" ? "Saving…" : "Save Position"}
                   </button>
                 </div>
@@ -489,30 +248,23 @@ export default function FloorPlanSetupPage() {
           )}
         </div>
 
-        {/* Unplaced Tables Sidebar */}
-        <div className="w-56 bg-gray-50 border border-gray-200 rounded-xl p-4 h-fit">
+        <div className="w-56 bg-gray-50 dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] rounded-xl p-4 h-fit">
           <h3 className="text-sm font-semibold text-gray-500 mb-3">Unplaced Tables</h3>
-
-          {unplacedTables.length > 0 ? (
+          {unplaced.length > 0 ? (
             <div className="space-y-2">
-              {unplacedTables.map((table) => (
-                <UnplacedTableChip
-                  key={table.id}
-                  table={table}
-                  onDragStart={handleDragStart}
-                />
+              {unplaced.map((table) => (
+                <div key={table.id} draggable onDragStart={(e) => handleDragStart(e, table.id)}
+                  className="flex items-center gap-2 bg-white dark:bg-[#1a1a20] border border-gray-200 dark:border-[#1F1F23] rounded-lg px-3 py-2 cursor-move hover:border-gray-300 transition-colors">
+                  <GripVertical className="w-4 h-4 text-gray-400" />
+                  <span className="font-mono text-sm text-gray-700 dark:text-gray-300">{table.table_number}</span>
+                </div>
               ))}
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-sm">All tables positioned</span>
-            </div>
+            <div className="flex items-center gap-2 text-green-600"><CheckCircle className="w-4 h-4" /><span className="text-sm">All tables positioned</span></div>
           )}
         </div>
       </div>
     </div>
   )
 }
-
-

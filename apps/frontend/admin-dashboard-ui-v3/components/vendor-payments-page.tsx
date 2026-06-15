@@ -1,7 +1,7 @@
-﻿"use client"
+"use client"
 
-import { useState, useEffect } from "react"
-import { apiFetch } from "@/lib/api"
+import { useMemo, useState } from "react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Search,
   Plus,
@@ -10,82 +10,68 @@ import {
   Check,
   AlertCircle,
   Clock,
-  Calendar,
   DollarSign,
-  CreditCard,
   Banknote,
   Building2,
   FileText,
   Receipt,
-  ChevronRight,
-  ChevronLeft,
-  Filter,
-  Download,
-  Printer,
-  CheckCircle,
-  XCircle,
   Link2,
   Ban,
-  MoreHorizontal,
   Phone,
-  RefreshCw,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  CURRENCY,
-  DATE_FORMAT,
-  PAGINATION,
-  getStatusColor as getStatusColorFromConstants,
-  VENDOR_PAYMENTS_LABELS as LABELS,
-  COMMON_LABELS,
-  PERMISSION_LABELS,
-} from "@/lib/constants"
+import { vendorPaymentsApi, vendorsApi, purchaseOrdersApi, authApi } from "@/lib/merchant/api"
+import { merchantKeys } from "@/lib/merchant/query-keys"
+import { humanizeError } from "@/lib/merchant/errors"
+import type {
+  VendorPayment,
+  VendorPaymentMethod,
+  VendorPaymentStatus,
+} from "@/lib/merchant/types"
 
-// ============== TYPES ==============
-type PaymentMethod = "cash" | "check" | "bank_transfer" | "mobile"
-type PaymentStatus = "pending" | "confirmed" | "voided"
+/**
+ * Vendor Payments — TanStack Query migration.
+ *
+ * Ground truth (apps/backend/src/modules/inventory):
+ *   - CreateVendorPaymentDto: vendor_id, amount_paid (NUMERIC, NOT `amount`),
+ *     payment_date, payment_method ∈ {bank_transfer, cheque, cash, other},
+ *     optional purchase_order_id / reference_number / notes.
+ *   - list/get return the RAW entity: no `vendor` or `purchaseOrder` joins, so
+ *     vendor name + PO number are resolved client-side from the vendors / PO lists.
+ *   - amount_paid serialises as a STRING → Number() before any math/format.
+ *   - confirm + void are @Roles('owner') → gated to the owner role here too.
+ *   - There is NO global "total outstanding" endpoint (only per-vendor), so the
+ *     stat cards show only payment-derived numbers; per-vendor outstanding lives
+ *     inside the Record-Payment modal.
+ */
 
-interface Vendor {
-  id: string
-  name: string
-  contact_name: string
-  phone: string
+// ============== FORMAT HELPERS ==============
+const num = (v: string | number | null | undefined) => Number(v ?? 0)
+const money = (v: string | number | null | undefined) =>
+  num(v).toLocaleString("fr-MA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const formatDate = (s: string | null | undefined) => (s ? String(s).slice(0, 10) : "—")
+const formatDateTime = (s: string | null | undefined) =>
+  s ? new Date(s).toLocaleString("fr-MA") : "—"
+
+const METHOD_OPTIONS: { value: VendorPaymentMethod; label: string }[] = [
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "cheque", label: "Cheque" },
+  { value: "cash", label: "Cash" },
+  { value: "other", label: "Other" },
+]
+const METHOD_LABEL: Record<VendorPaymentMethod, string> = {
+  bank_transfer: "Bank Transfer",
+  cheque: "Cheque",
+  cash: "Cash",
+  other: "Other",
 }
-
-interface OutstandingPO {
-  id: string
-  po_number: string
-  vendor_id: string
-  vendor_name: string
-  total_ttc: number
-  amount_paid: number
-  balance_due: number
-  expected_delivery_date: string
-  status: "partial" | "unpaid" | "paid"
-}
-
-interface VendorPayment {
-  id: string
-  payment_number: string
-  vendor_id: string
-  vendor_name: string
-  po_number: string | null
-  po_id: string | null
-  payment_method: PaymentMethod
-  amount: number
-  status: PaymentStatus
-  payment_date: string
-  confirmed_by: string | null
-  confirmed_at: string | null
-  reference_number: string | null
-  notes: string | null
-  created_by: string
-}
-
 
 // ============== REUSABLE COMPONENTS ==============
-function Badge({ children, color }: { children: React.ReactNode; color: "green" | "red" | "blue" | "yellow" | "gray" | "indigo" | "purple" }) {
-  const colors = {
+type BadgeColor = "green" | "red" | "blue" | "yellow" | "gray" | "indigo" | "purple"
+function Badge({ children, color }: { children: React.ReactNode; color: BadgeColor }) {
+  const colors: Record<BadgeColor, string> = {
     green: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     red: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -147,33 +133,12 @@ function SlidePanel({ isOpen, onClose, title, children }: { isOpen: boolean; onC
   )
 }
 
-// User permissions simulation
-interface UserPermissions {
-  role: "cashier" | "manager" | "owner"
-  can_confirm_payment: boolean
-  can_void_payment: boolean
-}
-
-
-// Helper functions for formatting
-function formatPrice(amount: number): string {
-  return CURRENCY.format(amount)
-}
-
-function formatDate(dateStr: string): string {
-  return DATE_FORMAT.formatDate(dateStr)
-}
-
-function formatDateTime(dateStr: string): string {
-  return DATE_FORMAT.formatDateTime(dateStr)
-}
-
-// Skeleton Loaders
 function PaymentRowSkeleton() {
   return (
     <tr className="border-b border-gray-100 dark:border-[#1F1F23]">
       <td className="p-4"><Skeleton className="h-4 w-24" /></td>
       <td className="p-4"><Skeleton className="h-4 w-32" /></td>
+      <td className="p-4"><Skeleton className="h-4 w-20" /></td>
       <td className="p-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
       <td className="p-4"><Skeleton className="h-4 w-20" /></td>
       <td className="p-4"><Skeleton className="h-4 w-24" /></td>
@@ -183,317 +148,234 @@ function PaymentRowSkeleton() {
   )
 }
 
-function StatsCardSkeleton() {
-  return (
-    <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
-      <Skeleton className="w-10 h-10 rounded-lg mb-2" />
-      <Skeleton className="h-7 w-28 mb-1" />
-      <Skeleton className="h-4 w-24" />
-    </div>
-  )
-}
-
-// ============== HELPER FUNCTIONS ==============
-function getPaymentMethodIcon(method: PaymentMethod) {
-  const icons: Record<PaymentMethod, React.ReactNode> = {
+// ============== STATUS / METHOD VISUALS ==============
+function getPaymentMethodIcon(method: VendorPaymentMethod) {
+  const icons: Record<VendorPaymentMethod, React.ReactNode> = {
     cash: <Banknote className="w-3 h-3" />,
-    check: <FileText className="w-3 h-3" />,
+    cheque: <FileText className="w-3 h-3" />,
     bank_transfer: <Building2 className="w-3 h-3" />,
-    mobile: <Phone className="w-3 h-3" />,
+    other: <Phone className="w-3 h-3" />,
   }
-  return icons[method]
+  return icons[method] ?? <DollarSign className="w-3 h-3" />
 }
-
-function getPaymentMethodColor(method: PaymentMethod): "green" | "blue" | "indigo" | "purple" {
-  const colors: Record<PaymentMethod, "green" | "blue" | "indigo" | "purple"> = {
+function getPaymentMethodColor(method: VendorPaymentMethod): BadgeColor {
+  const colors: Record<VendorPaymentMethod, BadgeColor> = {
     cash: "green",
-    check: "blue",
+    cheque: "blue",
     bank_transfer: "indigo",
-    mobile: "purple",
+    other: "purple",
   }
-  return colors[method]
+  return colors[method] ?? "gray"
 }
-
-function getStatusColor(status: PaymentStatus): "green" | "yellow" | "red" {
-  const colors: Record<PaymentStatus, "green" | "yellow" | "red"> = {
+function getStatusColor(status: VendorPaymentStatus): BadgeColor {
+  const colors: Record<VendorPaymentStatus, BadgeColor> = {
     confirmed: "green",
     pending: "yellow",
     voided: "red",
   }
-  return colors[status]
+  return colors[status] ?? "gray"
 }
-
-function getStatusIcon(status: PaymentStatus) {
-  const icons: Record<PaymentStatus, React.ReactNode> = {
+function getStatusIcon(status: VendorPaymentStatus) {
+  const icons: Record<VendorPaymentStatus, React.ReactNode> = {
     confirmed: <CheckCircle className="w-3 h-3" />,
     pending: <Clock className="w-3 h-3" />,
     voided: <XCircle className="w-3 h-3" />,
   }
-  return icons[status]
+  return icons[status] ?? null
 }
 
-// ============== MAIN PAGE COMPONENT ==============
-interface VendorSummary {
-  total_paid: number
-  total_outstanding: number
-  avg_days_to_pay: number
+// ============== MAIN PAGE ==============
+const EMPTY_FORM = {
+  vendor_id: "",
+  purchase_order_id: "",
+  payment_method: "bank_transfer" as VendorPaymentMethod,
+  amount_paid: "",
+  payment_date: new Date().toISOString().slice(0, 10),
+  reference_number: "",
+  notes: "",
 }
 
 export default function VendorPaymentsPage() {
-  const [payments, setPayments] = useState<VendorPayment[]>([])
-  const [vendors, setVendors] = useState<Vendor[]>([])
-  const [outstandingPOs, setOutstandingPOs] = useState<OutstandingPO[]>([])
-  const [vendorSummary, setVendorSummary] = useState<VendorSummary | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // ── Filters / UI state ────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
   const [vendorFilter, setVendorFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState<"all" | PaymentStatus>("all")
-  const [methodFilter, setMethodFilter] = useState<"all" | PaymentMethod>("all")
-  const [isLoading, setIsLoading] = useState(true)
-  const [permissions] = useState<UserPermissions>({
-    role: "manager",
-    can_confirm_payment: true,
-    can_void_payment: true,
-  })
+  const [statusFilter, setStatusFilter] = useState<"all" | VendorPaymentStatus>("all")
+  const [methodFilter, setMethodFilter] = useState<"all" | VendorPaymentMethod>("all")
+  const [formError, setFormError] = useState<string | null>(null)
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGINATION.defaultPageSize)
-
-  // Modals & Panels
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showVoidModal, setShowVoidModal] = useState(false)
   const [voidReason, setVoidReason] = useState("")
-  const [selectedPayment, setSelectedPayment] = useState<VendorPayment | null>(null)
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    vendor_id: "",
-    po_id: "",
-    payment_method: "cash" as PaymentMethod,
-    amount: "",
-    payment_date: new Date().toISOString().split("T")[0],
-    reference_number: "",
-    notes: "",
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [form, setForm] = useState(EMPTY_FORM)
+
+  // ── Queries ───────────────────────────────────────────────────────────────
+  const meQuery = useQuery({ queryKey: merchantKeys.auth.me(), queryFn: authApi.me })
+  const isOwner = meQuery.data?.role === "owner"
+
+  const paymentsQuery = useQuery({
+    queryKey: merchantKeys.vendorPayments.list("all"),
+    queryFn: () => vendorPaymentsApi.list(),
+  })
+  const payments = paymentsQuery.data ?? []
+
+  const vendorsQuery = useQuery({
+    queryKey: merchantKeys.vendors.list(),
+    queryFn: vendorsApi.list,
+  })
+  const vendors = vendorsQuery.data ?? []
+
+  // PO list only to resolve purchase_order_id → po_number on the table.
+  const poQuery = useQuery({
+    queryKey: merchantKeys.purchaseOrders.list("all"),
+    queryFn: () => purchaseOrdersApi.list(),
+  })
+  const vendorName = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const v of vendors) m.set(v.id, v.name)
+    return m
+  }, [vendors])
+  const poNumber = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const po of poQuery.data ?? []) m.set(po.id, po.po_number)
+    return m
+  }, [poQuery.data])
+
+  // Per-vendor outstanding POs + summary — only for the create modal.
+  const outstandingQuery = useQuery({
+    queryKey: merchantKeys.vendorPayments.outstanding(form.vendor_id),
+    queryFn: () => vendorPaymentsApi.outstanding(form.vendor_id),
+    enabled: showAddModal && !!form.vendor_id,
+  })
+  const summaryQuery = useQuery({
+    queryKey: merchantKeys.vendorPayments.summary(form.vendor_id),
+    queryFn: () => vendorPaymentsApi.summary(form.vendor_id),
+    enabled: showAddModal && !!form.vendor_id,
+  })
+  const vendorPOs = (outstandingQuery.data ?? []).filter((po) => num(po.balance_due) > 0)
+
+  const selectedPayment = useMemo(
+    () => payments.find((p) => p.id === selectedId) ?? null,
+    [payments, selectedId],
+  )
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: merchantKeys.vendorPayments.all })
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      vendorPaymentsApi.create({
+        vendor_id: form.vendor_id,
+        amount_paid: num(form.amount_paid),
+        payment_date: form.payment_date,
+        payment_method: form.payment_method,
+        ...(form.purchase_order_id ? { purchase_order_id: form.purchase_order_id } : {}),
+        ...(form.reference_number.trim() ? { reference_number: form.reference_number.trim() } : {}),
+        ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+      }),
+    onSuccess: () => {
+      invalidate()
+      setShowAddModal(false)
+      setForm(EMPTY_FORM)
+    },
+    onError: (e) => setFormError(humanizeError(e, "Failed to record payment.")),
   })
 
-  const mapPayment = (p: any): VendorPayment => ({
-    id: p.id,
-    payment_number: p.payment_number,
-    vendor_id: p.vendor_id,
-    vendor_name: p.vendor?.name ?? p.vendor_name ?? "",
-    po_id: p.purchase_order_id ?? null,
-    po_number: p.purchase_order?.po_number ?? p.po_number ?? null,
-    payment_method: p.payment_method,
-    amount: p.amount ?? 0,
-    payment_date: p.payment_date ?? "",
-    status: p.status,
-    reference_number: p.reference_number ?? null,
-    notes: p.notes ?? null,
-    confirmed_by: p.confirmed_by ?? null,
-    confirmed_at: p.confirmed_at ?? null,
-    created_by: p.created_by_user?.name ?? p.created_by ?? "",
+  const confirmMutation = useMutation({
+    mutationFn: (id: string) => vendorPaymentsApi.confirm(id),
+    onSuccess: () => {
+      invalidate()
+      setShowConfirmModal(false)
+    },
+    onError: (e) => setFormError(humanizeError(e, "Failed to confirm payment.")),
   })
 
-  const fetchPayments = async () => {
-    setIsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (statusFilter !== "all") params.set("status", statusFilter)
-      if (vendorFilter !== "all") params.set("vendor_id", vendorFilter)
-      const res = await apiFetch<{ data: any[]; total: number }>(`/api/business/vendor-payments?${params.toString()}`)
-      setPayments((res.data ?? []).map(mapPayment))
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load payments")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const voidMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      vendorPaymentsApi.void(id, reason),
+    onSuccess: () => {
+      invalidate()
+      setShowVoidModal(false)
+      setShowDetailPanel(false)
+      setVoidReason("")
+    },
+    onError: (e) => setFormError(humanizeError(e, "Failed to void payment.")),
+  })
 
-  const fetchVendors = async () => {
-    try {
-      const res = await apiFetch<{ data: any[] }>("/api/business/vendors")
-      setVendors(
-        (res.data ?? []).map((v: any) => ({
-          id: v.id,
-          name: v.name,
-          contact_name: v.contact_name ?? "",
-          phone: v.phone ?? "",
-        }))
-      )
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load vendors")
-    }
-  }
-
-  useEffect(() => {
-    Promise.all([fetchPayments(), fetchVendors()])
-  }, [])
-
-  // Permission checks
-  const canConfirmPayment = permissions.role === "manager" || permissions.role === "owner"
-  const canVoidPayment = permissions.role === "manager" || permissions.role === "owner"
-
-  // Stats
+  // ── Derived ───────────────────────────────────────────────────────────────
   const now = new Date()
-  const currentMonth = now.getMonth()
-  const currentYear = now.getFullYear()
   const totalPaidThisMonth = payments
-    .filter(p => p.status === "confirmed" && new Date(p.payment_date).getMonth() === currentMonth && new Date(p.payment_date).getFullYear() === currentYear)
-    .reduce((sum, p) => sum + p.amount, 0)
-  const totalOutstanding = outstandingPOs.reduce((sum, po) => sum + po.balance_due, 0)
-  const pendingPayments = payments.filter(p => p.status === "pending").length
-  const pendingAmount = payments.filter(p => p.status === "pending").reduce((sum, p) => sum + p.amount, 0)
+    .filter((p) => {
+      if (p.status !== "confirmed") return false
+      const d = new Date(p.payment_date)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+    .reduce((s, p) => s + num(p.amount_paid), 0)
+  const pendingList = payments.filter((p) => p.status === "pending")
+  const pendingCount = pendingList.length
+  const pendingAmount = pendingList.reduce((s, p) => s + num(p.amount_paid), 0)
 
-  // Filtered payments
-  const filteredPayments = payments.filter(p => {
-    const matchesSearch = p.payment_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.vendor_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.po_number && p.po_number.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredPayments = payments.filter((p) => {
+    const q = searchQuery.trim().toLowerCase()
+    const vName = vendorName.get(p.vendor_id) ?? ""
+    const poNum = p.purchase_order_id ? poNumber.get(p.purchase_order_id) ?? "" : ""
+    const matchesSearch =
+      !q ||
+      p.payment_number.toLowerCase().includes(q) ||
+      vName.toLowerCase().includes(q) ||
+      poNum.toLowerCase().includes(q)
     const matchesVendor = vendorFilter === "all" || p.vendor_id === vendorFilter
     const matchesStatus = statusFilter === "all" || p.status === statusFilter
     const matchesMethod = methodFilter === "all" || p.payment_method === methodFilter
     return matchesSearch && matchesVendor && matchesStatus && matchesMethod
   })
 
-  // Get outstanding POs for selected vendor (from API-fetched outstandingPOs)
-  const vendorPOs = formData.vendor_id
-    ? outstandingPOs.filter(po => po.vendor_id === formData.vendor_id && po.balance_due > 0)
-    : []
-
-  const handleSubmitPayment = async () => {
-    try {
-      const body: Record<string, any> = {
-        vendor_id: formData.vendor_id,
-        payment_method: formData.payment_method,
-        amount: parseFloat(formData.amount),
-        payment_date: formData.payment_date,
-      }
-      if (formData.po_id) body.purchase_order_id = formData.po_id
-      if (formData.reference_number) body.reference_number = formData.reference_number
-      if (formData.notes) body.notes = formData.notes
-      await apiFetch("/api/business/vendor-payments", {
-        method: "POST",
-        body: JSON.stringify(body),
-      })
-      setShowAddModal(false)
-      await fetchPayments()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to create payment")
-    }
-  }
-
-  const fetchOutstandingPOs = async (vendorId: string) => {
-    if (!vendorId) { setOutstandingPOs([]); setVendorSummary(null); return }
-    try {
-      const [outstandingRes, summaryRes] = await Promise.all([
-        apiFetch<{ purchase_orders: any[] }>(`/api/business/vendors/${vendorId}/outstanding`),
-        apiFetch<VendorSummary>(`/api/business/vendors/${vendorId}/payment-summary`),
-      ])
-      setOutstandingPOs(
-        (outstandingRes.purchase_orders ?? []).map((po: any) => ({
-          id: po.id,
-          po_number: po.po_number,
-          vendor_id: vendorId,
-          vendor_name: "",
-          total_ttc: po.total_ttc ?? 0,
-          amount_paid: po.amount_paid ?? 0,
-          balance_due: po.balance_due ?? 0,
-          expected_delivery_date: po.expected_delivery_date ?? "",
-          status: po.balance_due <= 0 ? "paid" : po.amount_paid > 0 ? "partial" : "unpaid",
-        }))
-      )
-      setVendorSummary(summaryRes)
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load vendor outstanding POs")
-    }
-  }
-
-  const handleAddPayment = () => {
-    setFormData({
-      vendor_id: "",
-      po_id: "",
-      payment_method: "cash",
-      amount: "",
-      payment_date: new Date().toISOString().split("T")[0],
-      reference_number: "",
-      notes: "",
-    })
-    setOutstandingPOs([])
-    setVendorSummary(null)
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const openAdd = () => {
+    setForm(EMPTY_FORM)
+    setFormError(null)
     setShowAddModal(true)
   }
-
-  const handleViewPayment = async (payment: VendorPayment) => {
-    setSelectedPayment(payment)
+  const openDetail = (id: string) => {
+    setSelectedId(id)
     setShowDetailPanel(true)
-    try {
-      const detail = await apiFetch<any>(`/api/business/vendor-payments/${payment.id}`)
-      setSelectedPayment(mapPayment(detail))
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load payment details")
-    }
   }
-
-  const handleConfirmPayment = (payment: VendorPayment) => {
-    setSelectedPayment(payment)
+  const openConfirm = (id: string) => {
+    setSelectedId(id)
+    setFormError(null)
     setShowConfirmModal(true)
   }
-
-  const confirmPayment = async () => {
-    if (selectedPayment) {
-      try {
-        await apiFetch(`/api/business/vendor-payments/${selectedPayment.id}/confirm`, { method: "POST" })
-        await fetchPayments()
-      } catch (e: any) {
-        setError(e.message ?? "Failed to confirm payment")
-      }
-    }
-    setShowConfirmModal(false)
-    setSelectedPayment(null)
-  }
-
-  const handleVoidPayment = (payment: VendorPayment) => {
-    setSelectedPayment(payment)
+  const openVoid = (id: string) => {
+    setSelectedId(id)
     setVoidReason("")
+    setFormError(null)
     setShowVoidModal(true)
   }
-
-  const submitVoidPayment = async () => {
-    if (!selectedPayment) return
-    try {
-      await apiFetch(`/api/business/vendor-payments/${selectedPayment.id}/void`, {
-        method: "POST",
-        body: JSON.stringify({ reason: voidReason }),
-      })
-      await fetchPayments()
-    } catch (e: any) {
-      setError(e.message ?? "Failed to void payment")
-    }
-    setShowVoidModal(false)
-    setVoidReason("")
-    setSelectedPayment(null)
-    setShowDetailPanel(false)
+  const selectPO = (poId: string) => {
+    const po = vendorPOs.find((p) => p.id === poId)
+    setForm((f) => ({
+      ...f,
+      purchase_order_id: f.purchase_order_id === poId ? "" : poId,
+      amount_paid: po && f.purchase_order_id !== poId ? num(po.balance_due).toFixed(2) : f.amount_paid,
+    }))
   }
 
-  const handlePOSelect = (poId: string) => {
-    setFormData(f => ({ ...f, po_id: poId }))
-    const po = outstandingPOs.find(p => p.id === poId)
-    if (po) {
-      setFormData(f => ({ ...f, amount: po.balance_due.toString() }))
-    }
-  }
+  const listError = paymentsQuery.isError
+    ? humanizeError(paymentsQuery.error, "Failed to load vendor payments.")
+    : null
 
   return (
     <div className="h-full">
-      {/* Error Banner */}
-      {error && (
+      {(formError || listError) && (
         <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"><X className="w-3 h-3" /></button>
+          <span className="flex-1">{formError || listError}</span>
+          <button onClick={() => setFormError(null)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"><X className="w-3 h-3" /></button>
         </div>
       )}
 
@@ -503,13 +385,13 @@ export default function VendorPaymentsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Vendor Payments</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Track and manage payments to vendors</p>
         </div>
-        <Button variant="primary" onClick={handleAddPayment}>
+        <Button variant="primary" onClick={openAdd}>
           <Plus className="w-4 h-4" />
           Record Payment
         </Button>
       </div>
 
-      {/* Stats */}
+      {/* Stats — payment-derived only (no global outstanding endpoint) */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
           <div className="flex items-center gap-3 mb-2">
@@ -517,28 +399,26 @@ export default function VendorPaymentsPage() {
               <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalPaidThisMonth.toLocaleString()} MAD</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Paid This Month</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{money(totalPaidThisMonth)} MAD</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Confirmed This Month</p>
         </div>
-        <div className={`bg-white dark:bg-[#0F0F12] rounded-xl border ${totalOutstanding > 0 ? "border-amber-300 dark:border-amber-700" : "border-gray-200 dark:border-[#1F1F23]"} p-5`}>
+        <div className={`bg-white dark:bg-[#0F0F12] rounded-xl border ${pendingAmount > 0 ? "border-amber-300 dark:border-amber-700" : "border-gray-200 dark:border-[#1F1F23]"} p-5`}>
           <div className="flex items-center gap-3 mb-2">
-            <div className={`w-10 h-10 ${totalOutstanding > 0 ? "bg-amber-100 dark:bg-amber-900/30" : "bg-gray-100 dark:bg-[#0F0F12]"} rounded-lg flex items-center justify-center`}>
-              <DollarSign className={`w-5 h-5 ${totalOutstanding > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`} />
+            <div className={`w-10 h-10 ${pendingAmount > 0 ? "bg-amber-100 dark:bg-amber-900/30" : "bg-gray-100 dark:bg-[#0F0F12]"} rounded-lg flex items-center justify-center`}>
+              <DollarSign className={`w-5 h-5 ${pendingAmount > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`} />
             </div>
           </div>
-          <p className={`text-2xl font-bold ${totalOutstanding > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-900 dark:text-white"}`}>{totalOutstanding.toLocaleString()} MAD</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Outstanding</p>
+          <p className={`text-2xl font-bold ${pendingAmount > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-900 dark:text-white"}`}>{money(pendingAmount)} MAD</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Pending Amount</p>
         </div>
         <div className="bg-white dark:bg-[#0F0F12] rounded-xl border border-gray-200 dark:border-[#1F1F23] p-5">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center relative">
               <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              {pendingPayments > 0 && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full animate-pulse" />
-              )}
+              {pendingCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full animate-pulse" />}
             </div>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{pendingPayments}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{pendingCount}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">Pending Confirmation</p>
         </div>
       </div>
@@ -556,41 +436,20 @@ export default function VendorPaymentsPage() {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
             />
           </div>
-          <select
-            value={vendorFilter}
-            onChange={(e) => setVendorFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-          >
+          <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
             <option value="all">All Vendors</option>
-            {vendors.map(v => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
+            {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | PaymentStatus)}
-            className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-          >
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | VendorPaymentStatus)} className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
             <option value="voided">Voided</option>
           </select>
-          <select
-            value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value as "all" | PaymentMethod)}
-            className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
-          >
+          <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value as "all" | VendorPaymentMethod)} className="px-3 py-2 border border-gray-300 dark:border-[#1F1F23] rounded-lg text-sm bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white">
             <option value="all">All Methods</option>
-            <option value="cash">Cash</option>
-            <option value="check">Check</option>
-            <option value="bank_transfer">Bank Transfer</option>
-            <option value="mobile">Mobile</option>
+            {METHOD_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
-          <Button variant="secondary">
-            <Download className="w-4 h-4" />
-            Export
-          </Button>
         </div>
       </div>
 
@@ -599,90 +458,74 @@ export default function VendorPaymentsPage() {
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-[#0F0F12]/50 border-b border-gray-200 dark:border-[#1F1F23]">
             <tr>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Payment #</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Vendor</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Linked PO</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Method</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Amount</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Date</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Status</th>
-              <th className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+              {["Payment #", "Vendor", "Linked PO", "Method", "Amount", "Date", "Status", "Actions"].map((h) => (
+                <th key={h} className="text-left p-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {filteredPayments.map(payment => (
-              <tr 
-                key={payment.id} 
-                className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50 cursor-pointer"
-                onClick={() => handleViewPayment(payment)}
-              >
-                <td className="p-4">
-                  <p className="font-mono text-sm text-blue-600 dark:text-blue-400">{payment.payment_number}</p>
-                </td>
-                <td className="p-4">
-                  <p className="font-medium text-gray-900 dark:text-white">{payment.vendor_name}</p>
-                </td>
-                <td className="p-4">
-                  {payment.po_number ? (
-                    <div className="flex items-center gap-1">
-                      <Link2 className="w-3 h-3 text-gray-400" />
-                      <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{payment.po_number}</span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">Not linked</span>
-                  )}
-                </td>
-                <td className="p-4">
-                  <Badge color={getPaymentMethodColor(payment.payment_method)}>
-                    {getPaymentMethodIcon(payment.payment_method)}
-                    {payment.payment_method.replace("_", " ")}
-                  </Badge>
-                </td>
-                <td className="p-4">
-                  <p className="font-semibold text-gray-900 dark:text-white">{payment.amount.toLocaleString()} MAD</p>
-                </td>
-                <td className="p-4 text-sm text-gray-500 dark:text-gray-400">{payment.payment_date}</td>
-                <td className="p-4">
-                  <Badge color={getStatusColor(payment.status)}>
-                    {getStatusIcon(payment.status)}
-                    {payment.status}
-                  </Badge>
-                </td>
-                <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-1">
-                    {payment.status === "pending" && (
-                      <>
-                        <Button variant="primary" size="sm" onClick={() => handleConfirmPayment(payment)}>
-                          <Check className="w-3 h-3" />
-                          Confirm
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600" onClick={() => handleVoidPayment(payment)}>
-                          <Ban className="w-3 h-3" />
-                        </Button>
-                      </>
-                    )}
-                    {payment.status === "confirmed" && (
-                      <Button variant="secondary" size="sm">
-                        <Printer className="w-3 h-3" />
-                        Receipt
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm">
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {paymentsQuery.isLoading
+              ? Array.from({ length: 5 }).map((_, i) => <PaymentRowSkeleton key={i} />)
+              : filteredPayments.map((payment) => {
+                  const poNum = payment.purchase_order_id ? poNumber.get(payment.purchase_order_id) : null
+                  return (
+                    <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a20]/50 cursor-pointer" onClick={() => openDetail(payment.id)}>
+                      <td className="p-4"><p className="font-mono text-sm text-blue-600 dark:text-blue-400">{payment.payment_number}</p></td>
+                      <td className="p-4"><p className="font-medium text-gray-900 dark:text-white">{vendorName.get(payment.vendor_id) ?? "—"}</p></td>
+                      <td className="p-4">
+                        {poNum ? (
+                          <div className="flex items-center gap-1">
+                            <Link2 className="w-3 h-3 text-gray-400" />
+                            <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{poNum}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Not linked</span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <Badge color={getPaymentMethodColor(payment.payment_method)}>
+                          {getPaymentMethodIcon(payment.payment_method)}
+                          {METHOD_LABEL[payment.payment_method] ?? payment.payment_method}
+                        </Badge>
+                      </td>
+                      <td className="p-4"><p className="font-semibold text-gray-900 dark:text-white">{money(payment.amount_paid)} MAD</p></td>
+                      <td className="p-4 text-sm text-gray-500 dark:text-gray-400">{formatDate(payment.payment_date)}</td>
+                      <td className="p-4">
+                        <Badge color={getStatusColor(payment.status)}>
+                          {getStatusIcon(payment.status)}
+                          {payment.status}
+                        </Badge>
+                      </td>
+                      <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          {payment.status === "pending" && isOwner && (
+                            <>
+                              <Button variant="primary" size="sm" onClick={() => openConfirm(payment.id)}>
+                                <Check className="w-3 h-3" />
+                                Confirm
+                              </Button>
+                              <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600" onClick={() => openVoid(payment.id)} title="Void">
+                                <Ban className="w-3 h-3" />
+                              </Button>
+                            </>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => openDetail(payment.id)} title="View">
+                            <Eye className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
           </tbody>
         </table>
-        
-        {filteredPayments.length === 0 && (
+
+        {!paymentsQuery.isLoading && filteredPayments.length === 0 && (
           <div className="text-center py-12">
             <Receipt className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No payments recorded yet</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Click &quot;Record Payment&quot; to log your first vendor payment</p>
-            <Button variant="primary" onClick={handleAddPayment}>
+            <Button variant="primary" onClick={openAdd}>
               <Plus className="w-4 h-4" />
               Record Payment
             </Button>
@@ -696,90 +539,100 @@ export default function VendorPaymentsPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vendor *</label>
             <select
-              value={formData.vendor_id}
-              onChange={(e) => {
-                const vid = e.target.value
-                setFormData(f => ({ ...f, vendor_id: vid, po_id: "", amount: "" }))
-                fetchOutstandingPOs(vid)
-              }}
+              value={form.vendor_id}
+              onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value, purchase_order_id: "", amount_paid: "" }))}
               className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
             >
               <option value="">Select vendor...</option>
-              {vendors.map(v => (
-                <option key={v.id} value={v.id}>{v.name}</option>
-              ))}
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </div>
-          
-          {formData.vendor_id && vendorPOs.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link to Purchase Order (Optional)</label>
-              <div className="space-y-2 max-h-40 overflow-y-auto p-2 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
-                {vendorPOs.map(po => (
-                  <label
-                    key={po.id}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                      formData.po_id === po.id 
-                        ? "bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-300 dark:border-[#2a2a33]" 
-                        : "bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#1a1a20]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="po"
-                        checked={formData.po_id === po.id}
-                        onChange={() => handlePOSelect(po.id)}
-                        className="text-indigo-500"
-                      />
-                      <div>
-                        <p className="font-mono text-sm text-gray-900 dark:text-white">{po.po_number}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Total: {po.total_ttc.toLocaleString()} MAD</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-red-600 dark:text-red-400">{po.balance_due.toLocaleString()} MAD</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Balance due</p>
-                    </div>
-                  </label>
-                ))}
+
+          {form.vendor_id && summaryQuery.data && (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Total Paid</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{money(summaryQuery.data.total_paid)}</p>
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Outstanding</p>
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">{money(summaryQuery.data.total_outstanding)}</p>
+              </div>
+              <div className="p-2 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Payments</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{summaryQuery.data.payment_count}</p>
               </div>
             </div>
           )}
-          
+
+          {form.vendor_id && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link to Purchase Order (Optional)</label>
+              {outstandingQuery.isLoading ? (
+                <Skeleton className="h-16 w-full rounded-lg" />
+              ) : vendorPOs.length === 0 ? (
+                <p className="text-xs text-gray-400 dark:text-gray-500 p-2">No outstanding purchase orders for this vendor.</p>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto p-2 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
+                  {vendorPOs.map((po) => (
+                    <label
+                      key={po.id}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                        form.purchase_order_id === po.id
+                          ? "bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-300 dark:border-[#2a2a33]"
+                          : "bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#1F1F23] hover:bg-gray-50 dark:hover:bg-[#1a1a20]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input type="radio" name="po" checked={form.purchase_order_id === po.id} onChange={() => selectPO(po.id)} className="text-indigo-500" />
+                        <div>
+                          <p className="font-mono text-sm text-gray-900 dark:text-white">{po.po_number}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Total: {money(po.total_ttc)} MAD</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-red-600 dark:text-red-400">{money(po.balance_due)} MAD</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Balance due</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Method *</label>
               <select
-                value={formData.payment_method}
-                onChange={(e) => setFormData(f => ({ ...f, payment_method: e.target.value as PaymentMethod }))}
+                value={form.payment_method}
+                onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value as VendorPaymentMethod }))}
                 className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               >
-                <option value="cash">Cash</option>
-                <option value="check">Check</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="mobile">Mobile Payment</option>
+                {METHOD_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (MAD) *</label>
               <input
                 type="number"
-                value={formData.amount}
-                onChange={(e) => setFormData(f => ({ ...f, amount: e.target.value }))}
+                min="0.01"
+                step="0.01"
+                value={form.amount_paid}
+                onChange={(e) => setForm((f) => ({ ...f, amount_paid: e.target.value }))}
                 placeholder="0.00"
                 className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               />
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Date *</label>
               <input
                 type="date"
-                value={formData.payment_date}
-                onChange={(e) => setFormData(f => ({ ...f, payment_date: e.target.value }))}
+                value={form.payment_date}
+                onChange={(e) => setForm((f) => ({ ...f, payment_date: e.target.value }))}
                 className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               />
             </div>
@@ -787,82 +640,83 @@ export default function VendorPaymentsPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reference Number</label>
               <input
                 type="text"
-                value={formData.reference_number}
-                onChange={(e) => setFormData(f => ({ ...f, reference_number: e.target.value }))}
-                placeholder="Check #, Transfer ID, etc."
+                value={form.reference_number}
+                onChange={(e) => setForm((f) => ({ ...f, reference_number: e.target.value }))}
+                placeholder="Cheque #, Transfer ID, etc."
                 className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white"
               />
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
             <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))}
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               placeholder="Additional notes..."
               rows={2}
               className="border border-gray-300 dark:border-[#1F1F23] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-300 bg-white dark:bg-[#0F0F12] text-gray-900 dark:text-white resize-none"
             />
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button variant="primary" className="flex-1" disabled={!formData.vendor_id || !formData.amount} onClick={handleSubmitPayment}>
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={!form.vendor_id || num(form.amount_paid) < 0.01 || createMutation.isPending}
+              onClick={() => { setFormError(null); createMutation.mutate() }}
+            >
               <Check className="w-4 h-4" />
-              Record Payment
+              {createMutation.isPending ? "Saving..." : "Record Payment"}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Confirm Payment Modal */}
+      {/* Confirm Payment Modal (owner-only) */}
       <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} title="Confirm Payment" size="md">
         {selectedPayment && (
           <div className="space-y-4">
-            <div className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-lg">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Payment Number</p>
-                  <p className="font-mono text-sm text-gray-900 dark:text-white">{selectedPayment.payment_number}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Vendor</p>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedPayment.vendor_name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Amount</p>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{selectedPayment.amount.toLocaleString()} MAD</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Method</p>
-                  <Badge color={getPaymentMethodColor(selectedPayment.payment_method)}>
-                    {getPaymentMethodIcon(selectedPayment.payment_method)}
-                    {selectedPayment.payment_method.replace("_", " ")}
-                  </Badge>
-                </div>
+            <div className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-lg grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Payment Number</p>
+                <p className="font-mono text-sm text-gray-900 dark:text-white">{selectedPayment.payment_number}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Vendor</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{vendorName.get(selectedPayment.vendor_id) ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Amount</p>
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">{money(selectedPayment.amount_paid)} MAD</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Method</p>
+                <Badge color={getPaymentMethodColor(selectedPayment.payment_method)}>
+                  {getPaymentMethodIcon(selectedPayment.payment_method)}
+                  {METHOD_LABEL[selectedPayment.payment_method] ?? selectedPayment.payment_method}
+                </Badge>
               </div>
             </div>
-            
             <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
               <p className="text-xs text-amber-800 dark:text-amber-300">
                 <AlertCircle className="w-3 h-3 inline mr-1" />
-                This action will confirm the payment and cannot be undone. The payment will be marked as confirmed.
+                This will mark the payment as confirmed.
               </p>
             </div>
-            
             <div className="flex gap-3 pt-4">
               <Button variant="secondary" className="flex-1" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
-              <Button variant="primary" className="flex-1" onClick={confirmPayment}>
+              <Button variant="primary" className="flex-1" disabled={confirmMutation.isPending} onClick={() => confirmMutation.mutate(selectedPayment.id)}>
                 <CheckCircle className="w-4 h-4" />
-                Confirm Payment
+                {confirmMutation.isPending ? "Confirming..." : "Confirm Payment"}
               </Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Void Payment Modal */}
+      {/* Void Payment Modal (owner-only) */}
       <Modal isOpen={showVoidModal} onClose={() => { setShowVoidModal(false); setVoidReason("") }} title="Void Payment" size="sm">
         {selectedPayment && (
           <div className="space-y-4">
@@ -881,9 +735,14 @@ export default function VendorPaymentsPage() {
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="secondary" className="flex-1" onClick={() => { setShowVoidModal(false); setVoidReason("") }}>Cancel</Button>
-              <Button variant="danger" className="flex-1" disabled={!voidReason.trim()} onClick={submitVoidPayment}>
+              <Button
+                variant="danger"
+                className="flex-1"
+                disabled={!voidReason.trim() || voidMutation.isPending}
+                onClick={() => voidMutation.mutate({ id: selectedPayment.id, reason: voidReason.trim() })}
+              >
                 <Ban className="w-4 h-4" />
-                Void Payment
+                {voidMutation.isPending ? "Voiding..." : "Void Payment"}
               </Button>
             </div>
           </div>
@@ -894,34 +753,28 @@ export default function VendorPaymentsPage() {
       <SlidePanel isOpen={showDetailPanel} onClose={() => setShowDetailPanel(false)} title="Payment Details">
         {selectedPayment && (
           <div className="space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between">
-              <div>
-                <p className="font-mono text-lg text-blue-600 dark:text-blue-400">{selectedPayment.payment_number}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Created by {selectedPayment.created_by}</p>
-              </div>
+              <p className="font-mono text-lg text-blue-600 dark:text-blue-400">{selectedPayment.payment_number}</p>
               <Badge color={getStatusColor(selectedPayment.status)}>
                 {getStatusIcon(selectedPayment.status)}
                 {selectedPayment.status}
               </Badge>
             </div>
-            
-            {/* Vendor Info */}
+
             <div className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-xl">
               <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
                 Vendor
               </h4>
-              <p className="font-medium text-gray-900 dark:text-white">{selectedPayment.vendor_name}</p>
-              {selectedPayment.po_number && (
+              <p className="font-medium text-gray-900 dark:text-white">{vendorName.get(selectedPayment.vendor_id) ?? "—"}</p>
+              {selectedPayment.purchase_order_id && (
                 <div className="flex items-center gap-2 mt-2">
                   <Link2 className="w-4 h-4 text-gray-400" />
-                  <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{selectedPayment.po_number}</span>
+                  <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{poNumber.get(selectedPayment.purchase_order_id) ?? selectedPayment.purchase_order_id}</span>
                 </div>
               )}
             </div>
-            
-            {/* Payment Info */}
+
             <div className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-xl">
               <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                 <DollarSign className="w-4 h-4" />
@@ -930,18 +783,18 @@ export default function VendorPaymentsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Amount</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{selectedPayment.amount.toLocaleString()} MAD</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{money(selectedPayment.amount_paid)} MAD</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Method</p>
                   <Badge color={getPaymentMethodColor(selectedPayment.payment_method)}>
                     {getPaymentMethodIcon(selectedPayment.payment_method)}
-                    {selectedPayment.payment_method.replace("_", " ")}
+                    {METHOD_LABEL[selectedPayment.payment_method] ?? selectedPayment.payment_method}
                   </Badge>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Payment Date</p>
-                  <p className="text-sm text-gray-900 dark:text-white">{selectedPayment.payment_date}</p>
+                  <p className="text-sm text-gray-900 dark:text-white">{formatDate(selectedPayment.payment_date)}</p>
                 </div>
                 {selectedPayment.reference_number && (
                   <div>
@@ -951,62 +804,42 @@ export default function VendorPaymentsPage() {
                 )}
               </div>
             </div>
-            
-            {/* Confirmation Info */}
-            {selectedPayment.status === "confirmed" && selectedPayment.confirmed_by && (
+
+            {selectedPayment.status === "confirmed" && selectedPayment.confirmed_at && (
               <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
                 <h4 className="font-semibold text-green-900 dark:text-green-300 mb-2 flex items-center gap-2">
                   <CheckCircle className="w-4 h-4" />
-                  Confirmation
+                  Confirmed
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-green-700 dark:text-green-400">Confirmed by</p>
-                    <p className="text-sm text-green-900 dark:text-green-300">{selectedPayment.confirmed_by}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-green-700 dark:text-green-400">Confirmed at</p>
-                    <p className="text-sm text-green-900 dark:text-green-300">{selectedPayment.confirmed_at}</p>
-                  </div>
-                </div>
+                <p className="text-sm text-green-900 dark:text-green-300">{formatDateTime(selectedPayment.confirmed_at)}</p>
               </div>
             )}
-            
-            {/* Notes */}
+
             {selectedPayment.notes && (
               <div className="p-4 bg-gray-50 dark:bg-[#0F0F12] rounded-xl">
                 <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Notes</h4>
                 <p className="text-sm text-gray-600 dark:text-gray-300">{selectedPayment.notes}</p>
               </div>
             )}
-            
-            {/* Actions */}
-            <div className="space-y-2">
-              {selectedPayment.status === "pending" && (
-                <>
-                  <Button variant="primary" className="w-full" onClick={() => { setShowDetailPanel(false); handleConfirmPayment(selectedPayment); }}>
-                    <CheckCircle className="w-4 h-4" />
-                    Confirm Payment
-                  </Button>
-                  <Button variant="danger" className="w-full" onClick={() => { setShowDetailPanel(false); handleVoidPayment(selectedPayment); }}>
-                    <Ban className="w-4 h-4" />
-                    Void Payment
-                  </Button>
-                </>
-              )}
-              {selectedPayment.status === "confirmed" && (
-                <Button variant="secondary" className="w-full">
-                  <Printer className="w-4 h-4" />
-                  Print Receipt
+
+            {selectedPayment.status === "pending" && isOwner && (
+              <div className="space-y-2">
+                <Button variant="primary" className="w-full" onClick={() => { setShowDetailPanel(false); openConfirm(selectedPayment.id) }}>
+                  <CheckCircle className="w-4 h-4" />
+                  Confirm Payment
                 </Button>
-              )}
-            </div>
+                <Button variant="danger" className="w-full" onClick={() => { setShowDetailPanel(false); openVoid(selectedPayment.id) }}>
+                  <Ban className="w-4 h-4" />
+                  Void Payment
+                </Button>
+              </div>
+            )}
+            {selectedPayment.status === "pending" && !isOwner && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center">Only an owner can confirm or void payments.</p>
+            )}
           </div>
         )}
       </SlidePanel>
     </div>
   )
 }
-
-
-
